@@ -1,0 +1,16 @@
+[package]
+name = "burrow-plan"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "The file-operation plan Burrow's elevated helper accepts, and the validator both sides run."
+license = "MIT"
+
+# Deliberately minimal. This crate is linked into the binary that runs as root,
+# so every dependency here is one an attacker gets to reach through a plan file.
+# serde and nothing else.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

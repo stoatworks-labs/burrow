@@ -1,0 +1,24 @@
+[package]
+name = "burrow-helper"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Burrow's privileged helper: applies a validated file-operation plan, and nothing else."
+license = "MIT"
+
+[[bin]]
+name = "burrow-helper"
+path = "src/main.rs"
+
+# This binary runs as root. Every dependency here is code an attacker who can
+# write a plan file gets to reach, so the list is the security statement:
+# a plan format, a JSON parser, and the libc calls needed to check who owns a
+# file. No HTTP client. No zip decoder. No GUI toolkit. If any of those ever
+# appear in this table, something has gone wrong with the design.
+[dependencies]
+burrow-plan = { path = "../burrow-plan" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

@@ -1,0 +1,26 @@
+# One workspace so the three crates share a lockfile and a target directory,
+# and so `cargo test --workspace` covers everything in one command.
+#
+# The split is deliberate and is the security design, not tidiness:
+#
+#   burrow-plan    the file-operation vocabulary and its validator. No I/O.
+#   burrow-helper  the binary that runs as root. Depends on burrow-plan,
+#                  serde and libc — and must never depend on more.
+#   burrow-core    everything else that does not need Tauri, so the logic most
+#                  worth testing is testable without a GUI.
+#
+# src-tauri is deliberately NOT a member: Tauri's build script and the
+# webkit/objc link steps make a workspace build of the library crates slower
+# and platform-dependent for no benefit. It depends on these by path.
+[workspace]
+resolver = "2"
+members = ["crates/burrow-plan", "crates/burrow-core", "crates/burrow-helper"]
+
+# Applied to every member. A profile in a non-root member is silently ignored by
+# cargo, so the helper was not actually getting lto or strip until this moved
+# here — which matters most for the binary that runs as root and should be as
+# small as it can be.
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

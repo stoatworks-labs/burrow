@@ -1,0 +1,73 @@
+name: ci
+
+# The library crates carry the logic worth testing and know nothing about Tauri,
+# so they run on all three platforms — including the Windows destination and
+# path handling, which cannot be exercised by hand on the author's Mac.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  crates:
+    name: crates (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest, ubuntu-22.04]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  ui:
+    name: ui
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - run: npm ci
+      # `npm run build` type-checks first. It does not need the gathered assets:
+      # the catalogue and demos are runtime resources, not build inputs.
+      - run: npm run build
+
+  tauri:
+    name: tauri shell (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 20 }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+      - run: npm ci
+      - run: npm run build
+      # generate_context! embeds the frontend at compile time and externalBin
+      # wants the helper present, so both have to exist before cargo runs.
+      - name: Stage the helper
+        shell: bash
+        run: |
+          triple="$(rustc -vV | awk '/^host:/ {print $2}')"
+          cargo build --release -p burrow-helper
+          mkdir -p src-tauri/bin src-tauri/assets/demos src-tauri/assets/thumbs
+          cp "target/release/burrow-helper$([ "${{ runner.os }}" = "Windows" ] && echo .exe)" \
+             "src-tauri/bin/burrow-helper-$triple$([ "${{ runner.os }}" = "Windows" ] && echo .exe)"
+          # A placeholder catalogue: the real one is gathered at release time,
+          # and this job is checking that the shell compiles and links.
+          echo '{"schema":1,"generated":"ci","entries":[]}' > src-tauri/assets/catalog.json
+      - name: Check the shell
+        working-directory: src-tauri
+        run: cargo check
