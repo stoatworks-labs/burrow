@@ -102,6 +102,36 @@ What has **not**:
   with an explanation. FFGL is unaffected.
 
 <!-- downloads:start -->
+
+## Download
+
+**[v0.1.1](https://github.com/stoatworks-labs/burrow/releases/tag/v0.1.1)** — prebuilt for macOS and Windows. Pick your platform:
+
+<details>
+<summary><b>macOS</b> — Apple Silicon, Intel</summary>
+
+| Build | Download | Size |
+| --- | --- | --- |
+| Apple Silicon · .dmg disk image | [`burrow-0.1.1-macos-aarch64.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.1/burrow-0.1.1-macos-aarch64.dmg) | 6.8 MB |
+| Intel · .dmg disk image | [`burrow-0.1.1-macos-x86_64.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.1/burrow-0.1.1-macos-x86_64.dmg) | 7.0 MB |
+| Apple Silicon · .pkg installer | [`burrow-0.1.1-macos-aarch64.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.1/burrow-0.1.1-macos-aarch64.pkg) | 6.8 MB |
+| Intel · .pkg installer | [`burrow-0.1.1-macos-x86_64.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.1/burrow-0.1.1-macos-x86_64.pkg) | 7.0 MB |
+
+</details>
+
+<details>
+<summary><b>Windows</b> — x64</summary>
+
+| Build | Download | Size |
+| --- | --- | --- |
+| x64 · .exe installer | [`Stoatworks.Burrow_0.1.1_x64-setup.exe`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.1/Stoatworks.Burrow_0.1.1_x64-setup.exe) | 5.2 MB |
+
+</details>
+
+All builds, checksums and release notes: [github.com/stoatworks-labs/burrow/releases](https://github.com/stoatworks-labs/burrow/releases).
+
+macOS builds are signed and notarised and open normally. The Windows builds are unsigned, so SmartScreen warns once.
+
 <!-- downloads:end -->
 
 ## Building it
