@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Burin — vector artwork at the size it is seen</title>
+<meta name="description" content="A Resolume FFGL plugin that renders SVG at the resolution the frame needs, rebuilding as you zoom. Try it with your own drawing — nothing is uploaded.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%23111' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23111'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f7f6f2; --ink: #17171b; --muted: #6b6b74;
+    --line: #d9d7d0; --panel: #ffffff; --accent: #c8452e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121216; --ink: #ececf0; --muted: #9a9aa4;
+            --line: #2c2c33; --panel: #1a1a20; --accent: #e26a52; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  body.dragging { outline: 3px dashed var(--accent); outline-offset: -12px; }
+
+  header { padding: 28px 24px 12px; max-width: 1200px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -0.015em; }
+  header p { margin: 0; color: var(--muted); max-width: 62ch; }
+  header a { color: inherit; }
+
+  main {
+    max-width: 1200px; margin: 0 auto; padding: 12px 24px 48px;
+    display: grid; gap: 20px; grid-template-columns: minmax(0,1fr) 300px;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0,1fr); } }
+
+  .stage { position: relative; }
+  canvas {
+    width: 100%; aspect-ratio: 16 / 9; display: block;
+    border: 1px solid var(--line); border-radius: 10px;
+    /* An artboard, and deliberately the SAME colour in both themes.
+       The plugin's own background defaults to transparent, which is right in
+       Resolume where you composite it over something — but a drawing inked in
+       near-black on a transparent canvas is invisible against a dark page, and
+       the first thing a visitor would see is an empty frame. The Background
+       controls below still work and still start where the plugin starts them;
+       this is the surface underneath, not a parameter. */
+    background:
+      linear-gradient(45deg, #e8e6df 25%, transparent 25%, transparent 75%, #e8e6df 75%),
+      linear-gradient(45deg, #e8e6df 25%, transparent 25%, transparent 75%, #e8e6df 75%),
+      #f4f2ec;
+    background-size: 22px 22px;
+    background-position: 0 0, 11px 11px;
+  }
+  #hud {
+    position: absolute; left: 10px; bottom: 10px;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 9px; color: var(--muted); pointer-events: none;
+  }
+
+  .note { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+  .note.bad { color: var(--accent); }
+  .warn {
+    margin: 10px 0 0; padding: 10px 12px; font-size: 13px; border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px; align-self: start;
+  }
+  .panel h2 {
+    margin: 14px 0 8px; font-size: 11px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .panel h2:first-child { margin-top: 0; }
+  label { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin-bottom: 7px; font-size: 13px; }
+  label > span { color: var(--muted); }
+  input[type=range] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--accent); }
+  select, input[type=color] { grid-column: 1 / -1; width: 100%; font: inherit;
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 6px; }
+  input[type=color] { height: 30px; padding: 2px; }
+
+  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  button, .filebtn {
+    font: inherit; padding: 6px 12px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  .filebtn input { display: none; }
+
+  footer { max-width: 1200px; margin: 0 auto; padding: 0 24px 48px; color: var(--muted); font-size: 13px; }
+  footer a { color: inherit; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+  #measure { position: absolute; width: 0; height: 0; overflow: hidden; visibility: hidden; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Burin</h1>
+  <p>
+    A <a href="https://github.com/stoatworks-labs/burin">Resolume plugin</a>
+    that draws vector artwork at the resolution the frame actually needs, and
+    rebuilds it when that changes — so going in close stays sharp instead of
+    turning into a bitmap. <strong>Drop your own SVG anywhere on this page.</strong>
+    Nothing is uploaded; the file is read in your browser and stays there.
+  </p>
+</header>
+
+<main>
+  <div>
+    <div class="stage">
+      <canvas id="view"></canvas>
+      <div id="hud">—</div>
+    </div>
+    <p id="note" class="note">loading the example drawing…</p>
+    <p id="warn" class="warn" hidden></p>
+
+    <div class="row" style="margin-top:14px">
+      <label class="filebtn">Open an SVG…<input type="file" id="file" accept=".svg,image/svg+xml"></label>
+      <button id="reset" type="button">Reset controls</button>
+    </div>
+
+    <p class="note">
+      The readout is the point as much as the picture is. <code>wants</code> is
+      the resolution this frame needs; <code>rung</code> is what the ladder
+      snapped it to — always upward, so the drawing is never magnified.
+      Drag <em>Zoom</em> and watch <code>rebuilds</code> climb in steps rather
+      than once a frame: that is what makes it affordable.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h2>Document</h2>
+    <label>Bounds
+      <select data-param="bounds" data-default="0">
+        <option value="0">Viewport</option><option value="1">Content</option>
+      </select></label>
+    <label>Fit
+      <select data-param="fit" data-default="0">
+        <option value="0">Fit</option><option value="1">Fill</option><option value="2">Stretch</option>
+      </select></label>
+    <label>Detail<input type="range" data-param="detail" data-default="0.5" min="0" max="1" step="0.01" value="0.5"></label>
+
+    <h2>Style</h2>
+    <label>Draw
+      <select data-param="draw" data-default="0">
+        <option value="0">Fill + Stroke</option><option value="1">Fill only</option><option value="2">Stroke only</option>
+      </select></label>
+    <label>Stroke width<input type="range" data-param="strokeWidth" data-default="0.5" min="0" max="1" step="0.01" value="0.5"></label>
+    <label>Min stroke px<input type="range" data-param="strokeMin" data-default="0.25" min="0" max="1" step="0.01" value="0.25"></label>
+    <label>Recolour
+      <select data-param="recolour" data-default="0">
+        <option value="0">Off</option><option value="1">Fill</option><option value="2">Stroke</option><option value="3">Both</option>
+      </select></label>
+    <label>Colour<input type="color" data-param="colour" data-default="#c8452e" value="#c8452e"></label>
+    <label>Colour spread<input type="range" data-param="colourSpread" data-default="0.5" min="0" max="1" step="0.01" value="0.5"></label>
+
+    <h2>Isolate</h2>
+    <label>First shape<input type="range" data-param="firstShape" data-default="0" min="0" max="400" step="1" value="0"></label>
+    <label>Shape count <span>0 = all</span><input type="range" data-param="shapeCount" data-default="0" min="0" max="500" step="1" value="0"></label>
+
+    <h2>Reveal</h2>
+    <label>Mode
+      <select data-param="revealMode" data-default="0">
+        <option value="0">Off</option><option value="1">Draw on</option>
+        <option value="2">Retract</option><option value="3">Hold</option>
+      </select></label>
+    <label>Progress <span>Hold only</span><input type="range" data-param="progress" data-default="1" min="0" max="1" step="0.005" value="1"></label>
+    <label>Stagger<input type="range" data-param="stagger" data-default="0" min="0" max="1" step="0.01" value="0"></label>
+    <label>Order
+      <select data-param="order" data-default="0">
+        <option value="0">Document</option><option value="1">Reverse</option>
+        <option value="2">Longest first</option><option value="3">Shortest first</option>
+        <option value="4">Scatter</option>
+      </select></label>
+    <label>Fill fade<input type="range" data-param="fillFade" data-default="0.33" min="0" max="1" step="0.01" value="0.33"></label>
+
+    <h2>Motion</h2>
+    <label>Sync
+      <select data-param="sync" data-default="0">
+        <option value="0">Free</option><option value="1">Manual</option>
+      </select></label>
+    <label>Rate<input type="range" data-param="rate" data-default="0.55" min="0" max="1" step="0.01" value="0.55"></label>
+    <label>Phase <span>Manual only</span><input type="range" data-param="phase" data-default="0" min="0" max="1" step="0.005" value="0"></label>
+    <label>Wave
+      <select data-param="wave" data-default="0">
+        <option value="0">Sine</option><option value="1">Triangle</option>
+        <option value="2">Ramp</option><option value="3">Pulse</option>
+      </select></label>
+    <label>Zoom<input type="range" data-param="zoom" data-default="0.5" min="0" max="1" step="0.005" value="0.5"></label>
+    <label>Zoom move<input type="range" data-param="zoomMove" data-default="0" min="0" max="1" step="0.01" value="0"></label>
+    <label>Position X<input type="range" data-param="posX" data-default="0.5" min="0" max="1" step="0.005" value="0.5"></label>
+    <label>Position Y<input type="range" data-param="posY" data-default="0.5" min="0" max="1" step="0.005" value="0.5"></label>
+    <label>Drift X<input type="range" data-param="driftX" data-default="0" min="0" max="1" step="0.01" value="0"></label>
+    <label>Drift Y<input type="range" data-param="driftY" data-default="0" min="0" max="1" step="0.01" value="0"></label>
+    <label>Rotate<input type="range" data-param="rotate" data-default="0.5" min="0" max="1" step="0.005" value="0.5"></label>
+    <label>Spin<input type="range" data-param="spin" data-default="0.5" min="0" max="1" step="0.005" value="0.5"></label>
+
+    <h2>Colour</h2>
+    <label>Opacity<input type="range" data-param="opacity" data-default="1" min="0" max="1" step="0.01" value="1"></label>
+    <label>Background<input type="color" data-param="background" data-default="#0a1226" value="#0a1226"></label>
+    <label>Background opacity<input type="range" data-param="backOpacity" data-default="0" min="0" max="1" step="0.01" value="0"></label>
+  </div>
+</main>
+
+<footer>
+  <p>
+    <strong>This demo uses your browser's SVG engine; the plugin uses
+    <a href="https://github.com/memononen/nanosvg">nanosvg</a>.</strong> The
+    decisions are the same — the scale ladder, the cache rule, the reveal timing,
+    the fill and stroke selection are ports of the plugin's own code — but the
+    thing that finally turns paths into pixels is different. The one difference
+    that will bite you: <strong>the browser draws <code>&lt;text&gt;</code> and
+    the plugin does not</strong>, so convert text to outlines before using a file
+    in Resolume. The demo says so when it sees any.
+  </p>
+  <p>
+    MIT. <a href="https://github.com/stoatworks-labs/burin">Source and
+    downloads</a> · <a href="https://stoatworks-labs.com">stoatworks-labs.com</a>
+  </p>
+</footer>
+
+<div id="measure"></div>
+<script src="app.js"></script>
+</body>
+</html>

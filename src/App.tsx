@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, isMock, onFinished, onProgress } from './api/backend'
-import { mockInitialTab } from './api/mock'
+import { mockInitialTab, isShot } from './api/mock'
 import type {
   BatchOutcome,
   CatalogInfo,
@@ -165,7 +165,7 @@ export function App() {
         <h1>Stoatworks Burrow</h1>
         <span className="sub">Video plugins</span>
         <span className="spacer" />
-        {isMock && <span className="sub">preview — no backend</span>}
+        {isMock && !isShot && <span className="sub">preview — no backend</span>}
       </header>
 
       <nav className="tabs" role="tablist">

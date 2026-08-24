@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flipbook — play a sprite sheet, live in the browser</title>
+<meta name="description" content="The Flipbook FFGL plugin's playback running live in WebGL2. Drop your own sprite sheet on it, set the grid, and watch it play — copies, stagger, keying and all.">
+<style>
+:root {
+	--navy: #0e2942; --navy-2: #0a1f33;
+	--accent: #7fa8ce; --ink: #e8edf3; --hair: rgba(127, 168, 206, 0.25);
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+	background: var(--navy-2); color: var(--ink);
+	font: 15px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+	height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+}
+header {
+	display: flex; align-items: baseline; gap: 1rem;
+	padding: 0.9rem 1.4rem; border-bottom: 1px solid var(--hair);
+}
+header h1 { font-size: 1.05rem; letter-spacing: 0.16em; text-transform: uppercase; }
+header .eyebrow {
+	font-family: ui-monospace, monospace; font-size: 0.72rem;
+	color: var(--accent); letter-spacing: 0.08em;
+}
+header a { color: var(--accent); margin-left: auto; font-size: 0.85rem; text-decoration: none; }
+header a:hover { text-decoration: underline; }
+main { display: flex; flex: 1; min-height: 0; }
+#stage { flex: 1; position: relative; background: black; min-width: 0; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#fail {
+	display: none; position: absolute; inset: auto 1rem 1rem 1rem;
+	background: var(--navy); border: 1px solid var(--hair);
+	padding: 0.8rem 1rem; font-family: ui-monospace, monospace; font-size: 0.8rem;
+}
+aside {
+	width: 316px; flex-shrink: 0; overflow-y: auto;
+	border-left: 1px solid var(--hair); padding: 1rem 1.2rem 2rem;
+	background: var(--navy);
+}
+fieldset { border: none; padding: 0.7rem 0 0.2rem; }
+legend {
+	font-family: ui-monospace, monospace; font-size: 0.7rem;
+	letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);
+	padding: 0;
+}
+label { display: block; font-size: 0.8rem; margin: 0.45rem 0 0.1rem; color: #b8c6d4; }
+select, input[type="range"], input[type="number"] { width: 100%; accent-color: var(--accent); }
+select, input[type="number"] {
+	background: var(--navy-2); color: var(--ink);
+	border: 1px solid var(--hair); padding: 0.3rem 0.4rem; border-radius: 4px;
+}
+input[type="color"] {
+	width: 100%; height: 28px; padding: 0; border: 1px solid var(--hair);
+	border-radius: 4px; background: var(--navy-2);
+}
+.row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.45rem; }
+.row label { margin: 0; flex: 1; }
+.pair { display: flex; gap: 0.5rem; }
+.pair > div { flex: 1; }
+.val {
+	font-family: ui-monospace, monospace; font-size: 0.72rem;
+	color: var(--accent); float: right;
+}
+.presets { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+.presets button, .sheets button {
+	background: transparent; border: 1px solid var(--hair); color: var(--ink);
+	font-size: 0.75rem; padding: 0.3rem 0.55rem; border-radius: 4px; cursor: pointer;
+}
+.presets button:hover, .sheets button:hover { border-color: var(--accent); color: var(--accent); }
+.sheets { display: flex; gap: 0.4rem; margin: 0.5rem 0; }
+#drop {
+	border: 1px dashed var(--hair); border-radius: 6px; padding: 0.9rem 0.8rem;
+	text-align: center; font-size: 0.78rem; color: #b8c6d4; cursor: pointer;
+	transition: border-color 0.15s, color 0.15s;
+}
+#drop.over, #drop:hover { border-color: var(--accent); color: var(--accent); }
+#drop strong { display: block; font-size: 0.85rem; color: var(--ink); margin-bottom: 0.15rem; }
+#file { display: none; }
+#sheet-note {
+	font-family: ui-monospace, monospace; font-size: 0.68rem; line-height: 1.45;
+	color: #8fa3b5; margin-top: 0.5rem; word-break: break-word;
+}
+footer {
+	padding: 0.6rem 1.4rem; border-top: 1px solid var(--hair);
+	font-size: 0.75rem; color: #8fa3b5;
+}
+footer a { color: var(--accent); }
+@media (max-width: 760px) {
+	body { height: auto; overflow: auto; }
+	main { flex-direction: column; }
+	#stage { min-height: 52vh; }
+	aside { width: auto; border-left: none; border-top: 1px solid var(--hair); overflow: visible; }
+}
+
+/* ---- embed mode -----------------------------------------------------------
+ *
+ * `?embed=1`: the rendered output and nothing else, filling the viewport, so
+ * this page can be a video source -- an OBS browser source, a WebLinked URL --
+ * rather than something a person reads. The same switch the shared demo kit
+ * carries for the other plugins.
+ *
+ * The canvas already sizes itself from its CSS box times devicePixelRatio, so
+ * filling the viewport is all that is needed to render at the raster the
+ * consumer asked for; there is no size= parameter here and none is wanted.
+ *
+ * The banner going away is deliberate and is argued in the kit's README: the
+ * rule it bends protects a reader, and in embed mode the output is a texture in
+ * somebody's mixer. Do not answer it with a watermark burnt into a live output.
+ */
+body[data-embed] { height: 100vh; overflow: hidden; margin: 0; background: #000; }
+body[data-embed] > header,
+body[data-embed] > footer,
+body[data-embed] aside { display: none !important; }
+body[data-embed] main { flex-direction: row; height: 100vh; margin: 0; padding: 0; }
+body[data-embed] #stage {
+  width: 100vw; height: 100vh; min-height: 0; border: 0; border-radius: 0; margin: 0;
+}
+body[data-embed] #view { width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<header>
+	<span class="eyebrow">stoatworks labs</span>
+	<h1>Flipbook</h1>
+	<a href="https://github.com/stoatworks-labs/flipbook">Get the Resolume plugin →</a>
+</header>
+
+<main>
+	<div id="stage">
+		<canvas id="view"></canvas>
+		<div id="fail"></div>
+	</div>
+
+	<aside>
+		<fieldset>
+			<legend>Sheet</legend>
+			<label for="file" id="drop">
+				<strong>Drop your own sprite sheet</strong>
+				or click to choose one. Nothing is uploaded — it is read in your browser.
+			</label>
+			<input type="file" id="file" accept="image/*">
+			<div class="sheets">
+				<button data-sheet="example-sheet.png" data-columns="5" data-rows="4" data-preset="As Exported">Burst 5×4</button>
+				<button data-sheet="example-tiles.png" data-columns="4" data-rows="4" data-preset="Full Frame">Tiles 4×4</button>
+			</div>
+			<p id="sheet-note"></p>
+
+			<div class="pair">
+				<div>
+					<label>Columns</label>
+					<input type="number" data-key="columns" value="5" min="1" max="64" step="1">
+				</div>
+				<div>
+					<label>Rows</label>
+					<input type="number" data-key="rows" value="4" min="1" max="64" step="1">
+				</div>
+			</div>
+			<div class="pair">
+				<div>
+					<label>Start frame</label>
+					<input type="number" data-key="start" value="0" min="0" max="4095" step="1">
+				</div>
+				<div>
+					<label>Frame count</label>
+					<input type="number" data-key="frameCount" value="0" min="0" max="4096" step="1">
+				</div>
+			</div>
+			<label>Sampling</label>
+			<select data-key="sampling">
+				<option value="0">Smooth</option>
+				<option value="1">Pixel</option>
+			</select>
+		</fieldset>
+
+		<fieldset>
+			<legend>Playback</legend>
+			<label>Rate <span class="val" data-readout="rate"></span></label>
+			<input type="range" data-key="rate" min="0" max="1" step="0.001" value="0.664">
+			<label>Mode</label>
+			<select data-key="mode">
+				<option value="0">Loop</option>
+				<option value="1">Ping-Pong</option>
+				<option value="2">Once</option>
+			</select>
+			<div class="row">
+				<label for="manual">Manual — scrub with Phase</label>
+				<input type="checkbox" id="manual">
+			</div>
+			<div id="phase-row" style="opacity:0.35">
+				<label>Phase <span class="val" data-readout="phase"></span></label>
+				<input type="range" data-key="phase" min="0" max="1" step="0.001" value="0">
+			</div>
+			<div class="presets"><button id="restart">Restart</button></div>
+		</fieldset>
+
+		<fieldset>
+			<legend>Layout</legend>
+			<label>Fit</label>
+			<select data-key="fit">
+				<option value="0">Native</option>
+				<option value="1">Fill frame</option>
+				<option value="2">Stretch</option>
+			</select>
+			<label>Scale <span class="val" data-readout="scale"></span></label>
+			<input type="range" data-key="scale" min="0" max="1" step="0.001" value="0.5">
+			<label>Rotation <span class="val" data-readout="rotation"></span></label>
+			<input type="range" data-key="rotation" min="0" max="1" step="0.001" value="0.5">
+			<div class="pair">
+				<div>
+					<label>Position X</label>
+					<input type="range" data-key="centreX" min="0" max="1" step="0.001" value="0.5">
+				</div>
+				<div>
+					<label>Position Y</label>
+					<input type="range" data-key="centreY" min="0" max="1" step="0.001" value="0.5">
+				</div>
+			</div>
+			<div class="row">
+				<label for="flipH">Flip H</label>
+				<input type="checkbox" id="flipH" data-key="flipH">
+				<label for="flipV">Flip V</label>
+				<input type="checkbox" id="flipV" data-key="flipV">
+			</div>
+		</fieldset>
+
+		<fieldset>
+			<legend>Copies</legend>
+			<label>Copies <span class="val" data-readout="copies"></span></label>
+			<input type="range" data-key="copies" min="1" max="64" step="1" value="1">
+			<label>Arrange</label>
+			<select data-key="arrange">
+				<option value="0">Grid</option>
+				<option value="1">Ring</option>
+				<option value="2">Scatter</option>
+			</select>
+			<label>Spread <span class="val" data-readout="spread"></span></label>
+			<input type="range" data-key="spread" min="0" max="1" step="0.001" value="0.6">
+			<label>Stagger <span class="val" data-readout="stagger"></span></label>
+			<input type="range" data-key="stagger" min="0" max="1" step="0.001" value="0">
+			<label>Seed <span class="val" data-readout="seed"></span></label>
+			<input type="range" data-key="seed" min="0" max="1" step="0.001" value="0">
+		</fieldset>
+
+		<fieldset>
+			<legend>Key</legend>
+			<label>Mode</label>
+			<select data-key="key">
+				<option value="0">Alpha</option>
+				<option value="1">Luma</option>
+				<option value="2">Colour</option>
+				<option value="3">None</option>
+			</select>
+			<label>Key colour</label>
+			<input type="color" id="keyColour" value="#000000">
+			<label>Tolerance <span class="val" data-readout="tolerance"></span></label>
+			<input type="range" data-key="tolerance" min="0" max="1" step="0.001" value="0">
+			<label>Softness <span class="val" data-readout="softness"></span></label>
+			<input type="range" data-key="softness" min="0" max="1" step="0.001" value="0">
+		</fieldset>
+
+		<fieldset>
+			<legend>Colour</legend>
+			<label>Tint</label>
+			<input type="color" id="tint" value="#ffffff">
+			<label>Opacity <span class="val" data-readout="opacity"></span></label>
+			<input type="range" data-key="opacity" min="0" max="1" step="0.001" value="1">
+			<label>Background</label>
+			<input type="color" id="back" value="#000000">
+		</fieldset>
+
+		<fieldset>
+			<legend>Presets</legend>
+			<div class="presets">
+				<button data-preset="As Exported">As Exported</button>
+				<button data-preset="Full Frame">Full Frame</button>
+				<button data-preset="One Shot">One Shot</button>
+				<button data-preset="Swarm">Swarm</button>
+				<button data-preset="Carousel">Carousel</button>
+				<button data-preset="Pixel Nine">Pixel Nine</button>
+				<button data-preset="Ghost">Ghost</button>
+			</div>
+		</fieldset>
+	</aside>
+</main>
+
+<footer>
+	The plugin's own playback and placement, ported to WebGL2 — same curves, same
+	half-texel inset, same maths. The real thing is an FFGL plugin for Resolume
+	and an OpenFX plugin for Resolve:
+	<a href="https://github.com/stoatworks-labs/flipbook">github.com/stoatworks-labs/flipbook</a>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

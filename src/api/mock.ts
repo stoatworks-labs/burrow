@@ -373,3 +373,14 @@ export async function mockListen<T>(
 }
 
 export const mockInitialTab = p('tab', 'plugins')
+
+/**
+ * `?shot=1` — hide the "preview — no backend" badge for documentation images.
+ *
+ * The badge exists so nobody mistakes the browser preview for the running app.
+ * In a README screenshot it is the wrong warning: what the image shows *is* the
+ * real interface, with real plugin names, versions and release notes from the
+ * catalogue that ships in the app. Only the answers about what is installed are
+ * staged, which is true of every product screenshot ever taken.
+ */
+export const isShot = p('shot') === '1'

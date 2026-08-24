@@ -1,0 +1,217 @@
+name: release
+
+# Build and publish Stoatworks Burrow.
+#
+# macOS and Windows only, deliberately. DaVinci Resolve does run on Linux and
+# OpenFX has a real home there (/usr/OFX/Plugins), but **no plugin in the fleet
+# ships a Linux artefact yet** — a Linux Burrow would detect the destination
+# correctly and then have nothing at all to install. Add the target the same
+# week the first plugin ships one.
+#
+# Tauri's bundler cannot cross-compile: it shells out to host-only tooling, so
+# each platform builds on its own runner. The macOS .dmg and .pkg are built by
+# the vendored release-lib.sh rather than by Tauri, whose dmg step drives Finder
+# over AppleScript and fails on a headless runner.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Rust cross-compiles between the two macOS architectures unaided, so
+          # both build on the same runner — and the Intel runners are retired.
+          - { name: macos-aarch64,  os: macos-14,       target: aarch64-apple-darwin,   bundles: app }
+          - { name: macos-x86_64,   os: macos-14,       target: x86_64-apple-darwin,    bundles: app }
+          - { name: windows-x86_64, os: windows-latest, target: x86_64-pc-windows-msvc, bundles: nsis }
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          workspaces: 'src-tauri -> target'
+
+      - name: Derive version
+        id: ver
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          case "$version" in
+            [0-9]*) ;;
+            *) version="$(node -p "require('./package.json').version")" ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # What Burrow ships inside itself — the catalogue, every plugin's browser
+      # demo and the thumbnails — is **committed**, not gathered here.
+      #
+      # It has to be. The demos live in two dozen separate plugin repos that a
+      # CI checkout cannot see, so a release built from anything but a committed
+      # copy would silently ship an app with no demos in it. Vendoring them is
+      # also the fleet's existing habit: the support footer and the demo kit are
+      # committed into every repo that uses them for the same reason.
+      #
+      # `scripts/sync-assets.sh` refreshes them, and it is a release step.
+      - name: Check the bundled assets are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/bin
+          for required in assets/catalog.json assets/demos assets/thumbs; do
+            [ -e "src-tauri/$required" ] || {
+              echo "src-tauri/$required is missing — run scripts/sync-assets.sh and commit it" >&2
+              exit 1
+            }
+          done
+          entries=$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/assets/catalog.json','utf8')).entries.length")
+          demos=$(ls src-tauri/assets/demos | wc -l | tr -d ' ')
+          # A catalogue with no entries would tell every copy of Burrow that the
+          # fleet is empty, and it would do so silently.
+          [ "$entries" -ge 1 ] || { echo "the committed catalogue has no entries" >&2; exit 1; }
+          [ "$demos"   -ge 1 ] || { echo "no demos are committed" >&2; exit 1; }
+          echo "baked: $entries plugins, $demos demos"
+
+      - name: Build the privileged helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          triple="$(rustc -vV | awk '/^host:/ {print $2}')"
+          cargo build --release -p burrow-helper --target ${{ matrix.target }}
+          ext=""; [ "${{ runner.os }}" = "Windows" ] && ext=".exe"
+          cp "target/${{ matrix.target }}/release/burrow-helper$ext" \
+             "src-tauri/bin/burrow-helper-${{ matrix.target }}$ext"
+
+      - name: Test
+        shell: bash
+        run: cargo test --workspace
+
+      - name: Build
+        shell: bash
+        run: |
+          npm install --no-audit --no-fund
+          npx --no-install tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      # With an embedded catalogue, demos and two binaries, the x86_64
+      # cross-compile leaves both host and target artefacts in the target
+      # directory and hdiutil has run out of space on this shape of build
+      # before. The bundle is already built by this point.
+      - name: Reclaim disk before packaging
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          target="src-tauri/target/${{ matrix.target }}/release"
+          rm -rf "$target/build" "$target/deps" "$target/incremental" "$target/.fingerprint"
+          df -h / | tail -1
+
+      - name: Installers (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        # Ad-hoc signing first, and the whole bundle re-signed after staging:
+        # `tauri build` signs before the bundler places Contents/Resources, so
+        # the signature it leaves does not cover the catalogue or the demos.
+        # A locally built copy still launches — Gatekeeper only assesses
+        # quarantined bundles — so this failure would first appear on a user's
+        # machine, after a download.
+        run: |
+          set -euo pipefail
+          source scripts/release-lib.sh
+          rl_init "Stoatworks Burrow" burrow "${{ steps.ver.outputs.version }}" \
+            com.stoatworkslabs.burrow "$GITHUB_WORKSPACE"
+          appdir="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          app="Stoatworks Burrow.app"
+          [ -d "$appdir/$app" ] || { echo "no .app produced" >&2; exit 1; }
+
+          stage="$RUNNER_TEMP/stage-mac"
+          rm -rf "$stage"; mkdir -p "$stage"
+          cp -R "$appdir/$app" "$stage/"
+          cp README.md LICENSE "$stage/" 2>/dev/null || true
+
+          # The sidecar is a separate Mach-O and has to be signed before the
+          # bundle that seals it.
+          codesign --force --sign - --timestamp=none "$stage/$app/Contents/MacOS/burrow-helper"
+          rl_adhoc_sign "$stage/$app"
+
+          rl_dmg "${{ matrix.name }}" "$stage" --app "$app"
+          rl_pkg "${{ matrix.name }}" "$stage" --app "$app"
+
+      - name: Collect bundles
+        shell: bash
+        run: |
+          mkdir -p out
+          find "src-tauri/target/${{ matrix.target }}/release/bundle" -type f \
+            \( -name '*.exe' -o -name '*.msi' \) -exec cp {} out/ \; 2>/dev/null || true
+          cp *.dmg *.pkg out/ 2>/dev/null || true
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: burrow-${{ matrix.name }}
+          path: out/*
+          if-no-files-found: warn
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          body: |
+            An optional desktop client for the Stoatworks video plugins. Shows
+            every plugin, what you have installed and what has an update, and
+            installs each one in whichever formats you use.
+
+            Using it is entirely optional — every plugin is still a normal
+            download from its own release page.
+
+            **macOS** — `.dmg` to drag it across, or `.pkg` to install it. Both
+            architectures.
+
+            **Windows** — `-setup.exe`, x86_64. FFGL plugins for Resolume install
+            normally; OpenFX and After Effects installs are not supported on
+            Windows in this release and Burrow says so rather than half-working.
+
+            **No Linux build yet.** Resolve runs on Linux and OpenFX has a home
+            there, but no plugin in the fleet ships a Linux artefact — so a Linux
+            Burrow would have nothing to install. It will arrive with the first
+            plugin that does.
+
+            ---
+
+            **This is a first release, and one thing has not been tested:** no
+            plugin has yet been installed into a running Resolume, Resolve or
+            After Effects *through the app*. The install path is verified against
+            real plugin downloads and against temporary folders, but the last step
+            is not. Try it somewhere a broken plugin folder would cost you
+            nothing, and please [report anything that
+            misbehaves](https://github.com/stoatworks-labs/burrow/issues).
+
+            The [user guide](https://stoatworks-labs.com/software/burrow/guide)
+            covers what it does, what it sends (almost nothing), and why OpenFX
+            installs ask for a password.
+          generate_release_notes: true

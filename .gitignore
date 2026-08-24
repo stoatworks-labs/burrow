@@ -4,10 +4,12 @@ target/
 src-tauri/target/
 src-tauri/gen/
 
-# Gathered by scripts/sync-assets.sh from the plugin repos and the website.
-# Build inputs, not sources — regenerate rather than commit them.
-src-tauri/assets/
+# The privileged helper is compiled, per target triple, by
+# scripts/sync-assets.sh or by the release workflow. Never committed.
 src-tauri/bin/
+
+# Working copies the mock backend and the screenshot script need beside the
+# built front end. Gathered from src-tauri/assets, not sources.
 public/catalog.json
 public/thumbs/
 

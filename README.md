@@ -20,6 +20,22 @@ format and per platform. Updating means noticing a release happened.
 
 Burrow is one searchable list instead.
 
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/plugins.png" width="380" alt="The plugin list, grouped into up to date, update available and not installed, with per-format state on each row"><br><sub>Plugin management</sub></td>
+    <td align="center"><img src="docs/screenshots/whatsnew.png" width="380" alt="Release notes for plugins with updates available"><br><sub>What&rsquo;s new</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/settings.png" width="380" alt="Settings: default formats, destination folders and what the app sends"><br><sub>Settings</sub></td>
+    <td align="center"><img src="docs/screenshots/offline.png" width="380" alt="The plugin list with a banner explaining it is showing the list that shipped with the app"><br><sub>Offline, saying so</sub></td>
+  </tr>
+</table>
+
+*The real interface, with real plugin names, versions and release notes from the
+catalogue that ships inside the app. What is shown as installed is staged, via
+[`scripts/screenshot.sh`](scripts/screenshot.sh) — several of these states are
+awkward to produce on demand, and one of them is a cancelled password prompt.*
+
 - **What's new** — release notes for updates you could take, and plugins you
   haven't seen.
 - **Plugin management** — every plugin, under *Up to date*, *Update available* and
@@ -124,4 +140,5 @@ It reads, and writes nothing.
 MIT — see [LICENSE](LICENSE).
 
 <!-- attributions:start -->
+This project is built on other people's work — see [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
 <!-- attributions:end -->
