@@ -554,6 +554,41 @@ pub fn reveal_path(app: AppHandle, path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Is this a filming run?
+///
+/// Set by `BURROW_FILM=1`. The video toolkit's rule is that everything on
+/// screen is the real application — so rather than film a mock, the app drives
+/// *itself* through a fixed choreography against the real catalogue and the
+/// real contents of this machine's plugin folders. Nothing about the data is
+/// staged; only the hand on the trackpad is replaced.
+///
+/// The mode deliberately cannot install anything. It changes which tab is
+/// shown and what is typed into the search box, and nothing else.
+#[tauri::command]
+pub fn film_mode() -> bool {
+    std::env::var("BURROW_FILM").is_ok_and(|v| v == "1")
+}
+
+/// Record when a step of the choreography actually happened.
+///
+/// The video toolkit wants beats that are "when the app was actually told, not
+/// an estimate of when it might have reacted" — so the app reports them itself
+/// rather than the capture script assuming its own timings held.
+#[tauri::command]
+pub fn film_beat(state: State<'_, AppState>, label: String, at: f64) -> Result<(), String> {
+    if !film_mode() {
+        return Ok(());
+    }
+    let path = state.cache_dir.join("film-beats.json");
+    let mut beats: Vec<serde_json::Value> = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|b| serde_json::from_str(&b).ok())
+        .unwrap_or_default();
+    beats.push(serde_json::json!({ "label": label, "t": at }));
+    std::fs::write(&path, serde_json::to_string_pretty(&beats).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+
 /// Everything the UI needs to describe one destination.
 pub fn destination_by_id<'a>(env: &'a Environment, id: &str) -> Option<&'a Destination> {
     env.destinations.iter().find(|d| d.id == id)

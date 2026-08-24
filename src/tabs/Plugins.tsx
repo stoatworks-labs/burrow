@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type {
   Environment,
   OpRequest,
@@ -27,6 +27,7 @@ export function Plugins({
   settings,
   busy,
   progress,
+  externalQuery,
   onRun,
   onSaveSettings,
   onDemo,
@@ -37,12 +38,20 @@ export function Plugins({
   settings: Settings
   busy: boolean
   progress: Record<string, Progress>
+  /** Set by filming mode, which types into the search box for the camera. */
+  externalQuery?: string | null
   onRun: (r: OpRequest[]) => void
   onSaveSettings: (s: Settings) => void
   onDemo: (slug: string) => void
   onOpen: (url: string) => void
 }) {
   const [query, setQuery] = useState('')
+
+  // Filming mode types into the search box. A plain controlled value would
+  // fight the user's own typing, so this only follows it when it changes.
+  useEffect(() => {
+    if (externalQuery !== null && externalQuery !== undefined) setQuery(externalQuery)
+  }, [externalQuery])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

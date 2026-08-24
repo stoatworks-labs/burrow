@@ -14,6 +14,7 @@ import { WhatsNew } from './tabs/WhatsNew'
 import { Plugins } from './tabs/Plugins'
 import { SettingsTab } from './tabs/Settings'
 import { Banner } from './components/Banner'
+import { isFilming, runFilm } from './film'
 
 type TabId = 'whatsnew' | 'plugins' | 'settings'
 
@@ -31,6 +32,7 @@ export function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notes, setNotes] = useState<string[]>([])
+  const [filmQuery, setFilmQuery] = useState<string | null>(null)
 
   /*
    * Subscribe once, on mount, before any job can start.
@@ -152,6 +154,19 @@ export function App() {
     [reload],
   )
 
+  /*
+   * Filming mode: the app drives itself through a fixed choreography for the
+   * project video. Off unless BURROW_FILM=1, and it cannot install anything —
+   * see src/film.ts.
+   */
+  useEffect(() => {
+    let stop: (() => void) | undefined
+    ;(async () => {
+      if (await isFilming()) stop = runFilm(setTab, q => setFilmQuery(q))
+    })()
+    return () => stop?.()
+  }, [])
+
   const updateCount = useMemo(
     () => plugins.filter(p => p.bucket === 'update-available').length,
     [plugins],
@@ -217,6 +232,7 @@ export function App() {
           settings={settings!}
           busy={busy}
           progress={progress}
+          externalQuery={filmQuery}
           onRun={runOps}
           onSaveSettings={saveSettings}
           onDemo={api.openDemo}
