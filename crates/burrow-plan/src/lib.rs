@@ -393,6 +393,7 @@ mod tests {
 
     const NONCE: &str = "9f2c4a7e6b1d03589f2c4a7e6b1d0358";
 
+    #[cfg(unix)]
     fn cache() -> PathBuf {
         PathBuf::from("/Users/x/Library/Caches/com.stoatworkslabs.burrow")
     }
@@ -408,6 +409,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     fn ofx(name: &str) -> PathBuf {
         PathBuf::from(format!("/Library/OFX/Plugins/{name}"))
     }
@@ -614,6 +616,77 @@ mod tests {
     fn refuses_an_empty_plan() {
         let p = plan(vec![]);
         assert!(matches!(validate(&p, &cache()), Err(Reject::NoOps)));
+    }
+
+    // ---- the Windows half of the whitelist ----
+    //
+    // These exist because the unix tests above are cfg'd out on Windows, which
+    // left that platform's roots entirely unexercised — and the roots there are
+    // resolved from environment variables rather than being literals, so there
+    // is strictly more to get wrong, not less.
+
+    #[cfg(windows)]
+    fn win_cache() -> PathBuf {
+        PathBuf::from(r"C:\Users\x\AppData\Local\com.stoatworkslabs.burrow")
+    }
+
+    #[cfg(windows)]
+    fn win_ofx(name: &str) -> Option<PathBuf> {
+        whitelist_roots()
+            .into_iter()
+            .find(|r| r.ends_with(r"OFX\Plugins"))
+            .map(|r| r.join(name))
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn a_real_windows_openfx_install_validates() {
+        let Some(to) = win_ofx("Tinsel.ofx.bundle") else {
+            // No Common Files on this machine; nothing to assert about.
+            return;
+        };
+        let p = plan(vec![Op::Replace {
+            from: win_cache().join(r"staging\9f2c\Tinsel.ofx.bundle"),
+            to,
+        }]);
+        assert_eq!(validate(&p, &win_cache()), Ok(()));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_refuses_a_path_outside_the_whitelist() {
+        let p = plan(vec![Op::Retire {
+            path: PathBuf::from(r"C:\Windows\System32\evil.dll"),
+        }]);
+        assert!(matches!(validate(&p, &win_cache()), Err(Reject::OutsideWhitelist(_))));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_refuses_a_verbatim_prefix() {
+        // \\?\ bypasses Win32 path normalisation, which is precisely the
+        // property the lexical checks rely on.
+        let p = plan(vec![Op::Retire {
+            path: PathBuf::from(r"\\?\C:\Program Files\Common Files\OFX\Plugins\X.ofx.bundle"),
+        }]);
+        assert!(matches!(validate(&p, &win_cache()), Err(Reject::NonLexical(_))));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_refuses_a_unc_path() {
+        let p = plan(vec![Op::Retire {
+            path: PathBuf::from(r"\\server\share\X.ofx.bundle"),
+        }]);
+        assert!(matches!(validate(&p, &win_cache()), Err(Reject::NonLexical(_))));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_refuses_a_purge_without_the_nonce() {
+        let Some(path) = win_ofx("Tinsel.ofx.bundle") else { return };
+        let p = plan(vec![Op::Purge { path }]);
+        assert!(matches!(validate(&p, &win_cache()), Err(Reject::PurgeWithoutNonce(_))));
     }
 
     #[test]
