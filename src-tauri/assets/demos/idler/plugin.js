@@ -3700,11 +3700,16 @@ class IdlerRenderer {
     const speed = speedFromParam(p.get('speed'));
     const manual = phaseFromParam(p.get('phase'));
 
+    this.updatePhaseAnchor(sync, speed, hostSeconds);
+
     let driven = 0;
 
     switch (sync) {
       case 0: // Free
-        driven = hostSeconds * speed;
+        // Not hostSeconds * speed -- see updatePhaseAnchor. Until the slider has
+        // been moved this is exactly that product, because the anchor starts at
+        // clock zero at time zero.
+        driven = this.phaseAnchor + (hostSeconds - this.anchorClock) * speed;
         break;
 
       case 1: // Beat
@@ -3734,6 +3739,48 @@ class IdlerRenderer {
     }
 
     return driven + manual;
+  }
+
+  /**
+   * Carry the time reached forward across a Speed change.
+   *
+   * `time = clock * speed` moves the picture by `clock * delta` the instant
+   * Speed changes, and here `clock` is how long the page has been open -- so
+   * dragging the slider a few minutes in jumps the saver to an unrelated point
+   * in its animation. Mirrors Idler.h's UpdatePhaseAnchor; this page is where a
+   * visitor is guaranteed to be dragging a Speed slider, so it needs it at least
+   * as much as the plugin does.
+   *
+   * Free only. Beat and Bar re-lock deliberately, and Manual ignores Speed; both
+   * keep the anchor following so that returning to Free resumes rather than
+   * leaps.
+   */
+  updatePhaseAnchor(sync, speed, hostSeconds) {
+    if (this.phaseAnchor === undefined) {
+      this.phaseAnchor = 0;
+      this.anchorClock = 0;
+      this.anchorSpeed = -1;
+    }
+
+    if (sync !== 0) {
+      this.anchorClock = hostSeconds;
+      this.anchorSpeed = speed;
+      return;
+    }
+
+    if (this.anchorSpeed < 0) {
+      // First frame: anchor stays at clock zero at time zero, so the expression
+      // above is exactly the old product until Speed is touched.
+      this.anchorSpeed = speed;
+      return;
+    }
+
+    if (speed !== this.anchorSpeed) {
+      // Once per change, not once per frame.
+      this.phaseAnchor += (hostSeconds - this.anchorClock) * this.anchorSpeed;
+      this.anchorClock = hostSeconds;
+      this.anchorSpeed = speed;
+    }
   }
 
   /**
