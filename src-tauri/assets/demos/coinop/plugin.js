@@ -275,7 +275,7 @@ void main()
 	vec4 clip   = texture( InputTexture, clipUV );
 
 	//The clip is underneath, the plugin's own background veils it, and the
-	//playfield draws on top. Background Opacity therefore keeps exactly the
+	//playfield draws on top. Background Alpha therefore keeps exactly the
 	//meaning it has in the source plugin.
 	col   = mix( clip.rgb, BackColor.rgb, BackColor.a );
 	alpha = max( clip.a, BackColor.a );
@@ -6939,7 +6939,7 @@ const DEMO = {
     { id: 'backR', name: 'Background Red', type: 'colour', default: 0.02, group: 'Background' },
     { id: 'backG', name: 'Background Green', type: 'colour', default: 0.02, group: 'Background' },
     { id: 'backB', name: 'Background Blue', type: 'colour', default: 0.03, group: 'Background' },
-    { id: 'backOpacity', name: 'Background Opacity', type: 'standard', default: 1.0, group: 'Background', display: pct },
+    { id: 'backOpacity', name: 'Background Alpha', type: 'standard', default: 1.0, group: 'Background', display: pct },
 
     //---- Output -----------------------------------------------------------
     {

@@ -160,7 +160,8 @@ export function SettingsTab({
           <p>
             Burrow fetches the plugin list from{' '}
             <code>stoatworks-labs.com</code> and downloads plugin archives from GitHub.
-            That is all it does on the network.
+            That is everything it does on the network of its own accord — the two
+            exceptions below both need you to press something first.
           </p>
           <p>
             There is no account and no sign-in. It sends no identifier, no list of what
@@ -171,6 +172,15 @@ export function SettingsTab({
           <p>
             The demos run entirely inside this app from a local address, and are served
             with no permission to make network requests at all.
+          </p>
+          <p>
+            Plugin videos are the one thing that reaches anywhere else, and only
+            when you press play. The still images are part of the app, so browsing
+            the list tells Google nothing — opening a video loads it from{' '}
+            <code>youtube-nocookie.com</code>, which does not set tracking cookies
+            until playback starts. It is still Google&rsquo;s server, so it will see
+            that an address asked for that video; what it will not get is an
+            identifier tying that to the rest of your browsing.
           </p>
           <p>
             The <em>Send feedback</em> button at the bottom of this window is the one

@@ -3533,7 +3533,7 @@ function buildParams(variant) {
     { id: 'backG', name: 'Background_Green', type: 'colour', group: 'Colour', default: 0 },
     { id: 'backB', name: 'Background_Blue', type: 'colour', group: 'Colour', default: 0 },
     {
-      id: 'backOpacity', name: 'Background Opacity', type: 'standard', group: 'Colour',
+      id: 'backOpacity', name: 'Background Alpha', type: 'standard', group: 'Colour',
       // The SOURCE wants opaque black — that is what makes it usable as a luma
       // mask on a layer above. The EFFECT wants the opposite: an opaque
       // background covers the clip it exists to draw over, and makes Reveal,
@@ -3997,7 +3997,7 @@ const mounted = typeof window === 'undefined' ? null : mountDemo({
 });
 
 // Switching variant is instantiating the OTHER plugin, and a fresh instance runs
-// its own constructor — which is where Background Opacity differs. Re-applying
+// its own constructor — which is where Background Alpha differs. Re-applying
 // that default on the switch is what the plugin does, not something invented for
 // the page; without it the effect comes up with an opaque background covering
 // the clip it exists to draw over.

@@ -43,9 +43,13 @@ awkward to produce on demand, and one of them is a cancelled password prompt.*
 - **Settings** — which formats to install by default, overridable per plugin, and
   where each one goes.
 
-Each plugin's video is the picture at the left of its row — click it and it opens
-in your browser. The still ships with the app rather than being fetched from
-YouTube, so the list works offline and browsing plugins tells Google nothing.
+Each plugin's video is the picture at the left of its row — click it and it plays
+in the window, from `youtube-nocookie.com`. The still images ship with the app
+rather than being fetched from YouTube, so the list works offline and browsing
+plugins tells Google nothing; only pressing play loads anything.
+
+**Previous versions…** on any row rolls a plugin back to an earlier release,
+which matters when something misbehaves mid-show-week.
 
 Two refresh controls, because they are different jobs: **Rescan installed**
 re-reads your plugin folders with no network at all, and **Check for updates**
@@ -59,9 +63,14 @@ offline, from an address only this app knows.
 There is no sign-in, because there is nothing to sign in to.
 
 Burrow fetches one file — the plugin list at `stoatworks-labs.com/catalog.json` —
-and downloads plugin archives from GitHub. That is the whole of its network use.
-It sends no identifier, no list of what you have installed, and no usage data.
-The demos are served with no permission to make network requests at all.
+and downloads plugin archives from GitHub. That is the whole of its network use
+on its own account. It sends no identifier, no list of what you have installed,
+and no usage data. The demos are served with no permission to make network
+requests at all.
+
+Two things reach elsewhere, both only when you ask: pressing play on a plugin
+video loads it from `youtube-nocookie.com`, and the feedback button sends what
+you type. Video *stills* are bundled, so the list itself contacts nobody.
 
 The *Send feedback* button at the bottom of the window is the one exception, and
 only when you press it.

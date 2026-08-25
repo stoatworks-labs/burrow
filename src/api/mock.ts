@@ -57,6 +57,7 @@ type CatalogEntry = {
   releasesUrl: string | null
   builds: Record<string, Record<string, { url: string; size?: number; entries?: string[]; extras?: string[] }>>
   notes: Note[]
+  versions?: any[]
 }
 
 let catalogCache: CatalogEntry[] | null = null
@@ -256,6 +257,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           hasOverride: Boolean(currentSettings.pluginFormats[e.slug]),
           wantedFormats: currentSettings.pluginFormats[e.slug] ?? currentSettings.defaultFormats,
           notes: e.notes ?? [],
+          versions: e.versions ?? [],
           extras: Object.values(e.builds ?? {}).flatMap(pl =>
             Object.values(pl).flatMap(a => a.extras ?? []),
           ),

@@ -73,11 +73,17 @@ live check, the second button says **not checked** rather than a time.
 ## Watching a plugin before you install it
 
 Every plugin's video is the picture at the left of its row. Click it and the
-video opens in your own browser.
+video plays in the window.
 
-The still is part of the app rather than something fetched from YouTube — so the
-list works offline, and browsing plugins in Burrow tells Google nothing. Nothing
-is requested until you click.
+The still images are part of the app rather than fetched from YouTube, so the
+list works offline and browsing plugins tells Google nothing. Only pressing play
+loads anything, and only for that one video.
+
+Playback comes from `youtube-nocookie.com`, which does not set tracking cookies
+until the video starts. Being precise: it is still Google's server, so it will
+see that an address asked for that video — what it does not get is an identifier
+tying that request to the rest of your browsing. There is an **Open on YouTube**
+button if you would rather watch it there.
 
 ## Formats, and which ones you want
 
@@ -158,6 +164,18 @@ A few plugins have no demo: Cartridge needs an emulator core you supply yourself
 and Amber and nib are too new. Those rows have no **Try demo** button rather than
 a button that does nothing.
 
+## Going back to an earlier version
+
+If a new version misbehaves, **Previous versions…** on the row rolls it back.
+Burrow keeps the last few releases of every plugin, with a link to each one's
+notes.
+
+It only offers this for formats you already have installed — rolling back is a
+repair of something you have, not a way to acquire something you don't.
+
+Afterwards the plugin will show an update available, because it genuinely will.
+Restart your host to pick the change up.
+
 ## Uninstalling
 
 **Uninstall** on any row removes exactly what Burrow installed, and nothing else.
@@ -175,9 +193,12 @@ but it will tell you exactly which files it is going to delete first.
 There is no account, and no sign-in, because there is nothing to sign in to.
 
 Burrow fetches one file — the plugin list from `stoatworks-labs.com` — and
-downloads plugin archives from GitHub. That is all. It sends no identifier, no
-list of what you have installed, and no usage data. The demos run from inside the
-app and are blocked from making any network request at all.
+downloads plugin archives from GitHub. That is all it does by itself. It sends no
+identifier, no list of what you have installed, and no usage data. The demos run
+from inside the app and are blocked from making any network request at all.
+
+The one thing that reaches elsewhere is a plugin video, and only when you press
+play — see above.
 
 The **Send feedback** button at the bottom of the window is the exception, and only
 when you press it: it sends what you type, plus the version of Burrow.

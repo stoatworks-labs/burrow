@@ -24,6 +24,7 @@ export function WhatsNew({
   onSaveSettings,
   onOpen,
   onDemo,
+  onPlay,
 }: {
   plugins: PluginView[]
   settings: Settings
@@ -32,6 +33,7 @@ export function WhatsNew({
   onSaveSettings: (s: Settings) => void
   onOpen: (url: string) => void
   onDemo: (slug: string) => void
+  onPlay: (plugin: PluginView) => void
 }) {
   const updates = useMemo(
     () => plugins.filter(p => p.bucket === 'update-available'),
@@ -72,7 +74,7 @@ export function WhatsNew({
             <span className="n">{updates.length}</span>
           </div>
           {updates.map(p => (
-            <UpdateCard key={p.slug} plugin={p} busy={busy} onRun={onRun} onOpen={onOpen} />
+            <UpdateCard key={p.slug} plugin={p} busy={busy} onRun={onRun} onOpen={onOpen} onPlay={onPlay} />
           ))}
         </section>
       )}
@@ -90,7 +92,7 @@ export function WhatsNew({
               busy={busy}
               onRun={onRun}
               onDemo={onDemo}
-              onOpen={onOpen}
+              onPlay={onPlay}
               onDismiss={() => dismiss(p)}
             />
           ))}
@@ -105,11 +107,13 @@ function UpdateCard({
   busy,
   onRun,
   onOpen,
+  onPlay,
 }: {
   plugin: PluginView
   busy: boolean
   onRun: (r: OpRequest[]) => void
   onOpen: (url: string) => void
+  onPlay: (plugin: PluginView) => void
 }) {
   const behind = plugin.slots.filter(s => s.state.state === 'update-available')
   const installedVersion =
@@ -128,7 +132,7 @@ function UpdateCard({
   return (
     <div className="card">
       <div className="card-head">
-        <PluginArt plugin={plugin} onOpen={onOpen} />
+        <PluginArt plugin={plugin} onPlay={onPlay} />
         <div style={{ flex: 1 }}>
           <h3>{plugin.name}</h3>
           <div className="when">
@@ -182,14 +186,14 @@ function NewCard({
   busy,
   onRun,
   onDemo,
-  onOpen,
+  onPlay,
   onDismiss,
 }: {
   plugin: PluginView
   busy: boolean
   onRun: (r: OpRequest[]) => void
   onDemo: (slug: string) => void
-  onOpen: (url: string) => void
+  onPlay: (plugin: PluginView) => void
   onDismiss: () => void
 }) {
   const wanted = plugin.slots.filter(
@@ -198,7 +202,7 @@ function NewCard({
   return (
     <div className="card">
       <div className="card-head">
-        <PluginArt plugin={plugin} onOpen={onOpen} />
+        <PluginArt plugin={plugin} onPlay={onPlay} />
         <div style={{ flex: 1 }}>
           <h3>{plugin.name}</h3>
           <div className="when">

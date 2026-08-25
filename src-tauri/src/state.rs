@@ -380,6 +380,8 @@ pub struct PluginView {
     pub has_override: bool,
     pub wanted_formats: Vec<Format>,
     pub notes: Vec<burrow_core::catalog::Note>,
+    /// Earlier releases this plugin can be rolled back to, newest first.
+    pub versions: Vec<burrow_core::catalog::VersionEntry>,
     /// Files in the archive that are not plugins — docs, sample assets, a CLI
     /// helper. Shown so the user knows they exist and where they went.
     pub extras: Vec<String>,
@@ -476,6 +478,7 @@ pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Pl
             has_override: settings.has_override(&entry.slug),
             wanted_formats: settings.formats_for(&entry.slug),
             notes: entry.notes.clone(),
+            versions: entry.versions.clone(),
             extras,
             slots,
         });

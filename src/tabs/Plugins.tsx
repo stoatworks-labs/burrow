@@ -33,6 +33,7 @@ export function Plugins({
   onSaveSettings,
   onDemo,
   onOpen,
+  onPlay,
 }: {
   plugins: PluginView[]
   env: Environment
@@ -45,6 +46,7 @@ export function Plugins({
   onSaveSettings: (s: Settings) => void
   onDemo: (slug: string) => void
   onOpen: (url: string) => void
+  onPlay: (plugin: PluginView) => void
 }) {
   const [query, setQuery] = useState('')
 
@@ -154,6 +156,7 @@ export function Plugins({
                   onSaveSettings={onSaveSettings}
                   onDemo={onDemo}
                   onOpen={onOpen}
+                  onPlay={onPlay}
                 />
               ))
             )}
@@ -175,6 +178,7 @@ function Row({
   onSaveSettings,
   onDemo,
   onOpen,
+  onPlay,
 }: {
   plugin: PluginView
   settings: Settings
@@ -184,8 +188,10 @@ function Row({
   onSaveSettings: (s: Settings) => void
   onDemo: (slug: string) => void
   onOpen: (url: string) => void
+  onPlay: (plugin: PluginView) => void
 }) {
   const [showFormats, setShowFormats] = useState(false)
+  const [showVersions, setShowVersions] = useState(false)
 
   const behind = plugin.slots.filter(s => s.state.state === 'update-available')
   const installed = plugin.slots.filter(
@@ -214,7 +220,7 @@ function Row({
 
   return (
     <div className="row">
-      <PluginArt plugin={plugin} onOpen={onOpen} />
+      <PluginArt plugin={plugin} onPlay={onPlay} />
       <div className="body">
         <div className="title">
           <h3>{plugin.name}</h3>
@@ -287,6 +293,11 @@ function Row({
           <button className="btn quiet" onClick={() => setShowFormats(v => !v)}>
             Formats&hellip;
           </button>
+          {plugin.versions.length > 0 && (
+            <button className="btn quiet" onClick={() => setShowVersions(v => !v)}>
+              Previous versions&hellip;
+            </button>
+          )}
         </div>
 
         {plugin.extras.length > 0 && (
@@ -294,6 +305,16 @@ function Row({
             Also in the download: {plugin.extras.join(', ')} — not plugins, so Burrow
             leaves them out of your plugin folder.
           </div>
+        )}
+
+        {showVersions && (
+          <PreviousVersions
+            plugin={plugin}
+            busy={busy}
+            onRun={onRun}
+            onOpen={onOpen}
+            onClose={() => setShowVersions(false)}
+          />
         )}
 
         {showFormats && (
@@ -397,6 +418,105 @@ function FormatOverride({
           })}
         </div>
       )}
+      <button className="btn quiet" onClick={onClose}>
+        Done
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Roll back to an earlier release.
+ *
+ * Worth having for this fleet specifically: the people using these plugins are
+ * often mid-show-week, and a version that misbehaves on the night needs
+ * undoing rather than diagnosing.
+ *
+ * Only formats already installed are offered. Rolling back is a repair of
+ * something you have, not a way to acquire something you do not — and offering
+ * an old version of a plugin somebody has never installed would be a strange
+ * first experience of it.
+ *
+ * The consequence is stated rather than left to be discovered: after this the
+ * row will show an update available, because it genuinely will be.
+ */
+function PreviousVersions({
+  plugin,
+  busy,
+  onRun,
+  onOpen,
+  onClose,
+}: {
+  plugin: PluginView
+  busy: boolean
+  onRun: (r: OpRequest[]) => void
+  onOpen: (url: string) => void
+  onClose: () => void
+}) {
+  const installed = plugin.slots.filter(
+    s => s.state.state !== 'not-installed' && s.state.state !== 'no-build' && !s.foreign,
+  )
+
+  if (installed.length === 0) {
+    return (
+      <div className="versions">
+        <div className="d">
+          Earlier versions are for rolling back something you already have.
+          Install {plugin.name} first.
+        </div>
+        <button className="btn quiet" onClick={onClose}>
+          Done
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="versions">
+      <div className="lab">Roll back to</div>
+      {plugin.versions.map(v => {
+        // Only the formats this old release actually shipped for.
+        const canDo = installed.filter(s => v.builds?.[s.format]?.macos || v.builds?.[s.format]?.windows)
+        return (
+          <div className="version-row" key={v.tag}>
+            <span className="version-tag">{v.tag}</span>
+            <span className="d">{v.published}</span>
+            {v.prerelease && <span className="chip">pre-release</span>}
+            <span className="spacer" />
+            <button className="btn quiet" onClick={() => onOpen(v.url)}>
+              Notes
+            </button>
+            <button
+              className="btn"
+              disabled={busy || canDo.length === 0}
+              title={
+                canDo.length === 0
+                  ? `${v.tag} has no build for the formats you have installed`
+                  : `Replace what you have with ${v.tag}`
+              }
+              onClick={() =>
+                onRun(
+                  canDo.map(s => ({
+                    slug: plugin.slug,
+                    format: s.format,
+                    destinationId: s.destinationId,
+                    action: 'update' as const,
+                    version: v.tag,
+                  })),
+                )
+              }
+            >
+              {canDo.length === 0
+                ? 'Not built'
+                : `Install ${canDo.map(s => FORMAT_LABEL[s.format]).join(' + ')}`}
+            </button>
+          </div>
+        )
+      })}
+      <div className="help">
+        After rolling back, this plugin will show an update available — because it
+        will have one. Restart your host to pick up the change.
+      </div>
       <button className="btn quiet" onClick={onClose}>
         Done
       </button>

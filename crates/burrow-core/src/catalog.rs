@@ -77,6 +77,38 @@ pub struct Entry {
     pub builds: BTreeMap<Format, BTreeMap<Platform, Asset>>,
     #[serde(default)]
     pub notes: Vec<Note>,
+    /// Earlier releases a user can roll back to, newest first.
+    ///
+    /// Rolling back matters more for this fleet than for most software: the
+    /// people using these plugins are often mid-show-week, and a version that
+    /// misbehaves on the night needs undoing, not diagnosing.
+    ///
+    /// Thinner than `builds` on purpose — url and size only. The payload entry
+    /// names are not carried, because Burrow reads the real ones out of the
+    /// archive as it installs. Assuming an old release had the same bundles
+    /// would be wrong: plugins here have gained a second bundle between
+    /// versions.
+    #[serde(default)]
+    pub versions: Vec<VersionEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionEntry {
+    pub tag: String,
+    #[serde(default)]
+    pub published: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub prerelease: bool,
+    #[serde(default)]
+    pub builds: BTreeMap<Format, BTreeMap<Platform, Asset>>,
+}
+
+impl VersionEntry {
+    pub fn asset(&self, format: Format, platform: Platform) -> Option<&Asset> {
+        self.builds.get(&format)?.get(&platform)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

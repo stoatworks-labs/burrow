@@ -48,6 +48,13 @@ pub struct OpRequest {
     pub format: Format,
     pub destination_id: String,
     pub action: Action,
+    /// A specific release tag to install, rather than the current one.
+    ///
+    /// Absent means "whatever is current", which is what every ordinary
+    /// install and update wants. Present means the user deliberately chose an
+    /// older version from the row's version menu.
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,6 +62,10 @@ pub struct OpRequest {
 pub struct PlannedUnit {
     pub slug: String,
     pub name: String,
+    /// The release this unit installs. The ledger records it, so a rolled-back
+    /// plugin does not later claim to be the current version.
+    #[serde(default)]
+    pub version: Option<String>,
     pub format: Format,
     pub destination_id: String,
     pub destination: PathBuf,
@@ -165,13 +176,29 @@ pub fn plan_batch(
                 (None, None, recorded.unwrap_or(declared))
             }
             _ => {
-                let asset = entry.asset(req.format, platform).ok_or_else(|| {
-                    format!(
-                        "{} has no {} build for this platform",
-                        entry.name,
-                        req.format.label()
-                    )
-                })?;
+                // A named version comes from the row's version menu; anything
+                // else is the current release.
+                let asset = match &req.version {
+                    Some(tag) => entry
+                        .versions
+                        .iter()
+                        .find(|v| &v.tag == tag)
+                        .and_then(|v| v.asset(req.format, platform))
+                        .ok_or_else(|| {
+                            format!(
+                                "{} {tag} has no {} build for this platform",
+                                entry.name,
+                                req.format.label()
+                            )
+                        })?,
+                    None => entry.asset(req.format, platform).ok_or_else(|| {
+                        format!(
+                            "{} has no {} build for this platform",
+                            entry.name,
+                            req.format.label()
+                        )
+                    })?,
+                };
                 if let Some(s) = asset.size {
                     download_bytes += s;
                 }
@@ -203,6 +230,7 @@ pub fn plan_batch(
         units.push(PlannedUnit {
             slug: req.slug.clone(),
             name: entry.name.clone(),
+            version: req.version.clone().or_else(|| entry.version.clone()),
             format: req.format,
             destination_id: req.destination_id.clone(),
             destination: dest.path.clone(),
@@ -487,10 +515,18 @@ fn record(app: &AppHandle, r: &Ready, batch: &str) {
         destination_id: r.unit.destination_id.clone(),
         destination: r.unit.destination.clone(),
         entries: r.entries.clone(),
-        version: String::new(),
-        installed_at: String::new(),
+        version: r.unit.version.clone().unwrap_or_default(),
+        installed_at: now_rfc3339(),
         payload_sha256: payload_sha,
     });
+}
+
+fn now_rfc3339() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("epoch:{secs}")
 }
 
 fn describe(units: &[Ready]) -> String {

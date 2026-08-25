@@ -69,6 +69,14 @@ export interface Note {
   filtered: number
 }
 
+export interface VersionEntry {
+  tag: string
+  published: string
+  url: string
+  prerelease: boolean
+  builds: Partial<Record<FormatId, Partial<Record<PlatformId, { url: string; size: number | null }>>>>
+}
+
 export interface PluginView {
   slug: string
   name: string
@@ -91,6 +99,8 @@ export interface PluginView {
   hasOverride: boolean
   wantedFormats: FormatId[]
   notes: Note[]
+  /** Earlier releases this plugin can be rolled back to, newest first. */
+  versions: VersionEntry[]
   /** Non-plugin files in the archive: docs, sample assets, a CLI helper. */
   extras: string[]
 }
@@ -145,6 +155,8 @@ export interface OpRequest {
   format: FormatId
   destinationId: string
   action: Action
+  /** A specific release tag, when rolling back. Absent means "current". */
+  version?: string | null
 }
 
 export interface PlannedUnit {

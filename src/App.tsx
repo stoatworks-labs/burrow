@@ -15,6 +15,7 @@ import { Plugins } from './tabs/Plugins'
 import { SettingsTab } from './tabs/Settings'
 import { Banner } from './components/Banner'
 import { RefreshTools } from './components/RefreshTools'
+import { VideoModal } from './components/VideoModal'
 import { isFilming, runFilm } from './film'
 
 type TabId = 'whatsnew' | 'plugins' | 'settings'
@@ -37,6 +38,7 @@ export function App() {
   const [scanning, setScanning] = useState(false)
   const [lastScan, setLastScan] = useState<number | null>(null)
   const [refreshResult, setRefreshResult] = useState<string | null>(null)
+  const [playing, setPlaying] = useState<PluginView | null>(null)
 
   /*
    * Subscribe once, on mount, before any job can start.
@@ -294,6 +296,7 @@ export function App() {
           onSaveSettings={saveSettings}
           onOpen={api.openExternal}
           onDemo={api.openDemo}
+          onPlay={setPlaying}
         />
       ) : tab === 'plugins' ? (
         <Plugins
@@ -307,6 +310,7 @@ export function App() {
           onSaveSettings={saveSettings}
           onDemo={api.openDemo}
           onOpen={api.openExternal}
+          onPlay={setPlaying}
         />
       ) : (
         <SettingsTab
@@ -317,6 +321,16 @@ export function App() {
           onSave={saveSettings}
           onRefresh={refresh}
           onReveal={api.revealPath}
+        />
+      )}
+
+      {playing?.youtube && (
+        <VideoModal
+          videoId={playing.youtube}
+          title={playing.name}
+          watchUrl={`https://www.youtube.com/watch?v=${playing.youtube}`}
+          onClose={() => setPlaying(null)}
+          onOpenExternal={api.openExternal}
         />
       )}
     </>

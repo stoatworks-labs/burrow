@@ -353,3 +353,81 @@ button.btn.quiet:hover:not(:disabled) { color: var(--text); }
 
 .inline-err { color: var(--bad); font-size: 12.5px; margin-top: 6px; }
 a { color: var(--accent); }
+
+/* ---- video modal -------------------------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 8, 11, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+}
+.modal {
+  width: min(980px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-head .spacer { flex: 1; }
+/* 16:9, held by the padding trick so the iframe cannot letterbox itself
+   differently at different window widths. */
+.modal-video { position: relative; width: 100%; padding-top: 56.25%; background: #000; }
+.modal-video iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.modal-note {
+  padding: 9px 12px;
+  color: var(--dim);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- previous versions -------------------------------------------------- */
+
+.versions {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.versions .lab {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  font-weight: 620;
+  margin-bottom: 7px;
+}
+.versions .d { color: var(--dim); font-size: 12.5px; }
+.versions .help { color: var(--dim); font-size: 12px; margin: 8px 0 4px; max-width: 62ch; }
+.version-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 0;
+  border-top: 1px solid var(--border);
+}
+.version-row:first-of-type { border-top: 0; }
+.version-row .spacer { flex: 1; }
+.version-tag {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  min-width: 62px;
+}

@@ -20,14 +20,16 @@ import type { PluginView } from '../api/types'
  * So the stills ship inside the app (`scripts/sync-assets.sh` gathers them from
  * the same public copy YouTube itself fetched at upload time, so it is the frame
  * that is actually on the video). They work offline, and nothing is requested
- * until the user deliberately clicks through.
+ * until the user deliberately clicks one — at which point `VideoModal` loads the
+ * embed, for that one video, from youtube-nocookie.com.
  */
 export function PluginArt({
   plugin,
-  onOpen,
+  onPlay,
 }: {
   plugin: PluginView
-  onOpen: (url: string) => void
+  /** Play the video inside the window. */
+  onPlay: (plugin: PluginView) => void
 }) {
   const hasVideo = Boolean(plugin.youtube)
 
@@ -63,9 +65,9 @@ export function PluginArt({
   return (
     <button
       className="art art-play"
-      onClick={() => onOpen(`https://www.youtube.com/watch?v=${plugin.youtube}`)}
-      title={`Watch the ${plugin.name} video on YouTube`}
-      aria-label={`Watch the ${plugin.name} video on YouTube — opens in your browser`}
+      onClick={() => onPlay(plugin)}
+      title={`Watch the ${plugin.name} video`}
+      aria-label={`Watch the ${plugin.name} video`}
     >
       {image}
       <span className="art-badge" aria-hidden="true">
