@@ -4,12 +4,18 @@
 modules.** One list, one click each, and it knows where every format goes on your
 machine.
 
-> **Status at v0.2.2 — read this first.**
+> **Status at v0.2.3 — read this first.**
 >
 > Burrow has been tested thoroughly against real plugin downloads, but **no plugin
 > has yet been installed into a running Resolume, Resolve or After Effects through
 > it**. If you are about to use it before a show, don't. Try it on a machine where
 > a broken plugin folder would cost you nothing.
+>
+> **Updating Burrow itself is new in this version**, and no copy has yet updated
+> itself in the field — v0.2.3 is the first release that publishes an update for
+> the next one to find. The download is signature-checked and refused if it does
+> not match, and the .dmg and .pkg on this page are always there as the way that
+> does not depend on any of it.
 >
 > On Windows it can install FFGL plugins for Resolume, but not OpenFX or After
 > Effects plugins — that part is not written yet, and it says so rather than
