@@ -4,7 +4,7 @@
 modules.** One list, one click each, and it knows where every format goes on your
 machine.
 
-> **Status at v0.2.3 — read this first.**
+> **Status at v0.2.4 — read this first.**
 >
 > Burrow has been tested thoroughly against real plugin downloads, but **no plugin
 > has yet been installed into a running Resolume, Resolve or After Effects through
@@ -38,17 +38,22 @@ the installer.
 Burrow is not required for anything. Every plugin can still be downloaded and
 installed by hand, exactly as before — Burrow only saves you doing it.
 
-## The four tabs
+## The tabs
 
 The fleet is bigger than the video plugins now, so it is split by what a thing is
 for:
 
 | Tab | What's in it |
 |---|---|
-| **Video** | The Resolume, Resolve and After Effects plugins, and the video tools around them |
+| **Video plugins** | The Resolume, Resolve and After Effects effects you load into a host |
+| **Video tools** | The applications you launch, and the Companion modules that drive them |
 | **Audio** | VST3 and Audio Unit plugins, and the audio tools that run on their own |
 | **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running |
+| **Self-hosted** | Things you run rather than install — containers, and the browser tools |
 | **Device firmware** | Coming soon — nothing in it yet, and it says so |
+
+An effect you load into Resolume is a different errand from an application you
+launch, which is why the video ones are two tabs rather than one.
 
 A number beside a tab is how many things in it need updating.
 
@@ -123,6 +128,20 @@ Both say what they actually did — *"2 new versions · 1 now needs updating"*, 
 *"Nothing changed"* — and each shows when it last ran. If the version numbers
 you are looking at came from the copy that shipped with the app rather than a
 live check, the second button says **not checked** rather than a time.
+
+## Self-hosted
+
+Some of this software is not installed at all — you run it.
+
+**Self-hosted** holds two kinds of thing. The tools that ship a
+`docker-compose.yml` — flock, SRT Router, ATEM Overseer and the rest — and the
+browser tools that already run on the website. They are together because the
+question they raise is the same one: *how do I run this?*
+
+A browser tool has nothing to install, so its row offers **Open** — the copy
+running on the website — and **Source**. Where it ships a compose file there is
+also **Run your own**, which shows you the file with Copy and Save buttons, so
+you can host it yourself instead of using ours.
 
 ## Software you installed yourself
 
