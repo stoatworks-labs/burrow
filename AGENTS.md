@@ -204,9 +204,19 @@ pinning it: `no_format_added_for_the_new_categories_can_ask_for_a_password`.
 ## 7. Testing
 
 ```bash
-cargo test --workspace     # 99 tests, no Tauri, every platform
+cargo test --workspace     # 102 tests, no Tauri, every platform
 npm run build              # type-checks the UI
+
+# What CI actually gates on, and what a Mac-only run does not tell you.
+cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --target aarch64-pc-windows-msvc -- -D warnings
 ```
+
+⚠️ **Run clippy for a non-macOS target too.** CI runs it on macOS, Windows *and*
+Ubuntu, and `-D warnings` means dead code is a build failure. Everything behind
+`cfg(target_os = "macos")` — the disk-image path, most of `dmg.rs` — is dead code
+on the other two, and a local run on this Mac reports none of it. CI was red for
+three releases before anyone noticed.
 
 The UI runs in an ordinary browser against a mock backend, which is how the
 awkward states get looked at:
