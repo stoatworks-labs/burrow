@@ -165,13 +165,68 @@ jobs:
           rl_dmg "${{ matrix.name }}" "$stage" --app "$app"
           rl_pkg "${{ matrix.name }}" "$stage" --app "$app"
 
+      # What an in-app update actually replaces this app with.
+      #
+      # ⚠️ Built here, from the **staged and re-signed** copy — deliberately
+      # not by Tauri's own `createUpdaterArtifacts`, which tars the bundle as
+      # the bundler left it. That copy carries the stale signature the step
+      # above exists to repair, so every update would ship the exact defect
+      # this workflow already fixes for the .dmg and .pkg, and it would only
+      # ever show up on somebody else's machine. See docs/NOTES.md, 2026-08-24.
+      - name: Updater artefact (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] || {
+            echo "TAURI_SIGNING_PRIVATE_KEY is not set." >&2
+            echo "Every copy of Burrow verifies an update against the key baked" >&2
+            echo "into it, so an unsigned release is one nobody can install." >&2
+            exit 1
+          }
+          stage="$RUNNER_TEMP/stage-mac"
+          out="burrow-${{ steps.ver.outputs.version }}-${{ matrix.name }}.app.tar.gz"
+
+          # COPYFILE_DISABLE, or bsdtar writes an AppleDouble `._` file beside
+          # every entry and the extracted bundle is littered with them.
+          COPYFILE_DISABLE=1 tar -C "$stage" -czf "$out" "Stoatworks Burrow.app"
+          npx --no-install tauri signer sign "$out"
+          [ -s "$out.sig" ] || { echo "no signature was written" >&2; exit 1; }
+
+      # The Windows update *is* the installer: Tauri runs it and it replaces
+      # what is there. Signed here rather than by `createUpdaterArtifacts` for
+      # one reason only — so that `tauri build` needs no signing key, and a
+      # local build with `scripts/build-app.sh` keeps working with none.
+      - name: Updater artefact (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ] || {
+            echo "TAURI_SIGNING_PRIVATE_KEY is not set — see the macOS step" >&2
+            exit 1
+          }
+          setup=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" \
+            -name '*-setup.exe' | head -1)
+          [ -n "$setup" ] || { echo "no NSIS installer produced" >&2; exit 1; }
+          npx --no-install tauri signer sign "$setup"
+          [ -s "$setup.sig" ] || { echo "no signature was written" >&2; exit 1; }
+
       - name: Collect bundles
         shell: bash
         run: |
           mkdir -p out
           find "src-tauri/target/${{ matrix.target }}/release/bundle" -type f \
-            \( -name '*.exe' -o -name '*.msi' \) -exec cp {} out/ \; 2>/dev/null || true
+            \( -name '*.exe' -o -name '*.msi' -o -name '*.sig' \) -exec cp {} out/ \; 2>/dev/null || true
           cp *.dmg *.pkg out/ 2>/dev/null || true
+          # The macOS updater tarball and its signature.
+          cp *.app.tar.gz *.app.tar.gz.sig out/ 2>/dev/null || true
           ls -la out
 
       - uses: actions/upload-artifact@v4
@@ -186,6 +241,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      # The checkout is for scripts/make-latest-json.mjs, below.
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -231,3 +289,51 @@ jobs:
             covers what it does, what it sends (almost nothing), and why OpenFX
             installs ask for a password.
           generate_release_notes: true
+
+      # The update manifest, published *after* the release so it can carry the
+      # release's own notes — which is what the app shows before asking whether
+      # to install.
+      #
+      # It is attached to the release rather than served from the website on
+      # purpose: the endpoint is the `/releases/latest/download/` alias, so the
+      # thing that decides what an installed Burrow is offered is the same
+      # thing that publishes the artefacts. A website deploy cannot change it,
+      # and there is no second place to remember to update.
+      - name: Publish the update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json body -q .body > release-body.md
+          node scripts/make-latest-json.mjs "$TAG" artifacts release-body.md > latest.json
+          cat latest.json
+          gh release upload "$TAG" latest.json --clobber
+
+      # What this proves is not that the manifest parses — it is that an
+      # installed copy can actually reach it. The endpoint compiled into every
+      # Burrow is the `/latest/` alias, and that alias points at whichever
+      # release GitHub considers newest, which is not necessarily this one:
+      # an asset-only tag published as a full release would take it. Ask the
+      # real URL rather than assuming the upload settled the question.
+      - name: Check an installed copy would find it
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          url=https://github.com/stoatworks-labs/burrow/releases/latest/download/latest.json
+          served=$(curl -fsSL "$url")
+          echo "$served" | node -e '
+            const m = JSON.parse(require("fs").readFileSync(0, "utf8"))
+            const want = process.env.TAG.replace(/^v/, "")
+            const keys = Object.keys(m.platforms ?? {})
+            if (m.version !== want) {
+              console.error(`the /latest/ alias serves ${m.version}, not ${want} — ` +
+                "a newer release, or a prerelease published as a full one, is on top")
+              process.exit(1)
+            }
+            for (const k of ["darwin-aarch64", "darwin-x86_64", "windows-x86_64"]) {
+              if (!keys.includes(k)) { console.error(`no ${k} in the manifest`); process.exit(1) }
+            }
+            console.log(`ok — ${m.version} for ${keys.join(", ")}`)
+          '

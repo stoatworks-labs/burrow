@@ -12,4 +12,11 @@ src-tauri/bin/
 # built front end. The app itself reads the baked catalogue from its resources.
 public/catalog.json
 
+# Release-time artefacts. The workflow writes these at the workspace root, and
+# so does anyone running the same commands locally to check them.
+*.app.tar.gz
+*.app.tar.gz.sig
+latest.json
+release-body.md
+
 .DS_Store

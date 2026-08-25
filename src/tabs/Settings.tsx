@@ -1,6 +1,14 @@
-import type { CatalogInfo, Environment, FormatId, Settings } from '../api/types'
+import type {
+  CatalogInfo,
+  Environment,
+  FormatId,
+  Settings,
+  UpdateInfo,
+  UpdateProgress,
+} from '../api/types'
 import { FORMAT_HOSTS, FORMAT_LABEL } from '../api/types'
 import { humanDate } from '../api/backend'
+import { ClientUpdate } from '../components/ClientUpdate'
 
 /**
  * Every format Burrow installs, in the order they are offered.
@@ -15,17 +23,31 @@ export function SettingsTab({
   settings,
   catalog,
   busy,
+  client,
   onSave,
   onRefresh,
   onReveal,
+  onOpen,
 }: {
   env: Environment
   settings: Settings
   catalog: CatalogInfo | null
   busy: boolean
+  /** Burrow's own version and update state, owned by App. */
+  client: {
+    version: string | null
+    update: UpdateInfo | null
+    checking: boolean
+    installing: boolean
+    progress: UpdateProgress | null
+    error: string | null
+    onCheck: () => void
+    onInstall: () => void
+  }
   onSave: (s: Settings) => void
   onRefresh: () => void
   onReveal: (path: string) => void
+  onOpen: (url: string) => void
 }) {
   function toggleFormat(f: FormatId) {
     const set = new Set(settings.defaultFormats)
@@ -178,7 +200,7 @@ export function SettingsTab({
         {catalog?.error && <div className="inline-err">{catalog.error}</div>}
         <div className="actions" style={{ marginTop: 9 }}>
           <button className="btn" onClick={onRefresh} disabled={busy}>
-            {busy ? 'Checking…' : 'Check for updates now'}
+            {busy ? 'Checking…' : 'Fetch the list now'}
           </button>
         </div>
         <div className="opt" style={{ marginTop: 6 }}>
@@ -200,6 +222,20 @@ export function SettingsTab({
         </div>
       </div>
 
+      <ClientUpdate
+        version={client.version}
+        update={client.update}
+        checking={client.checking}
+        installing={client.installing}
+        progress={client.progress}
+        error={client.error}
+        settings={settings}
+        onCheck={client.onCheck}
+        onInstall={client.onInstall}
+        onSave={onSave}
+        onOpen={onOpen}
+      />
+
       <div className="field">
         <span className="lab">What Burrow sends</span>
         <div className="prose-block">
@@ -208,6 +244,12 @@ export function SettingsTab({
             downloads the archives, disk images and project videos from GitHub. That
             is everything it does on the network, and there is no third party in it
             anywhere.
+          </p>
+          <p>
+            Checking for a new Burrow adds one more request, to Burrow&rsquo;s own
+            GitHub release, asking what the current version is. It happens when you
+            press the button above &mdash; and at startup too, if you asked it to.
+            Nothing about this machine goes with the question.
           </p>
           <p>
             There is no account and no sign-in. It sends no identifier, no list of what

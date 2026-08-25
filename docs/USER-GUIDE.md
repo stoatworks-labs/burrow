@@ -82,6 +82,21 @@ status the website gives it, in the same words:
 Hover it for the same sentence. It is worth reading before a show: *Field
 testing* and *In development* mean what they say.
 
+### Doing a whole heading at once
+
+Each heading carries the buttons for the plugins underneath it — **Update all**,
+**Install all**, **Remove all** — and each does exactly what the button on every
+row under it would do, for all of them. They appear only when there is more than
+one row to act on; with a single row, its own buttons are right there.
+
+They act on what you can see. If you have typed in the search box, the count on
+the button is the number that survived the search, and those are the only ones
+that will be touched.
+
+**Install all** and **Remove all** ask first, and say how much there is to
+download or what is about to be deleted. **Update all** does not — it only brings
+what you already chose up to date.
+
 **"Version unknown" is not a fault.** On Windows a plugin is a bare `.dll` with no
 version in it, so Burrow genuinely cannot tell — it will offer to reinstall the
 current version rather than pretend to know. It also happens on macOS if you built
@@ -102,6 +117,31 @@ Both say what they actually did — *"2 new versions · 1 now needs updating"*, 
 *"Nothing changed"* — and each shows when it last ran. If the version numbers
 you are looking at came from the copy that shipped with the app rather than a
 live check, the second button says **not checked** rather than a time.
+
+## Updating Burrow itself
+
+Those two buttons are about the *plugins*. Burrow's own version is in
+**Settings**, under **Burrow itself**, with a **Check for a new version**
+button beside it.
+
+If there is one, you get the version, the date and the release notes before
+anything is downloaded — and **Install and restart** does exactly that: it
+replaces this copy and reopens it. There is a **Check when Burrow starts**
+checkbox if you would rather be told at launch; it is off until you turn it on,
+and even then nothing is downloaded or installed without you pressing the
+button.
+
+The download is checked against a signature made when the release was built. One
+that does not match is refused rather than installed.
+
+Two things it will tell you instead of updating, and both are about where this
+copy of Burrow is:
+
+- **Running from the disk image.** If you opened Burrow from inside the `.dmg`
+  rather than dragging it to Applications, that disk is read-only and nothing
+  can replace it. Drag it across and update from there.
+- **In a folder you cannot write to.** Most likely `/Applications` on a machine
+  where you are not an administrator. Burrow offers the download page instead.
 
 ## Watching a plugin before you install it
 
@@ -251,6 +291,9 @@ Restart your host to pick the change up.
 ## Uninstalling
 
 **Uninstall** on any row removes exactly what Burrow installed, and nothing else.
+That includes formats with an update waiting — a plugin you have not updated yet
+is still a plugin you have, and the button removes every format of it you have on
+disk. It says how many when there is more than one.
 
 Your plugin folder almost certainly contains other things — plugins from other
 people, examples that came with an SDK, your own builds. Burrow does not look at
@@ -269,6 +312,11 @@ downloads plugin archives and project videos from GitHub. That is all. It sends
 no identifier, no list of what you have installed, and no usage data, and there
 is no third party involved anywhere. The demos run from inside the app and are
 blocked from making any network request at all.
+
+Checking for a new Burrow is one more request, to Burrow's own GitHub release,
+asking what the current version is. It happens when you press the button — and
+at startup as well, if you ticked that box. Nothing about your machine goes with
+the question.
 
 The **Send feedback** button at the bottom of the window is the exception, and only
 when you press it: it sends what you type, plus the version of Burrow.

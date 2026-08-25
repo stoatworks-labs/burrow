@@ -61,6 +61,20 @@ pub struct Settings {
     #[serde(default = "yes")]
     pub allow_github_fallback: bool,
 
+    /// Whether to ask about a new *Burrow* when the app starts.
+    ///
+    /// Off unless the user turns it on, and deliberately so: the promise in
+    /// the Settings pane is that Burrow talks to the network when you ask it
+    /// to, and a check that runs itself at every launch quietly stops that
+    /// being true. There is a button either way — this only decides whether
+    /// the question also gets asked once at startup.
+    ///
+    /// No schema bump: absent means `false`, which is what an existing
+    /// settings file should mean. A migration is for a default whose *meaning*
+    /// changed, not for a setting that did not exist.
+    #[serde(default)]
+    pub check_updates_on_launch: bool,
+
     /// The last version of each plugin the user has seen in "What's new".
     ///
     /// Seeded on first run from the catalogue that shipped inside the app, so
@@ -128,6 +142,7 @@ impl Default for Settings {
             destinations: BTreeMap::new(),
             catalog_url: default_catalog_url(),
             allow_github_fallback: true,
+            check_updates_on_launch: false,
             seen: BTreeMap::new(),
             seen_at: None,
             last_refresh: None,
@@ -294,6 +309,19 @@ mod tests {
         let p = t.path().join("settings.json");
         std::fs::write(&p, r#"{"schema":2,"defaultFormats":["ffgl"]}"#).unwrap();
         assert_eq!(load(&p).default_formats, vec![Format::Ffgl]);
+    }
+
+    #[test]
+    fn an_existing_settings_file_does_not_start_checking_for_updates_by_itself() {
+        // Adding the field must not turn the behaviour on for people who never
+        // asked for it. `serde(default)` gives false — this pins that, because
+        // a `default = "yes"` typed out of habit would silently opt in every
+        // existing user.
+        let t = TempDir::new().unwrap();
+        let p = t.path().join("settings.json");
+        std::fs::write(&p, r#"{"schema":2,"defaultFormats":["ffgl"]}"#).unwrap();
+        assert!(!load(&p).check_updates_on_launch);
+        assert!(!Settings::default().check_updates_on_launch);
     }
 
     #[test]

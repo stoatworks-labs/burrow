@@ -93,8 +93,32 @@ Project videos stream from GitHub too, and only when you press play — the stil
 are bundled, so the list itself fetches nothing. The feedback button is the only
 other thing that sends anything, and only what you type into it.
 
+Checking whether there is a **newer Burrow** adds one request, to Burrow's own
+GitHub release, and it happens when you press the button in Settings. There is a
+checkbox to have it asked at startup too; it is off until you turn it on.
+
 The *Send feedback* button at the bottom of the window is the one exception, and
 only when you press it.
+
+## Updating Burrow itself
+
+**Settings → Burrow itself → Check for a new version.** If there is one, the
+release notes are shown before anything is downloaded, and *Install and restart*
+replaces this copy and reopens it.
+
+The download is verified against a signature made when the release was built,
+against a public key compiled into the app. An update that does not match is
+refused rather than installed — which is the reason this is a button in the app
+and not a link to a file.
+
+Two situations it will tell you about rather than fail at: a copy running from
+inside the `.dmg` (that disk image is read-only — drag Burrow to Applications
+first), and a copy in a folder you do not have permission to write to. Both are
+reported by the check, before anything is downloaded.
+
+Nothing here happens on its own. Burrow does not check unless you press the
+button or turn on the startup check, and it never downloads or installs without
+being told to.
 
 ## Installing things that need a password
 
@@ -201,6 +225,10 @@ Tests:
 cargo test --workspace
 ```
 
+`cargo test --workspace` does not reach the Tauri shell, which is a standalone
+workspace of its own — `cd src-tauri && cargo test` for the settings, demo server
+and updater tests. CI runs both.
+
 The interesting ones are in `crates/burrow-plan` (what the privileged helper will
 refuse) and `crates/burrow-core` (reconciling the ledger against a real plugin
 folder). Both are free of Tauri so they run on every platform in CI, including the
@@ -213,6 +241,18 @@ cargo run -p burrow-core --example scan -- path/to/catalog.json
 ```
 
 It reads, and writes nothing.
+
+## Make your own
+
+Underneath the plugin names this is a desktop installer for software published as
+GitHub releases: one JSON file lists what exists, and the app works out what you
+already have, downloads the right archive for your platform, and puts each payload
+where its host looks for it.
+
+If that is how you ship, fork it — **[docs/MAKE-YOUR-OWN.md](docs/MAKE-YOUR-OWN.md)**
+covers the catalogue format, the handful of places this fleet's own names are
+compiled in, and what to delete when you do not need the privileged helper or the
+bundled demos.
 
 ## Licence
 

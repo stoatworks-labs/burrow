@@ -37,10 +37,13 @@ crates/burrow-core/     Catalogue model, host detection, archive handling, disk
                         and reconciliation. Free of Tauri, so it is all
                         unit-testable.
 src-tauri/              The shell: network, commands, job runner, demo server,
-                        the elevation prompt.
+                        the elevation prompt, and Burrow's own updater.
 src/                    React UI. Six tabs, plus a mock backend.
 scripts/sync-assets.sh  Gathers the catalogue, demos, thumbnails and helper that
                         ship inside the app.
+scripts/make-latest-json.mjs
+                        The signed update manifest, composed at release time
+                        from the artefacts. See §8.
 ```
 
 The crate split **is** the security design, not tidiness. See §5.
@@ -107,6 +110,23 @@ hash in staging; then rename the old payload aside and rename the new one in. A
 host that rescans mid-install sees the old plugin or the new one, never a
 `Contents/` without a binary. Staging happens *inside* the destination directory so
 the rename cannot fail with `EXDEV` across filesystems.
+
+**The signature is what an update is trusted on, not the address.** Burrow's own
+updater verifies `latest.json` and the artefact it names against a minisign public
+key compiled into the binary from `tauri.conf.json`. HTTPS and the github.com
+hostname are not the check — an update that does not verify is refused whoever
+served it. That is also why the manifest is built by the release workflow rather
+than written by hand, and why `make-latest-json.mjs` fails the release outright
+when any platform's artefact or signature is missing: a manifest with two of three
+platforms in it makes every copy on the third report *the platform was not found*
+— an error about our release, shown to someone who cannot act on it, on every
+check until it is noticed.
+
+⚠️ **The macOS updater tarball is made after the re-sign, not by Tauri.** Same
+trap as the .dmg — `tauri build` signs the bundle before the bundler places
+`Contents/Resources`, so `createUpdaterArtifacts` would ship the stale signature
+`scripts/release-lib.sh` exists to repair. The workflow tars the staged, re-signed
+copy and signs that. Do not turn `createUpdaterArtifacts` on to "simplify" it.
 
 **Only Arena and Avenue are plugin destinations.** Alley and Wire link the same
 FFGL engine but do not scan an `Extra Effects` folder — established by `strings` on
@@ -187,7 +207,9 @@ anything there.
 
 Flag these rather than implementing them quietly:
 
-- Any network request beyond the catalogue and GitHub downloads.
+- Any network request beyond the catalogue, GitHub downloads and the update
+  manifest — and that last one only when the user asks, or at startup if they
+  turned the checkbox on. Nothing here polls.
 - Anything that identifies the user or the machine.
 - Reading the plugin directory rather than named entries.
 - Widening the helper's whitelist, its operation set, or its dependencies.
@@ -204,7 +226,8 @@ pinning it: `no_format_added_for_the_new_categories_can_ask_for_a_password`.
 ## 7. Testing
 
 ```bash
-cargo test --workspace     # 102 tests, no Tauri, every platform
+cargo test --workspace     # the library crates: no Tauri, every platform
+(cd src-tauri && cargo test)   # the shell: settings, demo server, updater
 npm run build              # type-checks the UI
 
 # What CI actually gates on, and what a Mac-only run does not tell you.
@@ -227,6 +250,7 @@ awkward states get looked at:
 ?ofx=missing|empty|readonly|ok                the OpenFX destination's condition
 ?state=ok|offline|error                       what the last refresh did
 ?job=ok|failed|cancelled
+?update=none|available|blocked|error|fail        a newer Burrow, or not
 ```
 
 Same idea as av-launcher's `mockInvoke`, and for the same reason: a screenshot of
@@ -237,6 +261,54 @@ prompt.
 whether a plugin Burrow installed actually appears in Resolume, Resolve and After
 Effects; and quarantine clearing, which needs a *downloaded* copy of the app,
 because a locally built one is never quarantined.
+
+## 8. Releasing, and the update key
+
+Tagging `v*` builds both macOS architectures and Windows, packages them, and
+publishes the release. Two things now happen that did not before:
+
+1. Each platform's **update artefact** is signed — the staged macOS `.app.tar.gz`
+   and the Windows `-setup.exe` — with `tauri signer sign`.
+2. After the release exists, `scripts/make-latest-json.mjs` composes `latest.json`
+   from those artefacts *and the release's own body*, and uploads it. A final step
+   fetches the `/releases/latest/download/latest.json` URL that is compiled into
+   every installed copy and asserts it serves this version, for all three
+   platforms.
+
+⚠️ **The release fails without `TAURI_SIGNING_PRIVATE_KEY`.** Deliberately.
+A release published with no manifest would leave every installed copy asking a
+404 and reporting that it could not check — and one published with a manifest
+signed by the wrong key would be worse, because the app would refuse the update
+it was offered and there would be nothing to do about it but re-cut the release.
+
+**The update artefact is signed twice, by two different things, and both
+matter.** The minisign signature above is what the app checks. Apple's is what
+macOS checks — and CI cannot make it, because the Developer ID key never leaves
+the author's Mac. So the tarball CI publishes carries an **ad-hoc signed** app,
+and `posthoc-sign.sh` in stoatworks-backend replaces it within one auto-sign
+tick: unpack, Developer ID sign, notarise, staple, repack, **re-sign with the
+minisign key and rewrite `latest.json`**. Those last two are not optional — a
+repacked tarball under its old signature is refused by every installed copy.
+
+Without that half, the download and the in-app update disagreed: a user who
+took the notarised `.dmg` and then pressed *Install and restart* was moved to
+the ad-hoc build, silently. See stoatworks-backend's `docs/NOTES.md`,
+2026-08-25.
+
+⚠️ **Do not rename the update artefacts to something not ending in
+`.app.tar.gz`.** That suffix, plus a sibling `.sig`, is exactly what
+`posthoc-sign.sh` and `verify-signing.sh` match on. Rename it and both go
+quiet: the release still publishes, the app still updates, and every update
+from then on is ad-hoc signed with nothing reporting it.
+
+The private key lives outside this repo (`~/keys/burrow-updater.key` on the
+author's machine) and in the repository secrets as `TAURI_SIGNING_PRIVATE_KEY`,
+with `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` empty. Its public half is in
+`tauri.conf.json` and is compiled into every build.
+
+**Losing the private key means no installed copy can ever be updated again** —
+they verify against the public half they were built with. Replacing it is a new
+public key, a new build, and a manual download for everybody already out there.
 
 ## Notes
 

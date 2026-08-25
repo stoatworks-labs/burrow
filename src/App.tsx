@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, isMock, onFinished, onProgress } from './api/backend'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api, isMock, onFinished, onProgress, onUpdateProgress } from './api/backend'
 import { mockInitialTab, isShot } from './api/mock'
 import type {
   BatchOutcome,
@@ -10,6 +10,8 @@ import type {
   PluginView,
   Progress,
   Settings,
+  UpdateInfo,
+  UpdateProgress,
 } from './api/types'
 import { CATEGORY_LABEL } from './api/types'
 import { WhatsNew } from './tabs/WhatsNew'
@@ -20,6 +22,7 @@ import { Banner } from './components/Banner'
 import { RefreshTools } from './components/RefreshTools'
 import { VideoModal } from './components/VideoModal'
 import { ComposeModal } from './components/ComposeModal'
+import { UpdateBanner } from './components/UpdateBanner'
 import { filmDelay, isFilming, runFilm } from './film'
 
 /**
@@ -73,6 +76,20 @@ export function App() {
   const [composing, setComposing] = useState<PluginView | null>(null)
 
   /*
+   * Burrow's own version and update, owned here rather than in the Settings
+   * tab: the banner and the Settings pane have to be looking at the same
+   * answer, and the startup check happens before that tab has ever been
+   * opened.
+   */
+  const [clientVersion, setClientVersion] = useState<string | null>(null)
+  const [update, setUpdate] = useState<UpdateInfo | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [installingUpdate, setInstallingUpdate] = useState(false)
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null)
+  const [updateError, setUpdateError] = useState<string | null>(null)
+  const [updateDismissed, setUpdateDismissed] = useState(false)
+
+  /*
    * Subscribe once, on mount, before any job can start.
    *
    * The listeners are registered before the first `run_batch` is reachable —
@@ -100,12 +117,14 @@ export function App() {
           )
         }
       })
+      const offU = await onUpdateProgress(setUpdateProgress)
       if (cancelled) {
         offP()
         offF()
+        offU()
         return
       }
-      offs.push(offP, offF)
+      offs.push(offP, offF, offU)
     })()
     return () => {
       cancelled = true
@@ -158,6 +177,9 @@ export function App() {
 
   useEffect(() => {
     ;(async () => {
+      // Burrow's own version, which is local and cannot fail in a way worth
+      // reporting — the update section shows a dash if it somehow does.
+      api.clientVersion().then(setClientVersion).catch(() => {})
       try {
         const info = await api.refreshCatalog(false)
         setCatalog(info)
@@ -207,6 +229,64 @@ export function App() {
       setScanning(false)
     }
   }, [plugins, summarise])
+
+  /** Ask whether there is a newer Burrow. Never installs anything. */
+  const checkUpdate = useCallback(async () => {
+    setCheckingUpdate(true)
+    setUpdateError(null)
+    try {
+      setUpdate(await api.checkUpdate())
+      setUpdateDismissed(false)
+    } catch (err) {
+      setUpdateError(String(err))
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }, [])
+
+  /**
+   * Replace this app and restart.
+   *
+   * On success this never resolves — the process is replaced — so the busy
+   * state is deliberately not cleared in a `finally`. Clearing it there would
+   * make the button go live again for the instant between the install
+   * finishing and the app going away, which is the one moment it must not be
+   * pressable.
+   */
+  const installUpdate = useCallback(async () => {
+    setInstallingUpdate(true)
+    setUpdateError(null)
+    setUpdateProgress(null)
+    try {
+      await api.installUpdate()
+    } catch (err) {
+      setUpdateError(String(err))
+      setInstallingUpdate(false)
+      setUpdateProgress(null)
+    }
+  }, [])
+
+  /*
+   * The startup check, if the user asked for one.
+   *
+   * Runs off `settings` rather than at mount, because settings arrive from the
+   * backend a moment later — and only once per launch, which is what the ref
+   * guards. Failure is silent here: an app that greets you with a network
+   * error you did not ask for, about itself, is worse than one that quietly
+   * has not checked. The Settings pane still reports it if you go and look.
+   */
+  const askedAtLaunch = useRef(false)
+  useEffect(() => {
+    if (!settings?.checkUpdatesOnLaunch || askedAtLaunch.current) return
+    askedAtLaunch.current = true
+    ;(async () => {
+      try {
+        setUpdate(await api.checkUpdate())
+      } catch {
+        /* see above */
+      }
+    })()
+  }, [settings])
 
   const runOps = useCallback(
     async (requests: OpRequest[]) => {
@@ -341,6 +421,16 @@ export function App() {
         onCheck={refresh}
       />
 
+      {update?.available && !updateDismissed && (
+        <UpdateBanner
+          update={update}
+          installing={installingUpdate}
+          onInstall={installUpdate}
+          onDismiss={() => setUpdateDismissed(true)}
+          onSettings={() => setTab('settings')}
+        />
+      )}
+
       <Banner catalog={catalog} error={error} notes={notes} busy={busy} onRefresh={refresh} />
 
       {loading ? (
@@ -380,9 +470,20 @@ export function App() {
           settings={settings!}
           catalog={catalog}
           busy={busy}
+          client={{
+            version: clientVersion,
+            update,
+            checking: checkingUpdate,
+            installing: installingUpdate,
+            progress: updateProgress,
+            error: updateError,
+            onCheck: checkUpdate,
+            onInstall: installUpdate,
+          }}
           onSave={saveSettings}
           onRefresh={refresh}
           onReveal={api.revealPath}
+          onOpen={api.openExternal}
         />
       )}
 

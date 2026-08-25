@@ -71,3 +71,11 @@ jobs:
       - name: Check the shell
         working-directory: src-tauri
         run: cargo check
+
+      # src-tauri is not a member of the root workspace, so `cargo test
+      # --workspace` in the job above does not reach it — and the settings
+      # migrations, the demo server's refusals and the updater's checks all
+      # live here. They were going unrun on every platform.
+      - name: Test the shell
+        working-directory: src-tauri
+        run: cargo test

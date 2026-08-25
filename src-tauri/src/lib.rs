@@ -6,10 +6,11 @@
 //! prompt.
 //!
 //! One design note that is easy to lose: **the webview never makes a network
-//! request.** The catalogue and every download are fetched from Rust, which is
-//! why `tauri.conf.json`'s `connect-src` lists only `ipc:` and the feedback
-//! intake origin. The UI cannot reach the internet even if something in it
-//! tried to.
+//! request.** The catalogue, every download and the app's own update are
+//! fetched from Rust, which is why `tauri.conf.json`'s `connect-src` lists only
+//! `ipc:` and the feedback intake origin. The UI cannot reach the internet even
+//! if something in it tried to — the updater included, which is driven through
+//! `update.rs` rather than through its plugin's JavaScript API.
 
 #![deny(unsafe_code)]
 
@@ -19,6 +20,7 @@ mod jobs;
 mod net;
 mod settings;
 mod state;
+mod update;
 
 use state::AppState;
 use tauri::Manager;
@@ -26,6 +28,9 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Driven from Rust, never from the webview: see the module note in
+        // update.rs. The capability file grants the window nothing for it.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
             let state = AppState::new(&handle)?;
@@ -49,6 +54,9 @@ pub fn run() {
             state::film_mode,
             state::film_delay,
             state::film_beat,
+            update::client_version,
+            update::check_update,
+            update::install_update,
             jobs::plan_batch,
             jobs::run_batch,
             jobs::cancel_batch,

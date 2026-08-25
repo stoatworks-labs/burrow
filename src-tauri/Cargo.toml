@@ -22,6 +22,13 @@ burrow-plan = { path = "../crates/burrow-plan" }
 
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+# Burrow updating itself. Default features are rustls, matching the choice
+# made for the app's own client above — though the plugin carries its *own*
+# copy of reqwest (0.13 against this crate's 0.12), so there are two HTTP
+# clients in the binary and only one of them is configured here. Worth knowing
+# before blaming a proxy or a certificate for behaving differently between a
+# plugin download and a self-update.
+tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }

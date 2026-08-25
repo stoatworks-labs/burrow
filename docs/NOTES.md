@@ -410,6 +410,38 @@ clippy, so the artefacts were fine and nothing else complained.
 
 is the command that finds that class from here. It is in AGENTS.md §7 now.
 
+## 2026-08-25 — bulk buttons, and the plugin that could not be removed
+
+Every section heading now carries the buttons for the rows underneath it —
+Update all, Install all, Remove all — and each one is defined as *its rows' own
+button pressed for all of them*. `rowOps` in `src/components/SectionHead.tsx` is
+what both the heading and the row read, which is the only reason a control that
+touches twenty plugins at once is safe to have: it cannot come to mean something
+no individual row offers. The tab-level "Update all" moved into the Update
+available heading rather than being duplicated there.
+
+They act on the rows **on screen**, not on the whole bucket, so a search narrows
+them — hence the count in the label. Install and Remove ask first, in a strip
+under the heading; Update does not, because it keeps what the user already chose
+current and it was one click before this existed. There is no confirmation
+machinery anywhere else in the app and `window.confirm` is not something to rely
+on inside a webview, so the question is ordinary markup.
+
+⚠️ **Uninstall was blind to a format that was behind.** The row's Uninstall
+button was built from slots in `up-to-date` or `version-unknown`, and
+`update-available` is neither. So a plugin behind on every format it had showed
+Update and *no way to remove it at all*, and — worse — a plugin current in VST3
+and behind in Audio Unit had an Uninstall that quietly took the VST3 and left
+the Audio Unit on disk. `rowSlots().present` is `current` plus `behind`, and it
+is what uninstall targets everywhere now, including the Companion module strip.
+Nothing foreign is ever in it: the reconciler reports a bundle sharing a name
+that Burrow did not put there as not-installed, precisely so this kind of list
+cannot reach it.
+
+`humanSize` learned GB in the same pass. One plugin is never a gigabyte; the
+Not installed section of the video tab is 1.2 of them, and it was reading
+"1214.2 MB".
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects
@@ -437,3 +469,78 @@ is the command that finds that class from here. It is in AGENTS.md §7 now.
 - Windows applications are placed as a program folder with **no Start-menu
   shortcut**. Burrow says so in the batch notes rather than writing outside the
   folder it was given.
+
+## 2026-08-25 — Burrow can replace itself
+
+There is a **Check for a new version** button in Settings, under *Burrow itself*,
+and it installs what it finds. `tauri-plugin-updater`, driven from Rust.
+
+**Two different "check for updates" now live in this app**, and keeping them
+apart was most of the interface work. The header's *Check for updates* fetches
+the plugin list; this one is about the application. The Settings pane's
+catalogue button lost the name — it says *Fetch the list now* — and the new one
+is *Check for a new version*, under a heading that names the app. Two controls a
+few centimetres apart, both called "check for updates", meaning different
+things, is the confusion that was available for free.
+
+**The signature is the security boundary, not the address.** `latest.json` and
+every artefact it names are signed with a minisign key at release time; the
+public half is compiled into the binary. HTTPS and the github.com hostname are
+not the check. That matters more here than anywhere else in Burrow — installing
+a plugin puts a file in a plugin folder, and this replaces the application.
+
+⚠️ **The macOS updater tarball must be made after the re-sign.** Tauri's
+`createUpdaterArtifacts` tars the bundle as `tauri build` left it, which is
+before the bundler places `Contents/Resources` — the exact stale-signature
+defect `scripts/build-app.sh` and the release workflow already exist to repair,
+first found on 2026-08-24. Turning that flag on would have shipped it in every
+update, and it would have failed first on somebody else's machine, after a
+download, and only for people who *updated* rather than downloaded — the
+narrowest possible audience for a bug. The workflow tars the staged, re-signed
+copy and signs that with `tauri signer sign`. Windows is signed the same way for
+one further reason: `tauri build` then needs no key at all, so a local
+`scripts/build-app.sh` keeps working.
+
+**A missing platform fails the release.** `make-latest-json.mjs` refuses to emit
+a manifest with two of three platforms in it. Had the Windows job failed and the
+manifest gone out with the two macOS entries, every Windows copy would ask and
+be told *the platform `windows-x86_64` was not found* — an error about our
+release rather than anything the user can act on, repeated at every check until
+somebody reported it. Better one red job that nobody outside sees.
+There is a matching step that fetches the real `/releases/latest/download/`
+URL afterwards and asserts it serves *this* version — because the endpoint
+compiled into every copy is the `latest` alias, and an asset-only tag published
+as a full release would take it. That is not hypothetical here: `videos-v1`
+already did exactly that to `downloads.json` (see the note above), and being a
+prerelease is the only reason it does not do it to the updater.
+
+**Where a copy of Burrow lives decides whether it can update itself**, and the
+check says so before downloading anything. Running from inside the `.dmg` — a
+completely normal thing to do — is a read-only mount, and without the check the
+update downloads perfectly and then fails at the replace with nothing useful to
+say. `install_root` is what the test pins: on macOS what has to be writable is
+the directory holding the `.app`, not `Contents/MacOS` beside the executable,
+which is writable inside a bundle nobody can replace.
+
+**The startup check is off unless asked for.** The Settings pane promises Burrow
+talks to the network when you tell it to, and a check that runs itself at every
+launch quietly stops that being true. It is a checkbox, `serde(default)` to
+false, with a test pinning that an existing settings file does not silently opt
+in. No schema bump: a migration is for a default whose *meaning* changed.
+
+**CI cannot notarise, so the fleet signer finishes the job.** The tarball the
+release workflow publishes holds an *ad-hoc signed* app — the Developer ID key
+does not leave the author's Mac. Left there, the in-app update would have handed
+every user an ad-hoc build to replace the notarised one they downloaded, one
+update at a time, silently, and only for the people who keep themselves current.
+`posthoc-sign.sh` now unpacks, signs, notarises, staples and repacks the
+tarball, then re-signs it with the minisign key and rewrites `latest.json` —
+the last two being inseparable from the first, since a repacked tarball under
+its old signature is refused by every copy in the field. The window is one
+auto-sign tick, during which `latest.json` still points at the ad-hoc build.
+
+**The shell's tests were never running in CI.** `cargo test --workspace` does
+not reach `src-tauri`, which is a standalone workspace — so the settings
+migrations and the demo server's refusals have been unrun since they were
+written, and the updater's would have joined them. The `tauri` CI job now runs
+`cargo test` as well as `cargo check`.
