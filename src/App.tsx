@@ -98,6 +98,9 @@ export function App() {
   const [claimed, setClaimed] = useState<ClaimedEntry[]>([])
   const [scanningClaims, setScanningClaims] = useState(false)
   const [claimError, setClaimError] = useState<string | null>(null)
+  /* Which candidate the error belongs to, so it can be shown on that row.
+     One error line at the top of a list of a dozen is a line nobody sees. */
+  const [claimErrorKey, setClaimErrorKey] = useState<string | null>(null)
 
   /*
    * Subscribe once, on mount, before any job can start.
@@ -323,6 +326,7 @@ export function App() {
     async (c: Claimable) => {
       setBusy(true)
       setClaimError(null)
+      setClaimErrorKey(null)
       try {
         setPlugins(
           await api.claim({
@@ -333,12 +337,17 @@ export function App() {
             version: c.version,
           }),
         )
+        // Only on success. A re-scan begins by clearing the error, so doing it
+        // unconditionally wiped the refusal the instant it was set — and a
+        // refused claim then looked exactly like a button that does nothing,
+        // which is how this was reported.
+        setBusy(false)
+        await scanClaimable()
       } catch (err) {
         setClaimError(String(err))
-      } finally {
+        setClaimErrorKey(`${c.slug}:${c.format}:${c.destinationId}:${c.name}`)
         setBusy(false)
       }
-      await scanClaimable()
     },
     [scanClaimable],
   )
@@ -556,6 +565,7 @@ export function App() {
             claimed,
             scanning: scanningClaims,
             error: claimError,
+            errorKey: claimErrorKey,
             onScan: scanClaimable,
             onClaim: claimOne,
             onRelease: releaseOne,

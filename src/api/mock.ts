@@ -501,6 +501,18 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           contested: false,
         },
       ]
+      if (mode === 'contested' || mode === 'unidentified') {
+        list.push({
+          ...base,
+          slug: 'flock',
+          nameOfProject: 'flock',
+          name: 'flock Launcher.app',
+          identifier: 'com.allansargeant.flock-launcher',
+          version: '0.1.0',
+          evidence: 'identifier',
+          contested: true,
+        })
+      }
       if (mode === 'unidentified') {
         list.push({
           ...base,
@@ -536,7 +548,20 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return c as T
     }
 
-    case 'claim':
+    // Refusing the second bundle of a project in one folder, so the row-level
+    // error can be looked at.
+    case 'claim': {
+      const names = (args as any)?.request?.names ?? []
+      if (String(names[0] ?? '').includes('Launcher')) {
+        throw new Error(
+          'Burrow already manages flock.app here as this project. It can only track ' +
+            'one Application payload per folder, so claiming this as well would make ' +
+            'it forget that one — release it first if this is the copy you want managed.',
+        )
+      }
+      return mockInvoke<T>('list_plugins')
+    }
+
     case 'release':
       // Both return the refreshed list in the real backend.
       return mockInvoke<T>('list_plugins')

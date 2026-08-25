@@ -54,6 +54,7 @@ export function SettingsTab({
     claimed: ClaimedEntry[]
     scanning: boolean
     error: string | null
+    errorKey: string | null
     onScan: () => void
     onClaim: (c: Claimable) => void
     onRelease: (c: ClaimedEntry) => void
@@ -242,6 +243,7 @@ export function SettingsTab({
         scanning={claims.scanning}
         busy={busy}
         error={claims.error}
+        errorKey={claims.errorKey}
         onScan={claims.onScan}
         onClaim={claims.onClaim}
         onRelease={claims.onRelease}

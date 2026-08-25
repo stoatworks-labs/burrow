@@ -509,6 +509,7 @@ pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Pl
                 &d.id,
                 &d.path,
                 &declared,
+                &entry.identifiers,
                 asset.is_some(),
                 entry.version.as_deref(),
             );

@@ -85,6 +85,7 @@ fn main() {
                 &d.id,
                 &d.path,
                 &declared,
+                &entry.identifiers,
                 asset.is_some(),
                 entry.version.as_deref(),
             );

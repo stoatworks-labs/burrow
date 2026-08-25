@@ -470,6 +470,40 @@ Not installed section of the video tab is 1.2 of them, and it was reading
   shortcut**. Burrow says so in the batch notes rather than writing outside the
   folder it was given.
 
+## 2026-08-25 — claiming worked, and then immediately disowned what it claimed
+
+Two defects, both reported as "the claim button doesn't seem to do anything".
+
+**The claimed app still read "not ours".** The whole feature matches on the
+identifiers the catalogue carries — and `reconcile_one`, which is what decides
+`foreign`, was still asking `is_ours()`, the prefix heuristic. I had already
+proved that heuristic wrong for four namespaces this fleet ships
+(`works.stoat.weblinked`, `com.presentationcommander.client`, a bare
+`wsm-wwb-bridge`, a bare `resolve-configurator-gui`), written that down in two
+places, and then not wired the fix into the one function whose job it is. So the
+user adopted the app, the ledger recorded it, and the next reconciliation
+disowned it: no controls, still "not ours", and the row gone from the claim list
+because the ledger now covered it. Adopted and disowned in the same breath.
+
+`reconcile_one` now takes the entry's identifiers and prefers them, with the
+prefix as a fallback for a catalogue that carries none. And a payload the ledger
+records **that still hashes to what was recorded** is not foreign whatever its
+identifier says — Burrow either installed it or the user adopted it, and both
+outrank a guess from a reversed-domain string. The hash is what keeps that
+honest: swap the payload afterwards and the foreign check applies again.
+
+⚠️ **A refused claim showed nothing at all.** `claimOne` set the error and then
+called `scanClaimable()`, which begins with `setClaimError(null)` — so the
+message was wiped in the same tick it was set. Every refusal, including the
+"one payload per project per folder" one that flock, RFutils, SRT Router and
+LEQtion all hit, looked exactly like a dead button. The re-scan now runs only
+on success, and the error renders **on the row that caused it** rather than once
+at the top of a list of thirteen, where nobody would see it.
+
+The lesson worth keeping: a `catch` that is followed by anything which resets
+state is not a `catch`. Both halves of this were invisible rather than wrong —
+no error, no crash, just a control that appeared not to work.
+
 ## 2026-08-25 — the update prompt was describing the app, not the release
 
 v0.2.4's manifest opened with *"An optional desktop client for the Stoatworks

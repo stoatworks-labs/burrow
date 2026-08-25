@@ -27,6 +27,7 @@ export function ClaimPanel({
   scanning,
   busy,
   error,
+  errorKey,
   onScan,
   onClaim,
   onRelease,
@@ -36,6 +37,8 @@ export function ClaimPanel({
   scanning: boolean
   busy: boolean
   error: string | null
+  /** Which candidate the error belongs to, so it lands on that row. */
+  errorKey: string | null
   onScan: () => void
   onClaim: (c: Claimable) => void
   onRelease: (c: ClaimedEntry) => void
@@ -61,7 +64,7 @@ export function ClaimPanel({
         </button>
       </div>
 
-      {error && <div className="inline-err">{error}</div>}
+      {error && !errorKey && <div className="inline-err">{error}</div>}
 
       {claimable !== null && claimable.length === 0 && (
         <div className="stat" style={{ marginTop: 8 }}>
@@ -107,6 +110,11 @@ export function ClaimPanel({
               </div>
             )}
           </div>
+          {errorKey === key(c) && error && (
+            <div className="inline-err" style={{ flexBasis: '100%' }}>
+              {error}
+            </div>
+          )}
           {confirming === key(c) ? (
             <>
               <button

@@ -165,12 +165,25 @@ pub struct Reconciled {
 /// anything else, which is what makes it the single most testable and most
 /// valuable unit in the project.
 ///
-/// Eight arguments, which clippy is right to raise and wrong about here: every
+/// Nine arguments, which clippy is right to raise and wrong about here: every
 /// one of them is a distinct fact this needs, none can be derived from the
 /// others, and bundling them into a struct would move the argument list to the
 /// call site without shortening it. The alternative it is warning against —
 /// passing the catalogue entry and the destination whole — is what would make
 /// this untestable, because a test would then have to build both.
+/// Every bundle identifier the catalogue lists for this project.
+///
+/// ⚠️ **This, not [`bundleinfo::BundleIdentity::is_ours`], is what decides
+/// whether a payload is ours.** The prefix test is a heuristic and is
+/// wrong for four namespaces this fleet actually ships:
+/// `works.stoat.weblinked`, `com.presentationcommander.client`, a bare
+/// `wsm-wwb-bridge` and a bare `resolve-configurator-gui`. Left to the
+/// prefix alone, claiming one of those recorded it in the ledger and the
+/// row *still* reported "not ours" with no controls — the payload was
+/// adopted and then immediately disowned by the next reconciliation.
+///
+/// Empty for a catalogue that carries none, in which case the prefix test
+/// is all there is and behaves as it always did.
 #[allow(clippy::too_many_arguments)]
 pub fn reconcile_one(
     ledger: &Ledger,
@@ -179,6 +192,7 @@ pub fn reconcile_one(
     dest_id: &str,
     dest: &Path,
     declared: &[String],
+    identifiers: &[String],
     has_asset: bool,
     latest: Option<&str>,
 ) -> Reconciled {
@@ -234,7 +248,15 @@ pub fn reconcile_one(
     for name in &present {
         let p = dest.join(name);
         match bundleinfo::read_bundle(&p) {
-            Some(id) if id.is_ours() => {
+            // The catalogue's list first, the prefix as a fallback. A
+            // project that names its identifiers is believed about them.
+            Some(id)
+                if id
+                    .identifier
+                    .as_deref()
+                    .is_some_and(|i| identifiers.iter().any(|k| k == i))
+                    || id.is_ours() =>
+            {
                 saw_ours = true;
                 if identity_version.is_none() {
                     identity_version = id.version;
@@ -246,7 +268,19 @@ pub fn reconcile_one(
             None => {}
         }
     }
-    if saw_foreign && !saw_ours {
+    // A payload the ledger records, still hashing to what was recorded, is not
+    // foreign whatever its identifier says — Burrow either installed it or the
+    // user adopted it deliberately, and both are statements of ownership that
+    // outrank a guess from a reversed-domain string.
+    //
+    // The hash is what keeps this honest: swap the payload for somebody else's
+    // afterwards and it stops matching, and the foreign check applies again.
+    let recorded_and_unchanged = record.is_some_and(|rec| {
+        hashing::hash_entries(dest, &rec.entries)
+            .map(|h| h == rec.payload_sha256)
+            .unwrap_or(false)
+    });
+    if saw_foreign && !saw_ours && !recorded_and_unchanged {
         base.foreign = true;
         base.state = InstallState::NotInstalled;
         return base;
@@ -292,6 +326,94 @@ pub fn reconcile_one(
 
 #[cfg(test)]
 mod tests {
+    /// The bug this exists for: claiming a payload and then being told it is
+    /// not ours on the very next reconciliation.
+    ///
+    /// `wsm-wwb-bridge.app` really does carry a bare `wsm-wwb-bridge` with no
+    /// reversed domain, and Presentation Commander really is
+    /// `com.presentationcommander.client`. Neither matches any owned prefix, so
+    /// with the prefix test alone the user adopted the app, the ledger recorded
+    /// it, and the row still read "not ours" with no controls — adopted and
+    /// immediately disowned.
+    #[test]
+    fn a_claimed_payload_whose_identifier_matches_no_prefix_is_ours() {
+        use super::*;
+        let t = tempfile::TempDir::new().unwrap();
+        let name = "wsm-wwb-bridge.app";
+        let c = t.path().join(name).join("Contents");
+        std::fs::create_dir_all(&c).unwrap();
+        std::fs::write(
+            c.join("Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>wsm-wwb-bridge</string>
+<key>CFBundleVersion</key><string>1.1.0</string>
+</dict></plist>"#,
+        )
+        .unwrap();
+        let names = vec![name.to_string()];
+
+        // Without the catalogue's identifiers: foreign, which is the defect.
+        let empty = Ledger::default();
+        let before = reconcile_one(
+            &empty, "wsm-wwb-bridge", Format::App, "apps", t.path(), &names, &[], true,
+            Some("1.1.0"),
+        );
+        assert!(before.foreign, "the prefix test alone calls it somebody else's");
+
+        // With them: ours, and up to date.
+        let ids = vec!["wsm-wwb-bridge".to_string()];
+        let after = reconcile_one(
+            &empty, "wsm-wwb-bridge", Format::App, "apps", t.path(), &names, &ids, true,
+            Some("1.1.0"),
+        );
+        assert!(!after.foreign);
+        assert!(matches!(after.state, InstallState::UpToDate { .. }), "{:?}", after.state);
+    }
+
+    /// And the second half: a claim is a statement of ownership, so a payload
+    /// the ledger records and that still hashes to what was recorded is not
+    /// foreign even when the catalogue lists no identifiers at all — every
+    /// Windows payload, and anything with no plist to read.
+    #[test]
+    fn a_recorded_payload_that_still_matches_its_hash_is_not_foreign() {
+        use super::*;
+        let t = tempfile::TempDir::new().unwrap();
+        let name = "Stranger.app";
+        let c = t.path().join(name).join("Contents");
+        std::fs::create_dir_all(&c).unwrap();
+        std::fs::write(
+            c.join("Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>org.someone.else</string>
+</dict></plist>"#,
+        )
+        .unwrap();
+        let names = vec![name.to_string()];
+        let hash = crate::hashing::hash_entries(t.path(), &names).unwrap();
+
+        let mut l = Ledger::default();
+        l.upsert(LedgerEntry {
+            slug: "thing".into(),
+            format: Format::App,
+            destination_id: "apps".into(),
+            destination: t.path().to_path_buf(),
+            entries: names.clone(),
+            version: "2.0.0".into(),
+            installed_at: "now".into(),
+            payload_sha256: hash,
+            claimed: true,
+        });
+        let r = reconcile_one(&l, "thing", Format::App, "apps", t.path(), &names, &[], true, Some("2.0.0"));
+        assert!(!r.foreign, "an adopted payload is not disowned by its identifier");
+
+        // Swap it for something else and the claim stops covering it.
+        std::fs::write(c.join("Info.plist"), "<plist/>").unwrap();
+        let r2 = reconcile_one(&l, "thing", Format::App, "apps", t.path(), &names, &[], true, Some("2.0.0"));
+        assert!(!matches!(r2.state, InstallState::UpToDate { .. }));
+    }
+
     use super::*;
     use std::fs;
     use tempfile::TempDir;
@@ -325,7 +447,7 @@ mod tests {
     ) -> Reconciled {
         // The tests here are all video plugins, which always have both: an
         // artefact and the payload names read out of it at release time.
-        reconcile_one(ledger, "tinsel", Format::Ffgl, "arena", dest, declared, !declared.is_empty(), latest)
+        reconcile_one(ledger, "tinsel", Format::Ffgl, "arena", dest, declared, &[], !declared.is_empty(), latest)
     }
 
     #[test]
@@ -522,6 +644,7 @@ mod tests {
             "arena",
             t.path(),
             &entries,
+            &[],
             true,
             Some("v1.0.2"),
         );
@@ -543,6 +666,7 @@ mod tests {
             "applications",
             t.path(),
             &[],
+            &[],
             true, // there is an artefact
             Some("v0.4.0"),
         );
@@ -555,6 +679,7 @@ mod tests {
             Format::App,
             "applications",
             t.path(),
+            &[],
             &[],
             false,
             Some("v0.4.0"),
@@ -590,6 +715,7 @@ mod tests {
             "applications",
             t.path(),
             &[],
+            &[],
             true,
             Some("v0.4.0"),
         );
@@ -605,10 +731,10 @@ mod tests {
         // Avenue has nothing.
         let d = decl(&["Tinsel.bundle"]);
         let a = reconcile_one(
-            &Ledger::default(), "tinsel", Format::Ffgl, "arena", arena.path(), &d, true, Some("v1.0.2"),
+            &Ledger::default(), "tinsel", Format::Ffgl, "arena", arena.path(), &d, &[], true, Some("v1.0.2"),
         );
         let b = reconcile_one(
-            &Ledger::default(), "tinsel", Format::Ffgl, "avenue", avenue.path(), &d, true, Some("v1.0.2"),
+            &Ledger::default(), "tinsel", Format::Ffgl, "avenue", avenue.path(), &d, &[], true, Some("v1.0.2"),
         );
         assert!(matches!(a.state, InstallState::UpToDate { .. }));
         assert_eq!(b.state, InstallState::NotInstalled);
