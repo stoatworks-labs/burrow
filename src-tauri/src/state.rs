@@ -525,6 +525,18 @@ fn ensure_demos(state: &AppState) -> Result<(), String> {
     if slot.is_none() {
         *slot = Some(demos::start(state.demo_root())?);
     }
+    // Refresh the video index every time rather than only on start: the
+    // catalogue can be replaced by a refresh long after the server came up.
+    if let (Some(server), Ok(cat)) = (slot.as_ref(), state.catalog.lock()) {
+        if let Some(cat) = cat.as_ref() {
+            server.set_videos(
+                cat.entries
+                    .iter()
+                    .filter_map(|e| e.video_url.clone().map(|u| (e.slug.clone(), u)))
+                    .collect(),
+            );
+        }
+    }
     Ok(())
 }
 
@@ -534,6 +546,22 @@ pub fn demo_url(state: State<'_, AppState>, slug: String) -> Result<Option<Strin
     let slot = state.demos.lock().map_err(|_| "state is poisoned")?;
     let server = slot.as_ref().ok_or("the demo server is not running")?;
     Ok(server.has(&slug).then(|| server.url_for(&slug)))
+}
+
+/// Where the UI should point a `<video>` for one plugin.
+///
+/// A loopback address, not the GitHub one. GitHub serves release assets with
+/// `content-disposition: attachment`, and WebKit will not render media a server
+/// has declared a download — the element shows its broken glyph and reports
+/// nothing useful. The loopback server passes the same bytes through with the
+/// Range header intact and a `video/mp4` label, so streaming and seeking both
+/// still work.
+#[tauri::command]
+pub fn video_url(state: State<'_, AppState>, slug: String) -> Result<Option<String>, String> {
+    ensure_demos(&state)?;
+    let slot = state.demos.lock().map_err(|_| "state is poisoned")?;
+    let server = slot.as_ref().ok_or("the video player is not running")?;
+    Ok(server.video_url_for(&slug))
 }
 
 /// Open a demo in its own window.

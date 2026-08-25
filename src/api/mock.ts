@@ -347,6 +347,15 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case 'demo_url':
       return `about:blank#${(args as any).slug}` as T
 
+    // In a browser there is no loopback server and no CSP, so the published
+    // URL is used directly. It still will not *play* — GitHub marks it a
+    // download — which is exactly the failure the real app's proxy exists to
+    // avoid, so leaving it visible here is honest.
+    case 'video_url': {
+      const e = (await catalog()).find(x => x.slug === (args as any).slug)
+      return ((e as any)?.videoUrl ?? null) as T
+    }
+
 
     case 'open_demo':
       // eslint-disable-next-line no-console

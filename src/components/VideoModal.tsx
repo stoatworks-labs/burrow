@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { api } from '../api/backend'
 import type { PluginView } from '../api/types'
 
 /**
@@ -26,6 +27,18 @@ import type { PluginView } from '../api/types'
  * so the moov atom sits at the front and playback begins on the first range
  * request rather than after the whole download.
  *
+ * ## Why the src is a loopback address and not the GitHub one
+ *
+ * GitHub serves release assets with `content-disposition: attachment`, and
+ * WebKit will not render media a server has declared a download — the element
+ * shows its broken-playback glyph and reports nothing useful. The content type
+ * is fine (`application/octet-stream` gets sniffed); the disposition is not.
+ *
+ * So Burrow's own loopback server passes the bytes through, forwarding the
+ * Range header upstream and the Content-Range back, labelled `video/mp4`.
+ * Streaming and seeking survive, nothing is buffered to disk, and the bytes
+ * still come from the same GitHub release.
+ *
  * ## When there is no copy
  *
  * `videoUrl` is null for a plugin whose video has no encoded copy. The modal
@@ -44,6 +57,19 @@ export function VideoModal({
 }) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [src, setSrc] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    api
+      .videoUrl(plugin.slug)
+      .then(u => live && setSrc(u))
+      .catch(() => live && setFailed(true))
+    return () => {
+      live = false
+    }
+  }, [plugin.slug])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -96,7 +122,8 @@ export function VideoModal({
         <div className="modal-video">
           <video
             ref={videoRef}
-            src={plugin.videoUrl ?? undefined}
+            src={src ?? undefined}
+            onError={() => setFailed(true)}
             // The bundled still, so the frame is filled before a byte arrives.
             poster={`./video/${plugin.slug}.png`}
             controls
@@ -104,6 +131,21 @@ export function VideoModal({
             playsInline
             preload="metadata"
           />
+          {failed && (
+            <div className="modal-failed">
+              That video could not be played.
+              {plugin.youtube && (
+                <button
+                  className="btn"
+                  onClick={() =>
+                    onOpenExternal(`https://www.youtube.com/watch?v=${plugin.youtube}`)
+                  }
+                >
+                  Watch it on YouTube instead
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="modal-note">
           Streamed from this project&rsquo;s own GitHub release — the same place

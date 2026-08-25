@@ -1,6 +1,6 @@
 [package]
 name = "burrow"
-version = "0.1.2"
+version = "0.1.3"
 description = "Stoatworks Burrow — install, update and remove the Stoatworks video plugins"
 authors = ["Allan Sargeant"]
 edition = "2021"
@@ -28,7 +28,11 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 # rustls rather than the system TLS stack, matching sprocket: it keeps macOS and
 # Windows behaving identically, and `stream` is what gives byte-level download
 # progress rather than a spinner.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+# `blocking` is for the demo server's video proxy, which runs on its own thread
+# outside the async runtime. See demos.rs — GitHub serves release assets with
+# `content-disposition: attachment`, which WebKit refuses to render as media, so
+# the bytes are passed through and re-labelled rather than linked to directly.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "blocking"] }
 futures-util = "0.3"
 sha2 = "0.10"
 hex = "0.4"

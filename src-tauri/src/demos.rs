@@ -27,16 +27,22 @@
 //! Burrow streams its own copy of each video from a GitHub release, so there is
 //! no embed to host and nothing here reaches the internet.
 
-use std::io::Cursor;
+use std::collections::BTreeMap;
+use std::io::{Cursor, Read};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
 use std::path::{Component, Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
+
+/// Slug → the URL its video is published at. Filled in when the catalogue
+/// loads; read by the proxy route below.
+pub type VideoIndex = Arc<Mutex<BTreeMap<String, String>>>;
 
 pub struct DemoServer {
     pub port: u16,
     pub token: String,
     root: PathBuf,
+    videos: VideoIndex,
 }
 
 impl DemoServer {
@@ -45,6 +51,27 @@ impl DemoServer {
         format!("http://127.0.0.1:{}/{}/{}/", self.port, self.token, slug)
     }
 
+
+    /// The address to give a `<video>` for one plugin.
+    ///
+    /// Not the GitHub URL itself. GitHub serves release assets with
+    /// `content-disposition: attachment`, and WebKit refuses to render media
+    /// marked as a download — the element shows its broken-playback glyph and
+    /// reports no error worth the name. So the bytes are passed through this
+    /// server, which re-labels them as `video/mp4` and forwards the Range
+    /// header both ways, preserving streaming and seeking.
+    pub fn video_url_for(&self, slug: &str) -> Option<String> {
+        let known = self.videos.lock().ok()?.contains_key(slug);
+        (known && safe_slug(slug).is_some())
+            .then(|| format!("http://127.0.0.1:{}/{}/__video/{slug}", self.port, self.token))
+    }
+
+    /// Tell the server where each plugin's video lives.
+    pub fn set_videos(&self, map: BTreeMap<String, String>) {
+        if let Ok(mut v) = self.videos.lock() {
+            *v = map;
+        }
+    }
 
     pub fn has(&self, slug: &str) -> bool {
         safe_slug(slug).is_some_and(|s| self.root.join(s).join("index.html").is_file())
@@ -215,8 +242,10 @@ pub fn start(root: PathBuf) -> Result<DemoServer, String> {
     let server = tiny_http::Server::from_listener(listener, None)
         .map_err(|e| format!("could not start the demo server: {e}"))?;
 
+    let videos: VideoIndex = Arc::new(Mutex::new(BTreeMap::new()));
     let thread_root = root.clone();
     let thread_token = token.clone();
+    let thread_videos = videos.clone();
     let (ready_tx, ready_rx) = mpsc::channel();
 
     thread::Builder::new()
@@ -224,13 +253,13 @@ pub fn start(root: PathBuf) -> Result<DemoServer, String> {
         .spawn(move || {
             let _ = ready_tx.send(());
             for request in server.incoming_requests() {
-                serve(request, &thread_root, &thread_token);
+                serve(request, &thread_root, &thread_token, &thread_videos);
             }
         })
         .map_err(|e| format!("could not start the demo server thread: {e}"))?;
 
     let _ = ready_rx.recv();
-    Ok(DemoServer { port, token, root })
+    Ok(DemoServer { port, token, root, videos })
 }
 
 fn header(name: &str, value: &str) -> tiny_http::Header {
@@ -238,7 +267,79 @@ fn header(name: &str, value: &str) -> tiny_http::Header {
         .expect("static header is well formed")
 }
 
-fn serve(request: tiny_http::Request, root: &Path, token: &str) {
+/// Pass a video through from where it is published, re-labelled so a browser
+/// will play it.
+///
+/// GitHub serves release assets as `application/octet-stream` with
+/// `content-disposition: attachment`. The content type alone is fine — WebKit
+/// sniffs it — but the disposition is not: a media element will not render
+/// something the server has declared a download, and it fails with no useful
+/// error at all.
+///
+/// So this fetches the same bytes, forwards the caller's `Range` header
+/// upstream and the resulting `Content-Range` back, and answers with
+/// `video/mp4`. Seeking and progressive playback both survive, and nothing is
+/// buffered to disk.
+fn proxy_video(request: tiny_http::Request, url: &str) {
+    let range = request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Range"))
+        .map(|h| h.value.as_str().to_string());
+
+    let client = match reqwest::blocking::Client::builder()
+        .user_agent(crate::net::user_agent())
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => {
+            let _ = request.respond(tiny_http::Response::empty(502));
+            return;
+        }
+    };
+
+    let mut req = client.get(url);
+    if let Some(r) = &range {
+        req = req.header(reqwest::header::RANGE, r);
+    }
+    let upstream = match req.send() {
+        Ok(r) if r.status().is_success() => r,
+        _ => {
+            let _ = request.respond(tiny_http::Response::empty(502));
+            return;
+        }
+    };
+
+    let status = upstream.status().as_u16();
+    let content_range = upstream
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let len = upstream.content_length();
+
+    let mut headers = vec![
+        header("Content-Type", "video/mp4"),
+        header("Accept-Ranges", "bytes"),
+        header("Cache-Control", "no-store"),
+    ];
+    if let Some(cr) = &content_range {
+        headers.push(header("Content-Range", cr));
+    }
+
+    let reader: Box<dyn Read + Send> = Box::new(upstream);
+    let response = tiny_http::Response::new(
+        tiny_http::StatusCode(status),
+        headers,
+        reader,
+        len.map(|n| n as usize),
+        None,
+    );
+    let _ = request.respond(response);
+}
+
+fn serve(request: tiny_http::Request, root: &Path, token: &str, videos: &VideoIndex) {
     if request.method() != &tiny_http::Method::Get {
         let _ = request.respond(tiny_http::Response::empty(405));
         return;
@@ -246,6 +347,20 @@ fn serve(request: tiny_http::Request, root: &Path, token: &str) {
 
     let url = request.url().split('?').next().unwrap_or("").to_string();
 
+
+    // A plugin's video, passed through from where it is published.
+    if let Some(slug) = url.strip_prefix(&format!("/{token}/__video/")) {
+        let target = safe_slug(slug)
+            .and_then(|s| videos.lock().ok().and_then(|v| v.get(s).cloned()));
+        match target {
+            Some(u) => proxy_video(request, &u),
+            None => {
+                let _ = request
+                    .respond(tiny_http::Response::from_string("Not found").with_status_code(404));
+            }
+        }
+        return;
+    }
 
     let resolved = resolve(root, token, &url);
 
@@ -425,6 +540,29 @@ mod tests {
         // A plugin with no demo must not be reachable by a crafted slug either.
         assert!(!srv.has("../../etc"));
         assert_eq!(srv.slugs(), vec!["tinsel".to_string()]);
+    }
+
+    #[test]
+    fn a_video_the_server_does_not_know_is_not_proxied() {
+        // The proxy fetches whatever URL it is handed, so what it will accept
+        // is the whole of its security surface: only slugs the catalogue put in
+        // the index, and only well-formed ones.
+        let t = demo_tree();
+        let srv = start(t.path().to_path_buf()).unwrap();
+        assert_eq!(srv.video_url_for("tinsel"), None, "nothing indexed yet");
+
+        srv.set_videos(
+            [("tinsel".to_string(), "https://example.invalid/tinsel.mp4".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        assert!(srv.video_url_for("tinsel").is_some());
+        assert_eq!(srv.video_url_for("orrery"), None, "not in the index");
+        assert_eq!(srv.video_url_for("../../etc"), None, "not a plain slug");
+
+        // And the route refuses an unknown slug rather than fetching anything.
+        assert_eq!(get(srv.port, &format!("/{}/__video/orrery", srv.token)).0, 404);
+        assert_eq!(get(srv.port, "/wrongtoken/__video/tinsel").0, 404);
     }
 
     #[test]

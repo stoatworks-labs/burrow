@@ -53,6 +53,7 @@ export const api = {
   runBatch: (plan: BatchPlan) => invoke<BatchOutcome>('run_batch', { plan }),
   cancelBatch: (batch: string) => invoke<void>('cancel_batch', { batch }),
   demoUrl: (slug: string) => invoke<string | null>('demo_url', { slug }),
+  videoUrl: (slug: string) => invoke<string | null>('video_url', { slug }),
   openDemo: (slug: string) => invoke<void>('open_demo', { slug }),
   openExternal: (url: string) => invoke<void>('open_external', { url }),
   revealPath: (path: string) => invoke<void>('reveal_path', { path }),

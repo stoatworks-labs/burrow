@@ -231,6 +231,34 @@ The website filters unpublished platforms out for now so 0.1.1 keeps working.
 That filter comes out once 0.1.2 is the oldest version in the wild — it is
 about client compatibility, not about Linux.
 
+## 2026-08-25 — GitHub marks release assets as downloads, so nothing plays
+
+A `<video>` pointed straight at a GitHub release asset shows WebKit's
+broken-playback glyph and reports nothing useful. The asset is served with
+
+    content-type: application/octet-stream
+    content-disposition: attachment; filename=abomerration.mp4
+
+The content type is fine — WebKit sniffs it. **The disposition is not**: a media
+element will not render something the server has declared a download.
+
+⚠️ **My own verification missed it.** Before committing to GitHub hosting I
+served a file locally "exactly how GitHub does it" and watched it play — but I
+replicated the content type and the range support, and not the disposition. Two
+of the three things that mattered. If a test exists to de-risk a decision, it
+has to reproduce *all* of what the real thing does, and the way to check that is
+to diff the real response headers against the fake one's rather than to
+enumerate them from memory.
+
+Fixed by passing the bytes through the loopback server that already existed for
+the demos: it forwards the caller's `Range` upstream and the `Content-Range`
+back, and answers `video/mp4` with no disposition. Streaming and seeking both
+survive and nothing is buffered to disk. Verified by proxying the real asset and
+playing it, seeking included.
+
+The CSP got smaller as a result — `media-src` is loopback only, because the
+webview no longer talks to GitHub at all. The Rust side does.
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects
