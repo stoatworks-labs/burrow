@@ -36,7 +36,9 @@
 //! fleet publishes, and the only shape whose meaning is unambiguous.
 
 use crate::archive::{ArchiveError, Unpacked};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(target_os = "macos")]
+use std::path::PathBuf;
 
 /// A UDIF disk image's trailer.
 ///
@@ -50,6 +52,10 @@ pub fn looks_like_dmg(trailer: &[u8]) -> bool {
 }
 
 /// Read the last 512 bytes of a file, for [`looks_like_dmg`].
+///
+/// Compiled on macOS, where the mounting happens, and under `cfg(test)`
+/// everywhere so the trailer check keeps its test on every platform CI runs.
+#[cfg(any(target_os = "macos", test))]
 fn trailer(path: &Path) -> Result<Vec<u8>, ArchiveError> {
     use std::io::{Read, Seek, SeekFrom};
     let mut f = std::fs::File::open(path)?;
@@ -133,6 +139,11 @@ pub fn extract_app(_image: &Path, _dest: &Path) -> Result<Unpacked, ArchiveError
 }
 
 /// Find the one application on a mounted image and copy it into `dest`.
+///
+/// macOS-only, like everything that can reach it: without the gate this is dead
+/// code on Linux and Windows, and CI runs clippy with `-D warnings` on all
+/// three. That failure is invisible from a Mac.
+#[cfg(target_os = "macos")]
 fn copy_app_from(mount: &Path, dest: &Path) -> Result<Unpacked, ArchiveError> {
     let mut apps: Vec<PathBuf> = Vec::new();
     let mut extras: Vec<String> = Vec::new();

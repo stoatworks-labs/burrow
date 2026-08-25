@@ -677,12 +677,10 @@ pub fn validate_layout(
             // where the whole archive becomes one directory: an application
             // without an .exe and a module without a package.json are both
             // refused there, before anything is staged.
-            (Format::Companion, _) => {
-                if !is_dir || !p.join("package.json").is_file() {
-                    return Err(ArchiveError::UnexpectedLayout(format!(
-                        "{name} has no package.json, so Companion would not load it"
-                    )));
-                }
+            (Format::Companion, _) if !is_dir || !p.join("package.json").is_file() => {
+                return Err(ArchiveError::UnexpectedLayout(format!(
+                    "{name} has no package.json, so Companion would not load it"
+                )))
             }
             _ => {}
         }

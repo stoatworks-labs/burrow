@@ -33,6 +33,8 @@ row — Companion's own developer modules folder is a destination like any other
 
 Burrow is one searchable list instead of all that.
 
+**Video:** [What it does, in 43 seconds](https://www.youtube.com/watch?v=NRaDQlkksXA)
+
 <table>
   <tr>
     <td align="center"><img src="docs/screenshots/plugins.png" width="380" alt="The video plugin list, grouped into up to date, update available and not installed, with per-format state on each row"><br><sub>Video</sub></td>

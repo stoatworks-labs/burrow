@@ -149,6 +149,14 @@ pub struct Reconciled {
 /// A pure-ish function: it reads the filesystem but makes no decisions from
 /// anything else, which is what makes it the single most testable and most
 /// valuable unit in the project.
+///
+/// Eight arguments, which clippy is right to raise and wrong about here: every
+/// one of them is a distinct fact this needs, none can be derived from the
+/// others, and bundling them into a struct would move the argument list to the
+/// call site without shortening it. The alternative it is warning against —
+/// passing the catalogue entry and the destination whole — is what would make
+/// this untestable, because a test would then have to build both.
+#[allow(clippy::too_many_arguments)]
 pub fn reconcile_one(
     ledger: &Ledger,
     slug: &str,
