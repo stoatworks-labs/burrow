@@ -154,17 +154,17 @@ What has **not**:
 
 ## Download
 
-**[v0.1.3](https://github.com/stoatworks-labs/burrow/releases/tag/v0.1.3)** — prebuilt for macOS and Windows. Pick your platform:
+**[v0.2.2](https://github.com/stoatworks-labs/burrow/releases/tag/v0.2.2)** — prebuilt for macOS and Windows. Pick your platform:
 
 <details>
 <summary><b>macOS</b> — Apple Silicon, Intel</summary>
 
 | Build | Download | Size |
 | --- | --- | --- |
-| Apple Silicon · .dmg disk image | [`burrow-0.1.3-macos-aarch64.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.3/burrow-0.1.3-macos-aarch64.dmg) | 8.5 MB |
-| Intel · .dmg disk image | [`burrow-0.1.3-macos-x86_64.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.3/burrow-0.1.3-macos-x86_64.dmg) | 8.8 MB |
-| Apple Silicon · .pkg installer | [`burrow-0.1.3-macos-aarch64.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.3/burrow-0.1.3-macos-aarch64.pkg) | 8.5 MB |
-| Intel · .pkg installer | [`burrow-0.1.3-macos-x86_64.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.3/burrow-0.1.3-macos-x86_64.pkg) | 8.8 MB |
+| Apple Silicon · .dmg disk image | [`burrow-0.2.2-macos-aarch64.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.2/burrow-0.2.2-macos-aarch64.dmg) | 11 MB |
+| Intel · .dmg disk image | [`burrow-0.2.2-macos-x86_64.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.2/burrow-0.2.2-macos-x86_64.dmg) | 11 MB |
+| Apple Silicon · .pkg installer | [`burrow-0.2.2-macos-aarch64.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.2/burrow-0.2.2-macos-aarch64.pkg) | 11 MB |
+| Intel · .pkg installer | [`burrow-0.2.2-macos-x86_64.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.2/burrow-0.2.2-macos-x86_64.pkg) | 11 MB |
 
 </details>
 
@@ -173,7 +173,7 @@ What has **not**:
 
 | Build | Download | Size |
 | --- | --- | --- |
-| x64 · .exe installer | [`Stoatworks.Burrow_0.1.3_x64-setup.exe`](https://github.com/stoatworks-labs/burrow/releases/download/v0.1.3/Stoatworks.Burrow_0.1.3_x64-setup.exe) | 6.9 MB |
+| x64 · .exe installer | [`Stoatworks.Burrow_0.2.2_x64-setup.exe`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.2/Stoatworks.Burrow_0.2.2_x64-setup.exe) | 9.2 MB |
 
 </details>
 
