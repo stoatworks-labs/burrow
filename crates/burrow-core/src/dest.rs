@@ -169,6 +169,12 @@ pub fn openfx_dir(platform: Platform) -> Option<PathBuf> {
             .ok()
             .filter(|s| !s.is_empty())
             .map(|base| PathBuf::from(base).join("OFX").join("Plugins")),
+        // The reference host pushes /usr/OFX/Plugins on Linux, and DaVinci
+        // Resolve runs there. Correct today even though Burrow has no Linux
+        // build of its own — plugins have started shipping Linux OpenFX
+        // artefacts, so this is the answer waiting for a client that can use it.
+        Platform::Linux => Some(PathBuf::from("/usr/OFX/Plugins")),
+        Platform::Unknown => None,
     }
 }
 
@@ -193,6 +199,8 @@ pub fn adobe_dir(platform: Platform) -> Option<PathBuf> {
                     .join("7.0")
                     .join("MediaCore")
             }),
+        // Adobe ships no Linux host, so there is no destination to offer.
+        Platform::Linux | Platform::Unknown => None,
     }
 }
 
@@ -340,6 +348,20 @@ mod tests {
             .map(|d| d.id.as_str())
             .collect();
         assert_eq!(ffgl, vec!["arena", "avenue"]);
+    }
+
+    #[test]
+    fn linux_has_an_openfx_home_but_no_adobe_one() {
+        // Resolve runs on Linux and loads from /usr/OFX/Plugins; After Effects
+        // does not exist there at all.
+        assert_eq!(openfx_dir(Platform::Linux), Some(PathBuf::from("/usr/OFX/Plugins")));
+        assert_eq!(adobe_dir(Platform::Linux), None);
+    }
+
+    #[test]
+    fn an_unknown_platform_offers_nothing_rather_than_guessing() {
+        assert_eq!(openfx_dir(Platform::Unknown), None);
+        assert_eq!(adobe_dir(Platform::Unknown), None);
     }
 
     #[test]

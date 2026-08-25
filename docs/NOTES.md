@@ -204,6 +204,33 @@ The videos live under a **versioned tag** (`videos-v1`) rather than one that
 gets reused, because nothing removes a superseded asset when a release is re-cut
 under the same tag.
 
+## 2026-08-25 — a new platform key broke every shipped client
+
+Three plugins gained Linux OpenFX builds. The catalogue gained a `linux`
+platform key. Every installed copy of Burrow stopped being able to parse the
+catalogue **at all**:
+
+    unknown variant `linux`, expected `macos` or `windows`
+
+Not that one key — the whole file. They fell back to the cached copy and said
+so, which is the fallback doing its job, but they stopped seeing new releases.
+
+**The defect was an asymmetry I wrote myself.** `Format` has had
+`#[serde(other)] Unknown` from the first commit, with a comment saying it is
+"why the catalogue can gain a format without breaking every copy of Burrow
+already installed". `Platform` did not have it. Same file, same argument, one
+of the two enums.
+
+So: `Platform` now has `Linux` (a real platform — Resolve runs there and loads
+from `/usr/OFX/Plugins`) *and* `Unknown`. The rule to carry forward is that
+**every open vocabulary the catalogue carries must be tolerant on the client
+side**, because a website deploy must never be able to break an installed app.
+Check that before adding the next enum, not after.
+
+The website filters unpublished platforms out for now so 0.1.1 keeps working.
+That filter comes out once 0.1.2 is the oldest version in the wild — it is
+about client compatibility, not about Linux.
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects

@@ -76,12 +76,34 @@ impl Format {
 pub enum Platform {
     Macos,
     Windows,
+    /// Plugins have begun shipping Linux OpenFX builds — DaVinci Resolve runs
+    /// there and loads from `/usr/OFX/Plugins`. Burrow itself has no Linux
+    /// build yet, so this is carried and not offered.
+    Linux,
+    /// A platform this build has never heard of.
+    ///
+    /// This exists for the same reason `Format::Unknown` does, and it was added
+    /// after learning the lesson the expensive way: `Format` had the fallback
+    /// from the start, `Platform` did not, and the day three plugins gained
+    /// Linux OpenFX builds every shipped client stopped being able to parse the
+    /// catalogue at all — `unknown variant "linux", expected "macos" or
+    /// "windows"`. The whole file failed, not the one key.
+    ///
+    /// A website deploy must never be able to do that. Anywhere the catalogue
+    /// carries an open vocabulary, the client tolerates a value it does not
+    /// know and ignores it.
+    #[serde(other)]
+    Unknown,
 }
 
 impl Platform {
-    /// The platform this copy of Burrow is running on, or None on a platform
-    /// no plugin ships for. Linux builds of Burrow itself are possible; Linux
-    /// builds of the plugins are not, so the honest answer there is "none".
+    /// The platform this copy of Burrow is running on, or None where it does
+    /// not ship.
+    ///
+    /// Linux deliberately returns None for now: plugins have started shipping
+    /// Linux OpenFX builds, but Burrow has no Linux build of its own, so
+    /// nothing can reach this on Linux anyway. Return `Some(Linux)` here the
+    /// day that changes.
     pub fn current() -> Option<Self> {
         if cfg!(target_os = "macos") {
             Some(Platform::Macos)
@@ -97,6 +119,8 @@ impl Platform {
         match self {
             Platform::Macos => "macos",
             Platform::Windows => "windows",
+            Platform::Linux => "linux",
+            Platform::Unknown => "unknown",
         }
     }
 }
@@ -226,6 +250,18 @@ mod tests {
         assert!(!Format::Ffgl.needs_elevation());
         assert!(Format::Openfx.needs_elevation());
         assert!(Format::Adobe.needs_elevation());
+    }
+
+    #[test]
+    fn an_unknown_platform_does_not_fail_the_parse() {
+        // The bug this exists for: three plugins gained Linux OpenFX builds,
+        // the catalogue gained a `linux` platform key, and every shipped client
+        // stopped being able to read the whole file — not the one key, the
+        // whole file.
+        let p: Platform = serde_json::from_str("\"linux\"").unwrap();
+        assert_eq!(p, Platform::Linux);
+        let p: Platform = serde_json::from_str("\"haiku\"").unwrap();
+        assert_eq!(p, Platform::Unknown);
     }
 
     #[test]
