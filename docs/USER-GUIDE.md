@@ -124,6 +124,27 @@ Both say what they actually did — *"2 new versions · 1 now needs updating"*, 
 you are looking at came from the copy that shipped with the app rather than a
 live check, the second button says **not checked** rather than a time.
 
+## Software you installed yourself
+
+Burrow only manages what it installed. If you already had one of these
+applications or audio plugins on the machine, it will say **not installed** and
+offer you a download — because an application carries no name Burrow is looking
+for, so it genuinely cannot see it.
+
+**Settings → Software already on this machine → Look for it.** Anything it
+recognises is listed with the file, the folder it is in, and the version. Press
+**Claim** and it tells you exactly what that means before you confirm: Burrow
+records the file as its own, will replace it when there is an update, and will
+delete it if you uninstall — the same as anything it installed itself.
+
+It recognises things by the identifier inside the bundle, not by the filename,
+so renaming a file will not fool it and nothing that is not ours can be offered
+by accident. On Windows there is no identifier to read, so a claim there is
+your word for it, and Burrow says so on the row.
+
+**Release** undoes a claim. It only makes Burrow forget the file; nothing is
+moved or deleted.
+
 ## Updating Burrow itself
 
 Those two buttons are about the *plugins*. Burrow's own version is in

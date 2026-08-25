@@ -1,4 +1,6 @@
 import type {
+  Claimable,
+  ClaimedEntry,
   CatalogInfo,
   Environment,
   FormatId,
@@ -9,6 +11,7 @@ import type {
 import { FORMAT_HOSTS, FORMAT_LABEL } from '../api/types'
 import { humanDate } from '../api/backend'
 import { ClientUpdate } from '../components/ClientUpdate'
+import { ClaimPanel } from '../components/ClaimPanel'
 
 /**
  * Every format Burrow installs, in the order they are offered.
@@ -24,6 +27,7 @@ export function SettingsTab({
   catalog,
   busy,
   client,
+  claims,
   onSave,
   onRefresh,
   onReveal,
@@ -43,6 +47,16 @@ export function SettingsTab({
     error: string | null
     onCheck: () => void
     onInstall: () => void
+  }
+  /** Adopting software already on the machine, owned by App. */
+  claims: {
+    claimable: Claimable[] | null
+    claimed: ClaimedEntry[]
+    scanning: boolean
+    error: string | null
+    onScan: () => void
+    onClaim: (c: Claimable) => void
+    onRelease: (c: ClaimedEntry) => void
   }
   onSave: (s: Settings) => void
   onRefresh: () => void
@@ -221,6 +235,17 @@ export function SettingsTab({
           </label>
         </div>
       </div>
+
+      <ClaimPanel
+        claimable={claims.claimable}
+        claimed={claims.claimed}
+        scanning={claims.scanning}
+        busy={busy}
+        error={claims.error}
+        onScan={claims.onScan}
+        onClaim={claims.onClaim}
+        onRelease={claims.onRelease}
+      />
 
       <ClientUpdate
         version={client.version}

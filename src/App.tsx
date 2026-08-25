@@ -10,6 +10,8 @@ import type {
   PluginView,
   Progress,
   Settings,
+  Claimable,
+  ClaimedEntry,
   UpdateInfo,
   UpdateProgress,
 } from './api/types'
@@ -88,6 +90,13 @@ export function App() {
   const [updateProgress, setUpdateProgress] = useState<UpdateProgress | null>(null)
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [updateDismissed, setUpdateDismissed] = useState(false)
+
+  /* Adopting software already on the machine. Null means "not looked yet",
+     which reads differently from an empty list and is shown differently. */
+  const [claimable, setClaimable] = useState<Claimable[] | null>(null)
+  const [claimed, setClaimed] = useState<ClaimedEntry[]>([])
+  const [scanningClaims, setScanningClaims] = useState(false)
+  const [claimError, setClaimError] = useState<string | null>(null)
 
   /*
    * Subscribe once, on mount, before any job can start.
@@ -288,6 +297,67 @@ export function App() {
     })()
   }, [settings])
 
+  const scanClaimable = useCallback(async () => {
+    setScanningClaims(true)
+    setClaimError(null)
+    try {
+      const [found, held] = await Promise.all([api.scanClaimable(), api.listClaimed()])
+      setClaimable(found)
+      setClaimed(held)
+    } catch (err) {
+      setClaimError(String(err))
+    } finally {
+      setScanningClaims(false)
+    }
+  }, [])
+
+  /**
+   * Adopt one payload, then re-scan.
+   *
+   * The claim returns the refreshed plugin list, so the row it affects updates
+   * without a manual rescan; the re-scan afterwards is what takes the adopted
+   * item out of the offered list and puts it under Claimed.
+   */
+  const claimOne = useCallback(
+    async (c: Claimable) => {
+      setBusy(true)
+      setClaimError(null)
+      try {
+        setPlugins(
+          await api.claim({
+            slug: c.slug,
+            format: c.format,
+            destinationId: c.destinationId,
+            names: [c.name],
+            version: c.version,
+          }),
+        )
+      } catch (err) {
+        setClaimError(String(err))
+      } finally {
+        setBusy(false)
+      }
+      await scanClaimable()
+    },
+    [scanClaimable],
+  )
+
+  const releaseOne = useCallback(
+    async (c: ClaimedEntry) => {
+      setBusy(true)
+      setClaimError(null)
+      try {
+        setPlugins(await api.release(c.slug, c.format, c.destinationId))
+      } catch (err) {
+        setClaimError(String(err))
+      } finally {
+        setBusy(false)
+      }
+      await scanClaimable()
+    },
+    [scanClaimable],
+  )
+
   const runOps = useCallback(
     async (requests: OpRequest[]) => {
       if (requests.length === 0) return
@@ -479,6 +549,15 @@ export function App() {
             error: updateError,
             onCheck: checkUpdate,
             onInstall: installUpdate,
+          }}
+          claims={{
+            claimable,
+            claimed,
+            scanning: scanningClaims,
+            error: claimError,
+            onScan: scanClaimable,
+            onClaim: claimOne,
+            onRelease: releaseOne,
           }}
           onSave={saveSettings}
           onRefresh={refresh}

@@ -13,6 +13,7 @@
 
 import type {
   BatchOutcome,
+  FormatId,
   BatchPlan,
   CatalogInfo,
   Environment,
@@ -20,6 +21,8 @@ import type {
   PluginView,
   Progress,
   Settings,
+  Claimable,
+  ClaimedEntry,
   UpdateInfo,
   UpdateProgress,
 } from './types'
@@ -61,6 +64,21 @@ export const api = {
   saveCompose: (slug: string, text: string) =>
     invoke<string>('save_compose', { slug, text }),
   revealPath: (path: string) => invoke<void>('reveal_path', { path }),
+  /** Everything on this machine Burrow could adopt but has not. */
+  scanClaimable: () => invoke<Claimable[]>('scan_claimable'),
+  /** What the user has adopted, so it can be handed back. */
+  listClaimed: () => invoke<ClaimedEntry[]>('list_claimed'),
+  /** Adopt one payload. Returns the refreshed list, so the row updates. */
+  claim: (request: {
+    slug: string
+    format: FormatId
+    destinationId: string
+    names: string[]
+    version: string | null
+  }) => invoke<PluginView[]>('claim', { request }),
+  /** Stop managing it. Deletes nothing. */
+  release: (slug: string, format: FormatId, destinationId: string) =>
+    invoke<PluginView[]>('release', { slug, format, destinationId }),
   clientVersion: () => invoke<string>('client_version'),
   checkUpdate: () => invoke<UpdateInfo>('check_update'),
   /** Does not resolve on success: the app restarts into the new version. */

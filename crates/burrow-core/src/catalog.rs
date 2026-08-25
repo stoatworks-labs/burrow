@@ -100,6 +100,28 @@ pub struct Entry {
     pub role: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Every bundle identifier this project ships.
+    ///
+    /// What makes a hand-installed copy recognisable. Burrow can already
+    /// identify a *plugin* on disk, because the catalogue declares its payload
+    /// names and the bundle then confirms itself; nothing probes an
+    /// application, an audio plugin or a Companion module, so for those there
+    /// are no names to look for and a copy the user installed themselves is
+    /// invisible. The identifier closes that gap: it is inside the bundle, and
+    /// it does not depend on what anybody called the file.
+    ///
+    /// ⚠️ **This is the authority, not [`bundleinfo::OWNED_PREFIXES`].** Six of
+    /// the twenty-two applications whose identity was read off this machine's
+    /// own disk do not match either owned prefix — `works.stoat.weblinked`,
+    /// `com.presentationcommander.client`, `com.stoatworkslabs.aquilon-vpu-map`,
+    /// and a bare `wsm-wwb-bridge` with no reversed domain at all. A prefix
+    /// test would call four namespaces of this fleet's own software foreign.
+    ///
+    /// Empty is a real and common answer — every Companion module is a
+    /// JavaScript package with no bundle — and means "cannot recognise a
+    /// hand-installed copy of this", never "this is not ours".
+    #[serde(default)]
+    pub identifiers: Vec<String>,
     /// The project's `docker-compose.yml`, verbatim, for the tools you run as a
     /// container. None for everything else.
     ///

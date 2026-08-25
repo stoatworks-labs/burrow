@@ -14,6 +14,7 @@
 
 #![deny(unsafe_code)]
 
+mod claims;
 mod demos;
 mod elevate;
 mod jobs;
@@ -57,6 +58,10 @@ pub fn run() {
             update::client_version,
             update::check_update,
             update::install_update,
+            claims::scan_claimable,
+            claims::list_claimed,
+            claims::claim,
+            claims::release,
             jobs::plan_batch,
             jobs::run_batch,
             jobs::cancel_batch,

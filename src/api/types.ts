@@ -222,6 +222,41 @@ export interface UpdateProgress {
   done: boolean
 }
 
+/**
+ * Something on disk that Burrow could adopt.
+ *
+ * `evidence` is why it believes the thing is what it says: `identifier` means
+ * the bundle's own identifier is one the catalogue lists for that project,
+ * which is the only evidence worth having. `user-asserted` means the payload
+ * carries no identity at all — every Windows one — and the claim rests on the
+ * user pointing at it.
+ */
+export interface Claimable {
+  slug: string
+  /** The exact top-level name on disk. What a claim records. */
+  name: string
+  identifier: string | null
+  version: string | null
+  evidence: 'identifier' | 'user-asserted'
+  nameOfProject: string
+  format: FormatId
+  destinationId: string
+  destinationLabel: string
+  /** Abbreviated — a real path carries the account name. */
+  destinationDisplayPath: string
+}
+
+/** A ledger entry the user adopted, and can hand back. */
+export interface ClaimedEntry {
+  slug: string
+  nameOfProject: string
+  format: FormatId
+  destinationId: string
+  destinationLabel: string
+  names: string[]
+  version: string | null
+}
+
 export type Action = 'install' | 'update' | 'uninstall'
 
 export interface OpRequest {

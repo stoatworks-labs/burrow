@@ -607,12 +607,19 @@ fn record(app: &AppHandle, r: &Ready, batch: &str) {
         destination: r.unit.destination.clone(),
         entries: r.entries.clone(),
         version: r.unit.version.clone().unwrap_or_default(),
-        installed_at: now_rfc3339(),
+        installed_at: now_stamp(),
         payload_sha256: payload_sha,
+        claimed: false,
     });
 }
 
-fn now_rfc3339() -> String {
+/// When something was written into the ledger.
+///
+/// **Not RFC 3339, whatever this was called before.** Nothing in this workspace
+/// pulls in a date library, and `installed_at` is only ever read by a person
+/// looking at `ledger.json` — so it is seconds since the epoch, labelled as
+/// such. A value that says what it is beats one shaped like a date and wrong.
+pub(crate) fn now_stamp() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())

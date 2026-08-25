@@ -28,7 +28,20 @@ use std::path::Path;
 /// machine keeps whatever identifier it shipped with. Recognising only the new
 /// one would make every existing Luma Keyer install invisible to Burrow
 /// forever.
-pub const OWNED_PREFIXES: &[&str] = &["com.stoatworks.", "com.allansargeant."];
+/// ⚠️ **A third one, added 2026-08-25, and it is still not the whole story.**
+/// `com.stoatworkslabs.` — note the `labs` — is in real use: Burrow itself,
+/// mynah and aquilon-vpu-map all ship it, and none of them started with
+/// `com.stoatworks.` because the prefix has a dot in it.
+///
+/// Reading the identity out of the twenty-two applications on the author's own
+/// disk found four namespaces no prefix list would have predicted:
+/// `works.stoat.weblinked`, `com.presentationcommander.client`, a bare
+/// `wsm-wwb-bridge` and a bare `resolve-configurator-gui`. So this list is a
+/// useful heuristic and **not** an ownership test. Where it matters — deciding
+/// which project a payload belongs to — the authority is the identifier list
+/// the catalogue carries per entry. See `catalog::Entry::identifiers`.
+pub const OWNED_PREFIXES: &[&str] =
+    &["com.stoatworks.", "com.stoatworkslabs.", "com.allansargeant."];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BundleIdentity {
@@ -86,6 +99,34 @@ pub fn payload_version(entry: &Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_labs_prefix_is_recognised_and_the_odd_ones_are_honestly_not() {
+        use super::BundleIdentity;
+        let id = |s: &str| BundleIdentity {
+            identifier: Some(s.to_string()),
+            version: None,
+            name: None,
+        };
+        // The one this list was missing. `com.stoatworkslabs.burrow` does not
+        // start with `com.stoatworks.` — the prefix ends in a dot.
+        assert!(id("com.stoatworkslabs.burrow").is_ours());
+        assert!(id("com.stoatworks.ffgl.tinsel").is_ours());
+        assert!(id("com.allansargeant.ffgl.lumakey").is_ours());
+        assert!(!id("com.example.somebody").is_ours());
+
+        // And the honest part: these four are all this fleet's own software,
+        // read off a real disk, and no prefix test will ever accept them. It
+        // is why the catalogue carries identifiers per entry.
+        for theirs in [
+            "works.stoat.weblinked",
+            "com.presentationcommander.client",
+            "wsm-wwb-bridge",
+            "resolve-configurator-gui",
+        ] {
+            assert!(!id(theirs).is_ours(), "{theirs}");
+        }
+    }
+
     use super::*;
     use std::fs;
     use tempfile::TempDir;

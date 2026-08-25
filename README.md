@@ -100,6 +100,22 @@ checkbox to have it asked at startup too; it is off until you turn it on.
 The *Send feedback* button at the bottom of the window is the one exception, and
 only when you press it.
 
+## Claiming what you already installed
+
+Burrow manages what it installed. An application or audio plugin you put there
+yourself is invisible to it — the catalogue declares no payload names for those,
+so there is nothing to look for.
+
+**Settings → Software already on this machine** finds them by the bundle
+identifier inside them, which is what the catalogue carries for every project.
+Not the filename: renaming a file gets it nowhere, and only an identifier the
+catalogue lists is ever offered. Claiming one records it exactly as an install
+would, so it then reports a version and takes updates. Releasing hands it back
+without touching the file.
+
+The scan is the one place Burrow reads a folder it does not own, and it only
+ever produces a list to show you — nothing is adopted until you pick it.
+
 ## Updating Burrow itself
 
 **Settings → Burrow itself → Check for a new version.** If there is one, the

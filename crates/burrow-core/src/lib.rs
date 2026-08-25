@@ -16,6 +16,7 @@
 pub mod archive;
 pub mod bundleinfo;
 pub mod catalog;
+pub mod claim;
 pub mod commit;
 pub mod dest;
 pub mod dmg;

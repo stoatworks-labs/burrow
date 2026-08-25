@@ -14,6 +14,7 @@
  *   ?ofx=missing|empty|readonly|ok     the OpenFX destination's condition
  *   ?job=running|failed|cancelled
  *   ?seen=none|current                 first run, or a real baseline
+ *   ?claim=none|some|unidentified    what is available to claim
  *   ?update=none|available|blocked|error|fail
  *                                      what a check for a newer Burrow finds,
  *                                      and whether installing it works
@@ -34,6 +35,8 @@ import type {
   OpRequest,
   PluginView,
   Progress,
+  Claimable,
+  ClaimedEntry,
   Settings,
   Slot,
   UpdateInfo,
@@ -462,6 +465,76 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       finishedHandlers.forEach(h => h(outcome))
       return outcome as T
     }
+
+    case 'scan_claimable': {
+      const mode = p('claim', 'some')
+      if (mode === 'none') return [] as T
+      const base = {
+        destinationId: 'apps',
+        destinationLabel: 'Applications',
+        destinationDisplayPath: '/Applications',
+        format: 'app' as const,
+      }
+      const list: Claimable[] = [
+        {
+          ...base,
+          slug: 'simplevis',
+          nameOfProject: 'simpleVIS',
+          name: 'simpleVIS.app',
+          identifier: 'com.allansargeant.simplevis',
+          version: '0.4.0',
+          evidence: 'identifier',
+        },
+        {
+          ...base,
+          slug: 'wsm-wwb-bridge',
+          nameOfProject: 'WSM → WWB Bridge',
+          name: 'wsm-wwb-bridge.app',
+          // A real one, and the reason the catalogue carries identifiers: a
+          // bare identifier with no reversed domain at all.
+          identifier: 'wsm-wwb-bridge',
+          version: '1.1.0',
+          evidence: 'identifier',
+        },
+      ]
+      if (mode === 'unidentified') {
+        list.push({
+          ...base,
+          format: 'ffgl',
+          destinationId: 'arena',
+          destinationLabel: 'Resolume Arena',
+          destinationDisplayPath: '~/Documents/Resolume Arena/Extra Effects',
+          slug: 'tinsel',
+          nameOfProject: 'Tinsel',
+          name: 'Tinsel.dll',
+          identifier: null,
+          version: null,
+          evidence: 'user-asserted',
+        })
+      }
+      return list as T
+    }
+
+    case 'list_claimed': {
+      if (p('claim', 'some') === 'none') return [] as T
+      const c: ClaimedEntry[] = [
+        {
+          slug: 'micwizard',
+          nameOfProject: 'MicWizard',
+          format: 'app',
+          destinationId: 'apps',
+          destinationLabel: 'Applications',
+          names: ['MicWizard.app'],
+          version: '0.2.0',
+        },
+      ]
+      return c as T
+    }
+
+    case 'claim':
+    case 'release':
+      // Both return the refreshed list in the real backend.
+      return mockInvoke<T>('list_plugins')
 
     case 'client_version':
       return MOCK_VERSION as T

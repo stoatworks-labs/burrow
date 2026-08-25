@@ -86,6 +86,23 @@ binary. Copying every top-level entry would put those in the user's plugin folde
 *and* make Burrow believe it owned a `LICENSE` it would later delete. Payload and
 extras are separated in the catalogue and again at extraction.
 
+**A bundle identifier says which project a payload is; a prefix does not say
+whose it is.** The catalogue carries `identifiers` per entry, and that list is
+the authority for claiming. `OWNED_PREFIXES` is a heuristic that is *wrong* for
+four of this fleet's own namespaces — `works.stoat.weblinked`,
+`com.presentationcommander.client`, a bare `wsm-wwb-bridge` and a bare
+`resolve-configurator-gui`, all read off a real disk rather than assumed. It
+was also missing `com.stoatworkslabs.` entirely, which is what Burrow itself
+ships. Never add a prefix rule where an identifier list will do.
+
+⚠️ **Claiming is the one place Burrow reads a directory it does not own**, and
+it is allowed because it only ever produces *candidates to show a person*.
+Nothing in `claim.rs` writes, moves or deletes; a candidate becomes a ledger
+entry only when the user picks it, and only an identifier the catalogue lists
+gets as far as being offered — a far narrower test than the name matching used
+everywhere else. Do not reuse that scan for anything that acts on what it
+finds.
+
 **Never hardcode a bundle name.** downpour ships `Downpour.bundle` *and*
 `Downpour Over.bundle`; orrery, vectrix, idler, coinop, burin and flipbook all ship
 a second bundle too. Names come from the catalogue, which reads them out of each

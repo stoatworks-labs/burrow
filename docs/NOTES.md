@@ -470,6 +470,58 @@ Not installed section of the video tab is 1.2 of them, and it was reading
   shortcut**. Burrow says so in the batch notes rather than writing outside the
   folder it was given.
 
+## 2026-08-25 — claiming what somebody installed by hand
+
+Burrow can now adopt software already on the machine: **Settings → Software
+already on this machine → Look for it**, then Claim. It writes the same ledger
+entry an install writes, so the row then reports a version, offers updates and
+can remove it. Release hands it back without touching the file.
+
+**The gap it fills was a documented one.** Nothing probes an application, an
+audio plugin or a Companion module, so the catalogue declares no payload names
+for them, so `reconcile_one` has nothing to look for and reports *not
+installed* next to a download button while the app sits in `/Applications`.
+Video plugins never had this problem: their names are declared and the bundle
+confirms itself.
+
+**The identifier is what closed it, and matching on the slug would not have.**
+Checked against the 31 fleet bundles on this machine rather than assumed:
+`Zero EQ.app` is `com.allansargeant.zeroeq` against a slug of `zero-eq`, three
+FxPlug wrappers are `com.stoatworks.<name>.fxplug.wrapper`, and flock, RFutils
+and SRT Router each ship a second `*-launcher` bundle. A rule derived from the
+slug got **9 of 13 wrong**. So the website carries a map, `bundle-ids.json`,
+and the catalogue emits `identifiers` per entry.
+
+⚠️ **What the repo says a bundle identifier is, is not what ships.** The first
+version of that map came from grepping every repo's build config, and disk
+evidence contradicted it three times — `av-launcher` was credited with
+`com.allansargeant.openrcs` (a shared template), `atem-fleet-admin` with
+`atemfleetadmin` against a real `atem-fleet-admin`. Worse, the two identifiers
+I checked by hand were both wrong in the repo: `wsm-wwb-bridge.app` ships a
+**bare** `wsm-wwb-bridge` with no reversed domain, and Presentation Commander
+is `com.presentationcommander.client`. The map is now built from what Burrow's
+own ledger proves it installed, with the repo sweep filling gaps.
+
+**That also killed `OWNED_PREFIXES` as an ownership test.** Six of the
+twenty-two verified applications match neither owned prefix, and a third
+prefix — `com.stoatworkslabs.`, which Burrow itself ships — was missing from
+the list entirely. It is added, with a test, but the lesson is that the list is
+a heuristic and the catalogue's per-entry identifiers are the authority.
+
+**Claiming reads a directory, which is the rule this repo guards hardest.** It
+is allowed because the scan only produces candidates to show a person: nothing
+in `claim.rs` writes, moves or deletes, a candidate becomes a ledger entry only
+when the user picks it, and only an identifier the catalogue lists is offered
+at all. Giving a file a familiar name gets it nowhere — there is a test for
+exactly that, because everywhere else in Burrow the name is the primary key.
+
+**A claim is fully equal to an install, deliberately.** No special case in
+update or uninstall, so a claimed payload can be replaced and deleted like any
+other. `LedgerEntry::claimed` is read for one thing only — listing what to
+offer back — and the UI names the file, the folder and the consequence before
+anything is recorded, because that is the last point at which a mistake is
+visible.
+
 ## 2026-08-25 — the Windows update URL 404'd, and the release said it was fine
 
 v0.2.3 published a manifest whose Windows entry pointed at

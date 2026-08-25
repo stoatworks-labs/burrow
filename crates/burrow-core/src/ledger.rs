@@ -77,6 +77,21 @@ pub struct LedgerEntry {
     /// Deterministic hash of what was written, so the ledger's version claim
     /// can be checked against the bytes still on disk.
     pub payload_sha256: String,
+    /// This entry came from the user adopting something already on disk rather
+    /// than from an install Burrow performed.
+    ///
+    /// A claimed payload is managed exactly like an installed one — that is
+    /// the whole point of claiming — so **nothing about install, update or
+    /// uninstall branches on this**. It is read for one thing only: listing
+    /// what the user adopted, so they can hand it back without deleting it.
+    /// Releasing is the only non-destructive way out of a wrong claim, and it
+    /// cannot be offered without knowing which entries were claims.
+    ///
+    /// It also means a person reading `ledger.json` and wondering why Burrow
+    /// believes it owns something can see the answer. `serde(default)` keeps
+    /// every file written before claiming existed loading unchanged.
+    #[serde(default)]
+    pub claimed: bool,
 }
 
 impl Ledger {
@@ -377,6 +392,7 @@ mod tests {
             version: "v1.0.2".into(),
             installed_at: "2026-08-24T00:00:00Z".into(),
             payload_sha256: "stale-hash".into(),
+            claimed: false,
         });
         let r = go(&l, t.path(), &decl(&["Tinsel.bundle"]), Some("v1.0.2"));
         match r.state {
@@ -416,6 +432,7 @@ mod tests {
             version: "v1.0.2".into(),
             installed_at: "2026-08-24T00:00:00Z".into(),
             payload_sha256: hash,
+            claimed: false,
         });
         let r = go(&l, t.path(), &entries, Some("v1.0.2"));
         assert_eq!(
@@ -441,6 +458,7 @@ mod tests {
             version: "v1.0.2".into(),
             installed_at: "2026-08-24T00:00:00Z".into(),
             payload_sha256: "hash-of-something-else".into(),
+            claimed: false,
         });
         let r = go(&l, t.path(), &decl(&["Tinsel.dll"]), Some("v1.0.2"));
         // Falls back to unknown rather than asserting a version for bytes it
@@ -495,6 +513,7 @@ mod tests {
             version: "v1.0.2".into(),
             installed_at: "2026-08-24T00:00:00Z".into(),
             payload_sha256: "whatever".into(),
+            claimed: false,
         });
         let r = reconcile_one(
             &l,
@@ -561,6 +580,7 @@ mod tests {
             version: "v0.4.0".into(),
             installed_at: "2026-08-25T00:00:00Z".into(),
             payload_sha256: "whatever".into(),
+            claimed: false,
         });
 
         let r = reconcile_one(
@@ -607,6 +627,7 @@ mod tests {
             version: "v1.0.2".into(),
             installed_at: "2026-08-24T00:00:00Z".into(),
             payload_sha256: "x".into(),
+            claimed: false,
         });
         let r = go(&l, t.path(), &decl(&["Tinsel.bundle"]), Some("v1.0.2"));
         assert_eq!(r.state, InstallState::NotInstalled);
@@ -626,6 +647,7 @@ mod tests {
                 version: "v1.0.2".into(),
                 installed_at: "2026-08-24T00:00:00Z".into(),
                 payload_sha256: "x".into(),
+                claimed: false,
             });
         }
         assert_eq!(l.entries.len(), 2);
