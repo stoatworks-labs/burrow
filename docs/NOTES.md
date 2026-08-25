@@ -133,6 +133,34 @@ nothing else.
 The video id is validated rather than trusted — it arrives in a catalogue
 fetched over the network and is interpolated into both a URL and a page.
 
+## 2026-08-25 — the pictures were in the wrong kind of place
+
+The packaged app showed no thumbnails at all. They were in
+`src-tauri/assets/`, which is a Tauri **resource** — reachable from Rust and
+served by the loopback server, and not addressable from the UI. The UI asks for
+`./thumbs/x.png`, which resolves against the frontend bundle, which did not
+contain them.
+
+Nothing failed loudly. Every image simply did not appear, and each `onError`
+handler quietly hid it.
+
+They now live in `public/`, which Vite copies into `dist/`, which
+`generate_context!` embeds into the binary at compile time. Note the
+consequence for any check: **there is no `dist` directory inside the bundle to
+look at.** `scripts/build-app.sh` verifies `dist/` before packaging and then
+greps the compiled binary for a known filename, because "dist existed when I
+looked" is not the same as "the embed happened".
+
+## 2026-08-25 — autoplay made the nocookie host pointless
+
+The player opened with `autoplay=1`. youtube-nocookie withholds its tracking
+cookies only *until playback starts* — so autoplaying set them the instant the
+window opened, and choosing that host bought nothing at all.
+
+Removed. It costs one more click and it is the entire reason the host was
+chosen. There is a test asserting the player page does not contain `autoplay=1`,
+because this is the kind of thing that gets added back for the convenience.
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects

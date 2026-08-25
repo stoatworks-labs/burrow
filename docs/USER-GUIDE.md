@@ -79,11 +79,15 @@ The still images are part of the app rather than fetched from YouTube, so the
 list works offline and browsing plugins tells Google nothing. Only pressing play
 loads anything, and only for that one video.
 
-Playback comes from `youtube-nocookie.com`, which does not set tracking cookies
-until the video starts. Being precise: it is still Google's server, so it will
-see that an address asked for that video — what it does not get is an identifier
-tying that request to the rest of your browsing. There is an **Open on YouTube**
-button if you would rather watch it there.
+Playback comes from `youtube-nocookie.com`, which sets no tracking cookies until
+the video actually starts — which is why it does not start on its own. Autoplay
+would set them the moment the window opened and make choosing that host
+pointless, so you press play yourself.
+
+Being precise about what it does buy: it is still Google's server, so it will see
+that an address asked for that video. What it does not get is an identifier tying
+that request to the rest of your browsing. There is an **Open on YouTube** button
+if you would rather watch it there.
 
 ## Formats, and which ones you want
 

@@ -8,9 +8,8 @@ src-tauri/gen/
 # scripts/sync-assets.sh or by the release workflow. Never committed.
 src-tauri/bin/
 
-# Working copies the mock backend and the screenshot script need beside the
-# built front end. Gathered from src-tauri/assets, not sources.
+# A working copy the mock backend and the screenshot script need beside the
+# built front end. The app itself reads the baked catalogue from its resources.
 public/catalog.json
-public/thumbs/
 
 .DS_Store

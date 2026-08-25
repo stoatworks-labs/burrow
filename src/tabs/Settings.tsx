@@ -177,10 +177,11 @@ export function SettingsTab({
             Plugin videos are the one thing that reaches anywhere else, and only
             when you press play. The still images are part of the app, so browsing
             the list tells Google nothing — opening a video loads it from{' '}
-            <code>youtube-nocookie.com</code>, which does not set tracking cookies
-            until playback starts. It is still Google&rsquo;s server, so it will see
-            that an address asked for that video; what it will not get is an
-            identifier tying that to the rest of your browsing.
+            <code>youtube-nocookie.com</code>, which sets no tracking cookies until
+            playback starts — so it does not start on its own. It is still
+            Google&rsquo;s server, so it will see that an address asked for that
+            video; what it will not get is an identifier tying that to the rest of
+            your browsing.
           </p>
           <p>
             The <em>Send feedback</em> button at the bottom of this window is the one

@@ -4,9 +4,19 @@
 #
 #   src-tauri/assets/catalog.json   the catalogue as of this build
 #   src-tauri/assets/demos/<slug>/  each plugin's browser demo
-#   src-tauri/assets/thumbs/        one picture per plugin
-#   src-tauri/assets/video/         each plugin's video still
+#   public/thumbs/                  one picture per plugin
+#   public/video/                   each plugin's video still
 #   src-tauri/bin/burrow-helper-*   the privileged helper, per target triple
+#
+# The split between the two destinations is not arbitrary. `src-tauri/assets`
+# is a Tauri *resource*, reachable from Rust and served by the loopback demo
+# server. `public/` is a frontend asset, bundled into dist and addressable from
+# the UI as `./thumbs/x.png`.
+#
+# The images have to be the second kind. They were in assets/ first, and the
+# packaged app showed no pictures at all: `./video/x.png` resolves against the
+# frontend bundle, which did not contain them. Nothing failed loudly — every
+# image just quietly did not appear.
 #
 # Same arrangement as stoatworks-backend/resolume-demo/sync.sh, and for the
 # same reason: these are *build inputs* copied from the source of truth, never
@@ -33,7 +43,8 @@ website="$projects/infrastructure/stoatworks-website"
 
 assets="$here/src-tauri/assets"
 demos="$assets/demos"
-thumbs="$assets/thumbs"
+thumbs="$here/public/thumbs"
+video_out="$here/public/video"
 
 check_only=0
 build_helper=1
@@ -195,7 +206,7 @@ if [ "$check_only" -eq 1 ]; then
   if ! diff -rq "$stage/thumbs" "$thumbs" >/dev/null 2>&1; then
     echo "drift: thumbs"; drift=1
   fi
-  if ! diff -rq "$stage/video" "$assets/video" >/dev/null 2>&1; then
+  if ! diff -rq "$stage/video" "$video_out" >/dev/null 2>&1; then
     echo "drift: video stills"; drift=1
   fi
   if [ -d "$stage/demos" ] && ! diff -rq "$stage/demos" "$demos" >/dev/null 2>&1; then
@@ -207,8 +218,9 @@ fi
 
 mkdir -p "$assets"
 cp "$stage/catalog.json" "$assets/catalog.json"
+mkdir -p "$here/public"
 rm -rf "$thumbs"; cp -R "$stage/thumbs" "$thumbs"
-rm -rf "$assets/video"; cp -R "$stage/video" "$assets/video"
+rm -rf "$video_out"; cp -R "$stage/video" "$video_out"
 [ -d "$stage/demos" ] && { rm -rf "$demos"; cp -R "$stage/demos" "$demos"; }
 
 # ---------------------------------------------------------------------------
@@ -231,4 +243,6 @@ echo "catalogue: $entries entries"
 echo "demos:     $count bundled$([ ${#missing[@]} -gt 0 ] && echo " (no demo: ${missing[*]})")"
 echo "thumbs:    $thumb_count"
 echo "video:     $video_count still(s)$([ ${#no_still[@]} -gt 0 ] && echo " (no still: ${no_still[*]})")"
-du -sh "$assets" 2>/dev/null | awk '{print "total:     " $1}'
+du -sh "$assets" 2>/dev/null | awk '{print "resources: " $1}'
+du -sh "$here/public/thumbs" "$here/public/video" 2>/dev/null \
+  | awk '{s=$1; print "public:    " $1 "  " $2}'

@@ -32,6 +32,10 @@ import { api } from '../api/backend'
  * does not set its tracking cookies until playback actually starts, and it
  * keeps what it does store out of the profile used for ad personalisation.
  *
+ * Which is exactly why it does **not** autoplay. Starting the video the moment
+ * the window opens would set those cookies immediately and make the choice of
+ * host cosmetic. One more click is the price of the thing being real.
+ *
  * Being precise about what that does and does not buy: it is still Google's
  * server, and loading this page still tells Google an IP address asked for this
  * video. What it avoids is the persistent identifier that would tie that
@@ -120,9 +124,10 @@ export function VideoModal({
           )}
         </div>
         <div className="modal-note">
-          Played from youtube-nocookie.com, which does not set tracking cookies
-          until playback starts. It is still Google&rsquo;s server — nothing is
-          loaded from it until you open a video.
+          Played from youtube-nocookie.com, which sets no tracking cookies until
+          you press play — which is why it does not start on its own. It is still
+          Google&rsquo;s server, and nothing is loaded from it until you open a
+          video.
         </div>
       </div>
     </div>

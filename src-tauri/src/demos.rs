@@ -271,6 +271,12 @@ fn header(name: &str, value: &str) -> tiny_http::Header {
 /// Its CSP is deliberately narrower than the app's: it may frame
 /// youtube-nocookie and do nothing else. No scripts of its own, no styles from
 /// anywhere, nothing to connect to.
+///
+/// **Deliberately not autoplaying.** youtube-nocookie holds its tracking
+/// cookies back *until playback starts* — so autoplay would set them the
+/// instant the window opened and make choosing the nocookie host pointless.
+/// The cost is one more click; the thing it buys is the entire reason that
+/// host was chosen.
 fn player_response(video_id: &str) -> tiny_http::Response<Cursor<Vec<u8>>> {
     let body = format!(
         "<!doctype html><meta charset=\"utf-8\">\
@@ -278,7 +284,7 @@ fn player_response(video_id: &str) -> tiny_http::Response<Cursor<Vec<u8>>> {
          <style>html,body{{margin:0;height:100%;background:#000;overflow:hidden}}\
          iframe{{border:0;width:100%;height:100%;display:block}}</style>\
          <iframe src=\"https://www.youtube-nocookie.com/embed/{video_id}\
-?autoplay=1&amp;rel=0&amp;modestbranding=1\" \
+?rel=0&amp;modestbranding=1\" \
          allow=\"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture\" \
          allowfullscreen></iframe>"
     );
@@ -508,6 +514,10 @@ mod tests {
         assert_eq!(status, 200);
         assert!(head.contains("text/html"));
         assert!(body.contains("youtube-nocookie.com/embed/dQw4w9WgXcQ"), "got: {body}");
+        // No autoplay: nocookie withholds its tracking cookies only until
+        // playback begins, so starting automatically would defeat the point of
+        // using that host at all.
+        assert!(!body.contains("autoplay=1"), "the player must not autoplay: {body}");
         // Its own CSP, narrower than the app's: it may frame the video and do
         // nothing else at all.
         assert!(head.contains("default-src 'none'"), "got: {head}");

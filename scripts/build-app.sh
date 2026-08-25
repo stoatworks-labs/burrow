@@ -64,18 +64,36 @@ codesign --verify --deep --strict "$app" && echo "    signature valid"
 # these is a silent runtime failure rather than a build failure: a missing
 # helper only shows up when somebody installs an OpenFX plugin, and a missing
 # catalogue only when the network is also unavailable.
+#
+# Two different places, because Tauri treats them differently and getting that
+# wrong is exactly how the pictures went missing once:
+#
+#   Contents/Resources/  is where `bundle.resources` files land, on disk.
+#   the binary itself    is where the FRONTEND lives — generate_context! embeds
+#                        dist/ at compile time, so there is no dist directory in
+#                        the bundle to look at. The images are addressed as
+#                        ./thumbs/x.png from the UI and must be in dist.
 for required in \
   "Contents/MacOS/burrow-helper" \
   "Contents/Resources/assets/catalog.json" \
-  "Contents/Resources/assets/demos" \
-  "Contents/Resources/assets/thumbs" \
-  "Contents/Resources/assets/video"
+  "Contents/Resources/assets/demos"
 do
   [ -e "$app/$required" ] || { echo "MISSING: $required" >&2; exit 1; }
 done
+
+for required in dist/thumbs dist/video; do
+  [ -d "$here/$required" ] || {
+    echo "MISSING: $required — run scripts/sync-assets.sh" >&2; exit 1; }
+done
+# And prove the embed actually happened, rather than trusting that dist/ existed
+# at the right moment: the compiled binary should carry the filenames.
+grep -q "thumbs/tinsel.png" "$app/Contents/MacOS/burrow" 2>/dev/null || {
+  echo "the frontend does not appear to carry the images — was dist/ built before cargo ran?" >&2
+  exit 1
+}
 echo "    helper, catalogue, $(ls "$app/Contents/Resources/assets/demos" | wc -l | tr -d ' ') demos, \
-$(ls "$app/Contents/Resources/assets/thumbs" | wc -l | tr -d ' ') thumbnails and \
-$(ls "$app/Contents/Resources/assets/video" | wc -l | tr -d ' ') video stills all present"
+$(ls "$here/dist/thumbs" | wc -l | tr -d ' ') thumbnails and \
+$(ls "$here/dist/video" | wc -l | tr -d ' ') video stills all present"
 
 echo
 echo "$app"
