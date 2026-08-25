@@ -75,6 +75,8 @@ type CatalogEntry = {
 }
 
 let catalogCache: CatalogEntry[] | null = null
+/** The status vocabulary the catalogue sends, id → label and blurb. */
+let statusCache: Record<string, { label: string; blurb?: string }> = {}
 
 async function catalog(): Promise<CatalogEntry[]> {
   if (catalogCache) return catalogCache
@@ -82,6 +84,7 @@ async function catalog(): Promise<CatalogEntry[]> {
     const res = await fetch('./catalog.json')
     const data = await res.json()
     catalogCache = data.entries as CatalogEntry[]
+    statusCache = data.statuses ?? {}
   } catch {
     catalogCache = []
   }
@@ -324,6 +327,14 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           published: e.published,
           thumb: e.thumb,
           status: e.status,
+          // Resolved the same way the Rust side resolves it, including the
+          // fall back to the id itself for a status the catalogue did not
+          // describe.
+          statusLabel: e.status
+            ? (statusCache[e.status]?.label ??
+               e.status.charAt(0).toUpperCase() + e.status.slice(1))
+            : null,
+          statusBlurb: (e.status && statusCache[e.status]?.blurb) || null,
           tags: e.tags ?? [],
           demo: e.demo,
           guide: e.guide,

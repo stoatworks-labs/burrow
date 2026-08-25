@@ -269,6 +269,7 @@ function Row({
         <div className="title">
           <h3>{plugin.name}</h3>
           {plugin.version && <span className="ver">{plugin.version}</span>}
+          <StatusChip plugin={plugin} />
           {plugin.hasOverride && (
             <span className="chip" title="This plugin has its own format choice">
               custom formats
@@ -382,6 +383,28 @@ function Row({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * How far along a project is, in the website's own words.
+ *
+ * The label and the tooltip both come from the catalogue rather than from a
+ * table in here, so "Field testing" cannot come to mean one thing on the website
+ * and another in the app. The id is used only for the colour.
+ *
+ * Nothing is shown for a project with no status — an empty chip would say
+ * something the data does not.
+ */
+function StatusChip({ plugin }: { plugin: PluginView }) {
+  if (!plugin.statusLabel) return null
+  return (
+    <span
+      className={`chip status status-${plugin.status ?? 'unknown'}`}
+      title={plugin.statusBlurb ?? undefined}
+    >
+      {plugin.statusLabel}
+    </span>
   )
 }
 

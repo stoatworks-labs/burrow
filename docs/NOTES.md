@@ -342,6 +342,25 @@ whole unprivileged path with `cargo run --example place`: mounted, `simpleVIS.ap
 taken, layout validated, quarantine cleared, committed, version read back from the
 bundle's `Info.plist` as 0.4.0, and uninstalled again cleanly.
 
+## 2026-08-25 — how far along each project is, in the row
+
+Every row now carries the project's status beside its version — *Field proven*,
+*Field testing*, *Released*, *In development* — with the website's own sentence
+as the tooltip.
+
+**The words come from the catalogue, not from the app.** The vocabulary lives in
+the website's `projects.json` and is sent whole, in a `statuses` map beside
+`formats` and `categories`. Two copies of "Field testing means out of the lab and
+being used in real conditions" would eventually disagree, and the one in the app
+would be the wrong one. A status this build has never heard of still arrives with
+its own label attached; one the catalogue does not describe falls back to the id
+with a capital letter, because showing `beta` beats showing nothing.
+
+**The colours are the only thing the app decides**, and only from the id: green
+for proven, amber for testing, blue for released and stable, grey for the rest
+and for anything unrecognised. A status Burrow does not know keeps the neutral
+dot rather than being given a meaning this build invented.
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects

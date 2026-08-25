@@ -25,7 +25,22 @@ pub struct Catalog {
     /// which predates categories entirely — see [`Entry::category`].
     #[serde(default)]
     pub categories: BTreeMap<String, CategoryInfo>,
+    /// Status id → how to say it out loud, and what it means.
+    ///
+    /// The vocabulary lives in the website's `projects.json` and is sent whole
+    /// for the same reason `formats` and `categories` are: an entry carries the
+    /// id, and a status this build has never heard of still arrives with its own
+    /// label attached.
+    #[serde(default)]
+    pub statuses: BTreeMap<String, StatusInfo>,
     pub entries: Vec<Entry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusInfo {
+    pub label: String,
+    #[serde(default)]
+    pub blurb: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

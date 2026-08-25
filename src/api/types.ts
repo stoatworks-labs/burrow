@@ -109,7 +109,12 @@ export interface PluginView {
   version: string | null
   published: string | null
   thumb: string | null
+  /** The status id from the website's own data — `testing`, `proven`, … */
   status: string | null
+  /** That status said out loud: "Field testing", not "testing". */
+  statusLabel: string | null
+  /** What it means, for the tooltip. */
+  statusBlurb: string | null
   tags: string[]
   demo: string | null
   guide: string | null

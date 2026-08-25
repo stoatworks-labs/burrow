@@ -401,7 +401,17 @@ pub struct PluginView {
     pub version: Option<String>,
     pub published: Option<String>,
     pub thumb: Option<String>,
+    /// The status id, as the website's own data spells it.
     pub status: Option<String>,
+    /// How to say that status out loud — "Field testing", not "testing" — and
+    /// what it means. Resolved here from the vocabulary the catalogue sends, so
+    /// the app and the website cannot describe a project differently.
+    ///
+    /// Falls back to the id itself for a status this catalogue did not describe:
+    /// showing `beta` is worse than showing "Beta" and better than showing
+    /// nothing at all.
+    pub status_label: Option<String>,
+    pub status_blurb: Option<String>,
     pub tags: Vec<String>,
     pub demo: Option<String>,
     pub guide: Option<String>,
@@ -518,6 +528,17 @@ pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Pl
             version: entry.version.clone(),
             published: entry.published.clone(),
             thumb: entry.thumb.clone(),
+            status_label: entry.status.as_ref().map(|id| {
+                cat.statuses
+                    .get(id)
+                    .map(|s| s.label.clone())
+                    .unwrap_or_else(|| title_case(id))
+            }),
+            status_blurb: entry
+                .status
+                .as_ref()
+                .and_then(|id| cat.statuses.get(id))
+                .and_then(|s| s.blurb.clone()),
             status: entry.status.clone(),
             tags: entry.tags.clone(),
             demo: entry.demo.clone(),
@@ -535,6 +556,15 @@ pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Pl
         });
     }
     Ok(out)
+}
+
+/// `beta` → `Beta`. Only ever used for a status the catalogue did not describe.
+fn title_case(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
 }
 
 /// Which heading a plugin sits under.
@@ -678,6 +708,27 @@ pub fn film_mode() -> bool {
 /// The video toolkit wants beats that are "when the app was actually told, not
 /// an estimate of when it might have reacted" — so the app reports them itself
 /// rather than the capture script assuming its own timings held.
+/// How long filming mode waits before starting the choreography, in
+/// milliseconds.
+///
+/// Zero unless `BURROW_FILM_DELAY` says otherwise, and it exists for one
+/// reason: the choreography used to start the moment the window mounted, which
+/// is several seconds before a screen recorder can be up and the window sized.
+/// The take then opened part-way through — on the search results rather than on
+/// the list — and the beat timings the editor cuts against did not line up with
+/// the footage at all. Nothing reported it; the video was simply wrong.
+///
+/// A capture script sets this to cover its own setup. It changes nothing for
+/// anybody else: without `BURROW_FILM=1` the choreography does not run, and
+/// without this variable it starts as it always did.
+#[tauri::command]
+pub fn film_delay() -> u64 {
+    std::env::var("BURROW_FILM_DELAY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
 #[tauri::command]
 pub fn film_beat(state: State<'_, AppState>, label: String, at: f64) -> Result<(), String> {
     if !film_mode() {

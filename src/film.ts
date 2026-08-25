@@ -68,6 +68,14 @@ export function choreography(
 
     // Back to the list to end on the thing the app is for.
     { at: 30000, label: 'video-end', run: () => setTab('video') },
+
+    // A marker, not a move — nothing happens here.
+    //
+    // `assemble.body_end` cuts the footage at the *last* beat and gives every
+    // other beat a caption running until the next one. So whatever the last beat
+    // is, its caption is never shown: without this, the closing line played over
+    // nothing and the cut ended on the Settings pane it had just left.
+    { at: 36000, label: 'end', run: () => {} },
   ]
 }
 
@@ -97,6 +105,24 @@ export async function isFilming(): Promise<boolean> {
     return await invoke<boolean>('film_mode')
   } catch {
     return false
+  }
+}
+
+/**
+ * How long to wait before the choreography starts, in milliseconds.
+ *
+ * The window mounts several seconds before a capture script can have a recorder
+ * running and the window sized, and the choreography used to start regardless —
+ * so the take opened part-way through it, with beat timings that matched nothing
+ * in the footage. The capture script sets `BURROW_FILM_DELAY` to cover its own
+ * setup; see `film_delay` in state.rs.
+ */
+export async function filmDelay(): Promise<number> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return await invoke<number>('film_delay')
+  } catch {
+    return 0
   }
 }
 

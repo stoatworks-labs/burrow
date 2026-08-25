@@ -140,6 +140,15 @@ function UpdateCard({
             {installedVersion && `${installedVersion.replace(/^v/, '')} → `}
             {plugin.version?.replace(/^v/, '')}
             {plugin.published && ` · ${humanDate(plugin.published)}`}
+            {plugin.statusLabel && (
+              <span
+                className={`chip status status-${plugin.status ?? 'unknown'}`}
+                style={{ marginLeft: 8 }}
+                title={plugin.statusBlurb ?? undefined}
+              >
+                {plugin.statusLabel}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -210,6 +219,15 @@ function NewCard({
           <h3>{plugin.name}</h3>
           <div className="when">
             {plugin.version} {plugin.published && `· ${humanDate(plugin.published)}`}
+            {plugin.statusLabel && (
+              <span
+                className={`chip status status-${plugin.status ?? 'unknown'}`}
+                style={{ marginLeft: 8 }}
+                title={plugin.statusBlurb ?? undefined}
+              >
+                {plugin.statusLabel}
+              </span>
+            )}
           </div>
           <div className="hook" style={{ marginTop: 6 }}>
             {plugin.blurb ?? plugin.summary ?? plugin.hook}

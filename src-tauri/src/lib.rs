@@ -46,6 +46,7 @@ pub fn run() {
             state::open_external,
             state::reveal_path,
             state::film_mode,
+            state::film_delay,
             state::film_beat,
             jobs::plan_batch,
             jobs::run_batch,

@@ -4,7 +4,7 @@
 modules.** One list, one click each, and it knows where every format goes on your
 machine.
 
-> **Status at v0.2.0 — read this first.**
+> **Status at v0.2.1 — read this first.**
 >
 > Burrow has been tested thoroughly against real plugin downloads, but **no plugin
 > has yet been installed into a running Resolume, Resolve or After Effects through
@@ -67,6 +67,20 @@ Each row shows which **formats** that plugin offers and what you have of each:
 | `OpenFX + · admin` | Same, but it will ask for your password |
 | `FFGL ✓ version unknown` | It's installed, but nothing on disk says which version |
 | `Adobe —` | No build of this plugin for that host |
+
+Beside the version, each row says **how far along that project is** — the same
+status the website gives it, in the same words:
+
+| | |
+|---|---|
+| **Field proven** | Released, and run on real events — not just verified on the bench |
+| **Field testing** | Out of the lab and being used in real conditions — not yet trusted blind |
+| **Stable** | Tagged 1.0 builds: the feature set and the controls have settled |
+| **Released** | Tagged builds you can download and run |
+| **In development** | Working, moving, not yet tagged |
+
+Hover it for the same sentence. It is worth reading before a show: *Field
+testing* and *In development* mean what they say.
 
 **"Version unknown" is not a fault.** On Windows a plugin is a bare `.dll` with no
 version in it, so Burrow genuinely cannot tell — it will offer to reinstall the

@@ -19,7 +19,7 @@ import { SettingsTab } from './tabs/Settings'
 import { Banner } from './components/Banner'
 import { RefreshTools } from './components/RefreshTools'
 import { VideoModal } from './components/VideoModal'
-import { isFilming, runFilm } from './film'
+import { filmDelay, isFilming, runFilm } from './film'
 
 /**
  * A category tab is the category's own id, so `tab === p.category` is the
@@ -242,10 +242,19 @@ export function App() {
    */
   useEffect(() => {
     let stop: (() => void) | undefined
+    let timer: number | undefined
     ;(async () => {
-      if (await isFilming()) stop = runFilm(setTab, q => setFilmQuery(q))
+      if (!(await isFilming())) return
+      // The wait is the capture script's, not the app's — see filmDelay.
+      const delay = await filmDelay()
+      timer = window.setTimeout(() => {
+        stop = runFilm(setTab, q => setFilmQuery(q))
+      }, delay)
     })()
-    return () => stop?.()
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer)
+      stop?.()
+    }
   }, [])
 
   const updateCount = useMemo(

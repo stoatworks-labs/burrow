@@ -57,7 +57,8 @@ awkward to produce on demand, and one of them is a cancelled password prompt.*
   haven't seen.
 - **Video · Audio · Networking & Infrastructure** — everything in that part of the
   fleet, under *Up to date*, *Update available* and *Not installed*, with per-format
-  state on each row.
+  state on each row, and how far along each project is — *Field proven*, *Field
+  testing*, *Released*, *In development* — in the same words the website uses.
 - **Settings** — what to install by default, overridable per item, and where each
   one goes.
 

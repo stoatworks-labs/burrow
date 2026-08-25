@@ -246,6 +246,41 @@ button.art-play:focus-visible { outline: 2px solid var(--accent); outline-offset
 .chip.unknown { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
 .chip.lock::after { content: ' ·  admin'; color: var(--dim); }
 
+/* ---- how far along a project is ----------------------------------------- */
+
+/*
+ * A dot and a word, in the row's title line. Quieter than the format chips
+ * below it on purpose: the status is context for the name, not an action, and a
+ * list of sixty-five rows each shouting a coloured badge would be unreadable.
+ *
+ * The colours run warm-to-cool along the same order the website ranks them in —
+ * proven and testing have been in front of real audiences, released and stable
+ * have not, and the rest are earlier still. Anything unrecognised keeps the
+ * neutral dot rather than being given a meaning this build invented.
+ */
+.chip.status {
+  background: none;
+  border-color: var(--border);
+  color: var(--muted);
+  padding-left: 6px;
+}
+.chip.status::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 999px;
+  vertical-align: 1px;
+  background: var(--dim);
+}
+.chip.status-proven::before { background: var(--good); }
+.chip.status-testing::before { background: var(--warn); }
+.chip.status-stable::before,
+.chip.status-released::before { background: var(--accent); }
+.chip.status-building::before,
+.chip.status-beta::before { background: var(--muted); }
+
 /* ---- buttons ------------------------------------------------------------ */
 
 button.btn {
