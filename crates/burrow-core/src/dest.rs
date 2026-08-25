@@ -64,6 +64,17 @@ pub struct Destination {
     pub format: Format,
     pub label: String,
     pub path: PathBuf,
+    /// The same path with the home directory written as `~`.
+    ///
+    /// **Shown instead of `path` everywhere a person reads one.** Not tidiness:
+    /// a real path carries the account name, and these end up in screenshots,
+    /// in bug reports and — this is what prompted it — in a video about the app.
+    /// `~/Library/Audio/Plug-Ins/VST3` is also simply easier to read than the
+    /// same thing with a stranger's username in the middle of it.
+    ///
+    /// `path` stays exact, because it is what gets written to and what "Show"
+    /// reveals in Finder.
+    pub display_path: String,
     pub exists: bool,
     /// Probed by actually trying to create a file, never inferred from mode
     /// bits — see [`probe_writable`].
@@ -311,11 +322,27 @@ pub fn detect_companion(applications: &Path) -> bool {
         .any(|n| applications.join(n).exists())
 }
 
+/// A path with the home directory replaced by `~`.
+///
+/// Textual and exact: only a path that really is inside the home directory is
+/// abbreviated, and `/Users/allansargeantine/x` is not inside
+/// `/Users/allansargeant`, which a naive prefix match on the string would get
+/// wrong. Anything outside — `/Library/OFX/Plugins`, a custom destination on
+/// another volume — comes back unchanged.
+pub fn abbreviate(path: &Path, home: &Path) -> String {
+    match path.strip_prefix(home) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Ok(rest) => format!("~/{}", rest.display()).replace('\\', "/"),
+        Err(_) => path.display().to_string(),
+    }
+}
+
 fn destination(
     id: &str,
     format: Format,
     label: String,
     path: PathBuf,
+    home: &Path,
     custom: bool,
 ) -> Destination {
     let exists = path.is_dir();
@@ -324,6 +351,7 @@ fn destination(
         id: id.to_string(),
         format,
         label,
+        display_path: abbreviate(&path, home),
         // A custom path is never elevated, whatever it points at. That is what
         // stops a tampered settings file aiming a root write somewhere: the
         // elevated helper's whitelist is compiled in, and settings never reach
@@ -366,6 +394,7 @@ pub fn discover(
             Format::Ffgl,
             format!("Resolume {}", product.name()),
             path,
+            home,
             overrides.contains_key(&id),
         ));
     }
@@ -377,6 +406,7 @@ pub fn discover(
             Format::Openfx,
             "OpenFX hosts".into(),
             path,
+            home,
             overrides.contains_key("openfx"),
         ));
     }
@@ -388,6 +418,7 @@ pub fn discover(
             Format::Adobe,
             "After Effects & Premiere Pro".into(),
             path,
+            home,
             overrides.contains_key("adobe"),
         ));
     }
@@ -399,6 +430,7 @@ pub fn discover(
             Format::Vst3,
             "VST3 hosts".into(),
             path,
+            home,
             overrides.contains_key("vst3"),
         ));
     }
@@ -410,6 +442,7 @@ pub fn discover(
             Format::Au,
             "Logic Pro & Final Cut Pro".into(),
             path,
+            home,
             overrides.contains_key("au"),
         ));
     }
@@ -421,6 +454,7 @@ pub fn discover(
             Format::App,
             if platform == Platform::Macos { "Applications" } else { "Programs" }.into(),
             path,
+            home,
             overrides.contains_key("applications"),
         ));
     }
@@ -435,6 +469,7 @@ pub fn discover(
             Format::Companion,
             "Companion modules".into(),
             path,
+            home,
             overrides.contains_key("companion"),
         ));
     }
@@ -589,6 +624,49 @@ mod tests {
         assert!(au_dir(Platform::Windows, home).is_none());
         assert!(au_dir(Platform::Linux, home).is_none());
         assert!(vst3_dir(Platform::Linux, home).is_some());
+    }
+
+    #[test]
+    fn a_destination_under_the_home_directory_is_shown_with_a_tilde() {
+        // What this is for: a real path carries the account name, and these end
+        // up in screenshots, in bug reports and in a video about the app.
+        let home = Path::new("/Users/someone");
+        assert_eq!(
+            abbreviate(Path::new("/Users/someone/Library/Audio/Plug-Ins/VST3"), home),
+            "~/Library/Audio/Plug-Ins/VST3"
+        );
+        assert_eq!(abbreviate(home, home), "~");
+    }
+
+    #[test]
+    fn a_path_outside_the_home_directory_is_left_exactly_as_it_is() {
+        let home = Path::new("/Users/someone");
+        assert_eq!(
+            abbreviate(Path::new("/Library/OFX/Plugins"), home),
+            "/Library/OFX/Plugins"
+        );
+        // And the trap a string prefix match falls into: this account is not
+        // that account, and its path must not come back as "~ine/x".
+        assert_eq!(
+            abbreviate(Path::new("/Users/someoneelse/x"), home),
+            "/Users/someoneelse/x"
+        );
+    }
+
+    #[test]
+    fn every_destination_carries_a_path_with_no_account_name_in_it() {
+        let apps = TempDir::new().unwrap();
+        let docs = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let dests = discover(Platform::Macos, apps.path(), docs.path(), home.path(), &BTreeMap::new());
+
+        let home_str = home.path().display().to_string();
+        for d in &dests {
+            if d.path.starts_with(home.path()) {
+                assert!(d.display_path.starts_with("~/"), "{}", d.display_path);
+            }
+            assert!(!d.display_path.contains(&home_str), "{}", d.display_path);
+        }
     }
 
     #[test]

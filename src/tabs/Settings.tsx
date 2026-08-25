@@ -68,7 +68,10 @@ export function SettingsTab({
                 <div className="t">
                   {d.label} <span className="d">· {FORMAT_LABEL[d.format]}</span>
                 </div>
-                <div className="path">{d.path}</div>
+                {/* The abbreviated one: a real path carries the account
+                    name, and this pane ends up in screenshots. `d.path` is
+                    still what Show reveals. */}
+                <div className="path">{d.displayPath}</div>
                 <div className="stat">
                   {d.exists ? (
                     <span className="ok">exists</span>

@@ -361,6 +361,27 @@ for proven, amber for testing, blue for released and stable, grey for the rest
 and for anything unrecognised. A status Burrow does not know keeps the neutral
 dot rather than being given a meaning this build invented.
 
+## 2026-08-25 — the account name was in every path on screen
+
+Settings showed each destination as its real path, so
+`/Users/<account>/Library/Audio/Plug-Ins/VST3` was on screen next to six others
+like it. Noticed while reviewing the project video, which frames that pane for
+six seconds.
+
+Every destination now carries a `display_path` with the home directory written
+as `~`, and that is what is shown — in Settings, and in the batch notes after an
+install, which are as likely to end up in a screenshot as the pane is. `path`
+stays exact, because it is what gets written to and what **Show** reveals.
+
+The abbreviation is a `strip_prefix` on the path, not a match on the string:
+`/Users/allansargeantine/x` is not inside `/Users/allansargeant`, and a prefix
+match on text would have turned it into `~ine/x`. There is a test for exactly
+that.
+
+The elevated destinations were already fine — `/Library/OFX/Plugins` and Adobe's
+MediaCore are outside the home directory, so the password prompt never carried a
+name.
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects

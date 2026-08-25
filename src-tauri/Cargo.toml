@@ -1,6 +1,6 @@
 [package]
 name = "burrow"
-version = "0.2.1"
+version = "0.2.2"
 description = "Stoatworks Burrow — install, update and remove the Stoatworks video plugins"
 authors = ["Allan Sargeant"]
 edition = "2021"

@@ -139,7 +139,10 @@ export interface Destination {
   id: string
   format: FormatId
   label: string
+  /** The exact path — what gets written to, and what Show reveals. */
   path: string
+  /** The same path with the home directory as `~`. Shown, never used. */
+  displayPath: string
   exists: boolean
   writable: boolean
   needsElevation: boolean

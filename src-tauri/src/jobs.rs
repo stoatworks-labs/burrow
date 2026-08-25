@@ -140,6 +140,22 @@ struct Ready {
     sha: Option<String>,
 }
 
+/// A path as a person should read it: with the home directory written as `~`.
+///
+/// The same abbreviation `dest::discover` puts on every destination, applied to
+/// the paths that reach the user through the batch notes. A note is as likely to
+/// end up in a screenshot as the Settings pane is, and a path carries the account
+/// name.
+///
+/// Falls back to the exact path when the home directory cannot be resolved,
+/// which is the right way round: a slightly long note beats no note.
+fn shown(path: &std::path::Path) -> String {
+    match std::env::var("HOME").ok().filter(|h| !h.is_empty()) {
+        Some(home) => burrow_core::dest::abbreviate(path, std::path::Path::new(&home)),
+        None => path.display().to_string(),
+    }
+}
+
 fn emit(app: &AppHandle, p: Progress) {
     let _ = app.emit("batch-progress", p);
 }
@@ -433,7 +449,7 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
                 "Point Companion's Settings → Developer modules path at {} and restart it — \
                  Companion reads that folder when it starts, so {} will not appear until \
                  you do.",
-                unit.destination.display(),
+                shown(&unit.destination),
                 unit.name
             ));
         }
@@ -445,7 +461,7 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
                 "{} is in {}. No Start-menu shortcut was created — Burrow places the \
                  program folder and does not write anywhere else.",
                 unit.name,
-                unit.destination.display()
+                shown(&unit.destination)
             ));
         }
 
