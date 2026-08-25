@@ -76,19 +76,31 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p src-tauri/bin
-          for required in assets/catalog.json assets/demos assets/thumbs; do
-            [ -e "src-tauri/$required" ] || {
-              echo "src-tauri/$required is missing — run scripts/sync-assets.sh and commit it" >&2
+          # Two locations, because Tauri treats them differently:
+          #   src-tauri/assets  is a bundle *resource*, on disk in the .app
+          #   public/           is a frontend asset, embedded into the binary
+          # The images have to be the second kind — they are addressed as
+          # ./thumbs/x.png from the UI. Having them in the wrong one shipped an
+          # app with no pictures and nothing failing.
+          for required in \
+            src-tauri/assets/catalog.json \
+            src-tauri/assets/demos \
+            public/thumbs \
+            public/video
+          do
+            [ -e "$required" ] || {
+              echo "$required is missing — run scripts/sync-assets.sh and commit it" >&2
               exit 1
             }
           done
           entries=$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/assets/catalog.json','utf8')).entries.length")
           demos=$(ls src-tauri/assets/demos | wc -l | tr -d ' ')
+          thumbs=$(ls public/thumbs | wc -l | tr -d ' ')
           # A catalogue with no entries would tell every copy of Burrow that the
           # fleet is empty, and it would do so silently.
           [ "$entries" -ge 1 ] || { echo "the committed catalogue has no entries" >&2; exit 1; }
           [ "$demos"   -ge 1 ] || { echo "no demos are committed" >&2; exit 1; }
-          echo "baked: $entries plugins, $demos demos"
+          echo "baked: $entries plugins, $demos demos, $thumbs thumbnails"
 
       - name: Build the privileged helper
         shell: bash
