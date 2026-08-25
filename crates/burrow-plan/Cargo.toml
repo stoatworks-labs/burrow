@@ -1,6 +1,6 @@
 [package]
 name = "burrow-plan"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 rust-version = "1.85"
 description = "The file-operation plan Burrow's elevated helper accepts, and the validator both sides run."
