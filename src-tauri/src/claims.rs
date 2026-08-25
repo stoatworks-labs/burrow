@@ -34,6 +34,10 @@ pub struct Claimable {
     /// Abbreviated, because this is read by a person and a real path carries
     /// the account name — the same rule as everywhere else in the UI.
     pub destination_display_path: String,
+    /// Another payload of the same project is in the same folder, and the
+    /// ledger has room for one. Claiming both is refused, so the row says so
+    /// before the user picks rather than after.
+    pub contested: bool,
 }
 
 /// A ledger entry the user adopted.
@@ -111,13 +115,17 @@ pub fn scan_claimable(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<
             .filter(|e| e.destination_id == d.id)
             .flat_map(|e| e.entries.clone())
             .collect();
-        for c in claim::scan(&d.path, &idx, &already) {
+        let found = claim::scan(&d.path, &idx, &already);
+        let contested: Vec<String> =
+            claim::contested(&found).into_iter().map(|(slug, _)| slug).collect();
+        for c in found {
             let name_of_project = names
                 .iter()
                 .find(|(slug, _)| *slug == c.slug)
                 .map(|(_, n)| n.clone())
                 .unwrap_or_else(|| c.slug.clone());
             out.push(Claimable {
+                contested: contested.contains(&c.slug),
                 candidate: c,
                 name_of_project,
                 format: d.format,
@@ -194,6 +202,31 @@ pub fn claim(
             dest.format.label(),
             request.format.label()
         ));
+    }
+
+    // ⚠️ One project can have two bundles in one folder, and the ledger cannot
+    // hold both: it keys on (slug, format, destination). Real cases on the
+    // author's own machine — flock ships `flock.app` *and* `flock Launcher.app`,
+    // RFutils and SRT Router the same, and LEQtion has a stable and a NEXT beta
+    // side by side under one identifier.
+    //
+    // Claiming the second would `upsert` over the first and orphan it: Burrow
+    // would stop knowing about a file it had been told it owns, which is the
+    // exact state the ledger exists to prevent. So the second claim is refused
+    // and says what holds the slot, rather than merging them — merging would
+    // make one uninstall delete both, and for LEQtion those are two different
+    // versions somebody chose to keep.
+    {
+        let ledger = state.ledger.lock().map_err(|_| "state is poisoned")?;
+        if let Some(existing) = ledger.key(&request.slug, request.format, &request.destination_id) {
+            return Err(format!(
+                "Burrow already manages {} here as this project. It can only track one \
+                 {} payload per folder, so claiming this as well would make it forget \
+                 that one — release it first if this is the copy you want managed.",
+                existing.entries.join(", "),
+                request.format.label(),
+            ));
+        }
     }
 
     let now = crate::jobs::now_stamp();

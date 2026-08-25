@@ -515,6 +515,18 @@ when the user picks it, and only an identifier the catalogue lists is offered
 at all. Giving a file a familiar name gets it nowhere — there is a test for
 exactly that, because everywhere else in Burrow the name is the primary key.
 
+⚠️ **One project can have two bundles in one folder, and the ledger cannot
+hold both.** Found by running the scan over a real `/Applications` rather than
+by reasoning about it: flock ships `flock.app` *and* `flock Launcher.app`,
+RFutils and SRT Router do the same, and LEQtion has a stable and a NEXT beta
+side by side under one identifier. The ledger keys on (slug, format,
+destination), so the second claim would `upsert` over the first and orphan a
+file Burrow had been told it owns — the exact state the ledger exists to
+prevent. The second claim is refused and says what holds the slot, and the row
+warns before the user picks. Merging them into one entry was the alternative
+and is worse: one uninstall would then delete both, and for LEQtion those are
+two versions somebody deliberately kept.
+
 **A claim is fully equal to an install, deliberately.** No special case in
 update or uninstall, so a claimed payload can be replaced and deleted like any
 other. `LedgerEntry::claimed` is read for one thing only — listing what to

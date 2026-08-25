@@ -244,6 +244,11 @@ export interface Claimable {
   destinationLabel: string
   /** Abbreviated — a real path carries the account name. */
   destinationDisplayPath: string
+  /**
+   * Another payload of the same project sits in the same folder. The ledger
+   * holds one per project per folder, so only one of them can be claimed.
+   */
+  contested: boolean
 }
 
 /** A ledger entry the user adopted, and can hand back. */

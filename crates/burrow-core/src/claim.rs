@@ -205,6 +205,36 @@ pub fn entry_for(
     })
 }
 
+/// Candidates that cannot both be claimed, because the ledger keys on
+/// (slug, format, destination) and so has room for one payload per project per
+/// folder.
+///
+/// Not hypothetical, and found by running the scan over a real
+/// `/Applications` rather than by reasoning about it: flock ships `flock.app`
+/// **and** `flock Launcher.app`, RFutils and SRT Router do the same, and
+/// LEQtion has a stable and a NEXT beta installed side by side under one
+/// identifier. Claiming the second would overwrite the record of the first and
+/// orphan a file Burrow had been told it owns.
+///
+/// The UI uses this to say so on the row before the user picks, rather than
+/// letting them find out by having the first claim quietly disappear.
+pub fn contested(candidates: &[Candidate]) -> Vec<(String, Vec<String>)> {
+    let mut by_slug: HashMap<&str, Vec<String>> = HashMap::new();
+    for c in candidates {
+        by_slug.entry(&c.slug).or_default().push(c.name.clone());
+    }
+    let mut out: Vec<(String, Vec<String>)> = by_slug
+        .into_iter()
+        .filter(|(_, names)| names.len() > 1)
+        .map(|(slug, mut names)| {
+            names.sort();
+            (slug.to_string(), names)
+        })
+        .collect();
+    out.sort();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,6 +371,31 @@ mod tests {
         let names = vec!["thing.dll".to_string()];
         let e = entry_for("x", Format::Ffgl, "arena", t.path(), &names, None, "now").unwrap();
         assert_eq!(e.version, "");
+    }
+
+    #[test]
+    fn two_bundles_of_one_project_in_one_folder_are_reported_as_contested() {
+        // Real: flock ships `flock.app` and `flock Launcher.app`, and LEQtion
+        // has a stable and a NEXT beta side by side under one identifier. The
+        // ledger has room for one payload per project per folder, so the
+        // second claim would orphan the first — the UI has to say so before
+        // the user picks, not after.
+        let c = |slug: &str, name: &str| Candidate {
+            slug: slug.into(),
+            name: name.into(),
+            identifier: None,
+            version: None,
+            evidence: Evidence::Identifier,
+        };
+        let found = vec![
+            c("flock", "flock Launcher.app"),
+            c("flock", "flock.app"),
+            c("simplevis", "simpleVIS.app"),
+        ];
+        assert_eq!(
+            contested(&found),
+            vec![("flock".to_string(), vec!["flock Launcher.app".to_string(), "flock.app".to_string()])]
+        );
     }
 
     #[test]

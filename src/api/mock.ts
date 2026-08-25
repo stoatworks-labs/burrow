@@ -484,6 +484,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           identifier: 'com.allansargeant.simplevis',
           version: '0.4.0',
           evidence: 'identifier',
+          contested: false,
         },
         {
           ...base,
@@ -495,6 +496,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           identifier: 'wsm-wwb-bridge',
           version: '1.1.0',
           evidence: 'identifier',
+          contested: false,
         },
       ]
       if (mode === 'unidentified') {
@@ -510,6 +512,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           identifier: null,
           version: null,
           evidence: 'user-asserted',
+          contested: false,
         })
       }
       return list as T

@@ -88,6 +88,13 @@ export function ClaimPanel({
             <div className="stat">
               <code>{c.name}</code> in {c.destinationDisplayPath}
             </div>
+            {c.contested && (
+              <div className="stat">
+                <span className="warn">More than one of these is here.</span> Burrow
+                tracks one {FORMAT_LABEL[c.format] ?? c.format} per project per folder,
+                so claiming one means not claiming the other.
+              </div>
+            )}
             {c.evidence === 'identifier' ? (
               <div className="stat">
                 <span className="ok">Identified</span> by its bundle identifier,{' '}
