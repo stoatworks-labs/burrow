@@ -23,6 +23,33 @@ const panFromParam = (v) => clamp01(v) * 2.0 - 1.0;
 const driftFromParam = (v) => clamp01(v) * clamp01(v);
 const rotateFromParam = (v) => (clamp01(v) * 2.0 - 1.0) * Math.PI;
 const rateFromParam = (v) => expMap(v, 0.01, 4.0);
+
+// The cycle count, carried forward across a Rate change.
+//
+// `seconds * rate` moves the drawing by `seconds * delta` the instant Rate
+// changes, and here `seconds` is how long the page has been open -- so dragging
+// the slider a few minutes in teleports the zoom and the drift instead of
+// simply changing their pace. Mirrors Burin.h's UpdateMotionAnchor. This page is
+// where a visitor is guaranteed to be dragging a Rate slider, so it needs this
+// at least as much as the plugin does.
+let cycleAnchor = 0;
+let anchorSeconds = 0;
+let anchorRate = -1;
+
+function motionCycles(seconds, rate) {
+  if (anchorRate < 0) {
+    // First frame: anchor stays at zero, so this is exactly the old product
+    // until Rate is touched.
+    anchorRate = rate;
+  } else if (rate !== anchorRate) {
+    // Once per change, not once per frame.
+    cycleAnchor += (seconds - anchorSeconds) * anchorRate;
+    anchorSeconds = seconds;
+    anchorRate = rate;
+  }
+
+  return cycleAnchor + (seconds - anchorSeconds) * rate;
+}
 const revealStaggerFromParam = (v) => {
   const t = clamp01(v);
   if (t < 0.05) return 0.0;
@@ -438,7 +465,7 @@ function frame() {
 
   const seconds = (performance.now() - startTime) / 1000;
   const rate = rateFromParam(P.rate);
-  const cycles = P.sync === 1 ? clamp01(P.phase) : seconds * rate;
+  const cycles = P.sync === 1 ? clamp01(P.phase) : motionCycles(seconds, rate);
 
   const motion = solveMotion({
     zoom: zoomFromParam(P.zoom),

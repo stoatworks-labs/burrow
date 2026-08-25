@@ -43,6 +43,14 @@ awkward to produce on demand, and one of them is a cancelled password prompt.*
 - **Settings** — which formats to install by default, overridable per plugin, and
   where each one goes.
 
+Each plugin's video is the picture at the left of its row — click it and it opens
+in your browser. The still ships with the app rather than being fetched from
+YouTube, so the list works offline and browsing plugins tells Google nothing.
+
+Two refresh controls, because they are different jobs: **Rescan installed**
+re-reads your plugin folders with no network at all, and **Check for updates**
+fetches the plugin list. Both report what they actually changed.
+
 Every plugin's browser demo is **built in**: press *Try demo* and it runs locally,
 offline, from an address only this app knows.
 

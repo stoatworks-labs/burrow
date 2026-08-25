@@ -5,6 +5,7 @@
 #   src-tauri/assets/catalog.json   the catalogue as of this build
 #   src-tauri/assets/demos/<slug>/  each plugin's browser demo
 #   src-tauri/assets/thumbs/        one picture per plugin
+#   src-tauri/assets/video/         each plugin's video still
 #   src-tauri/bin/burrow-helper-*   the privileged helper, per target triple
 #
 # Same arrangement as stoatworks-backend/resolume-demo/sync.sh, and for the
@@ -135,6 +136,52 @@ import json
 for e in json.load(open('$built'))['entries']: print(e['slug'])
 ")
 
+# ---------------------------------------------------------------------------
+# video stills
+# ---------------------------------------------------------------------------
+# Each plugin's YouTube video gets a still in the row, with a play badge, and
+# clicking it opens the video in the user's own browser.
+#
+# The still is BUNDLED rather than fetched from i.ytimg.com, and that is not an
+# optimisation. Burrow's whole claim is that it fetches the plugin list and
+# downloads from GitHub and talks to nothing else — loading two dozen
+# thumbnails from Google on every launch would make that false, and would tell
+# Google which plugins the user is looking at. Shipping the images keeps the
+# claim true and works offline besides.
+#
+# They come from the `thumbnails` repo, which is the same public copy YouTube
+# itself fetches at upload time, so the still in the app is the frame on the
+# video rather than a lookalike.
+#
+# Two places to look, because the release checklist commits the still to both
+# and only about half the fleet has ended up in both: the thumbnails repo is
+# the copy YouTube fetches at upload time, and `docs/video-thumb.png` is the
+# copy the project's own README embeds. Nine plugins with a video are missing
+# from the thumbnails repo and eight of those have the repo copy, so taking
+# either gets 20 of 21 rather than 12.
+mkdir -p "$stage/video"
+video_count=0
+no_still=()
+video_src="$projects/publishing/thumbnails/video"
+while IFS= read -r slug; do
+  src=""
+  [ -f "$video_src/$slug.png" ] && src="$video_src/$slug.png"
+  [ -z "$src" ] && [ -f "$plugins/$slug/docs/video-thumb.png" ] \
+    && src="$plugins/$slug/docs/video-thumb.png"
+  if [ -z "$src" ]; then no_still+=("$slug"); continue; fi
+  if command -v sips >/dev/null 2>&1; then
+    sips -Z 480 "$src" --out "$stage/video/$slug.png" >/dev/null 2>&1 \
+      || cp "$src" "$stage/video/$slug.png"
+  else
+    cp "$src" "$stage/video/$slug.png"
+  fi
+  video_count=$((video_count + 1))
+done < <(python3 -c "
+import json
+for e in json.load(open('$built'))['entries']:
+    if e.get('youtube'): print(e['slug'])
+")
+
 cp "$built" "$stage/catalog.json"
 
 # ---------------------------------------------------------------------------
@@ -148,6 +195,9 @@ if [ "$check_only" -eq 1 ]; then
   if ! diff -rq "$stage/thumbs" "$thumbs" >/dev/null 2>&1; then
     echo "drift: thumbs"; drift=1
   fi
+  if ! diff -rq "$stage/video" "$assets/video" >/dev/null 2>&1; then
+    echo "drift: video stills"; drift=1
+  fi
   if [ -d "$stage/demos" ] && ! diff -rq "$stage/demos" "$demos" >/dev/null 2>&1; then
     echo "drift: demos"; drift=1
   fi
@@ -158,6 +208,7 @@ fi
 mkdir -p "$assets"
 cp "$stage/catalog.json" "$assets/catalog.json"
 rm -rf "$thumbs"; cp -R "$stage/thumbs" "$thumbs"
+rm -rf "$assets/video"; cp -R "$stage/video" "$assets/video"
 [ -d "$stage/demos" ] && { rm -rf "$demos"; cp -R "$stage/demos" "$demos"; }
 
 # ---------------------------------------------------------------------------
@@ -179,4 +230,5 @@ fi
 echo "catalogue: $entries entries"
 echo "demos:     $count bundled$([ ${#missing[@]} -gt 0 ] && echo " (no demo: ${missing[*]})")"
 echo "thumbs:    $thumb_count"
+echo "video:     $video_count still(s)$([ ${#no_still[@]} -gt 0 ] && echo " (no still: ${no_still[*]})")"
 du -sh "$assets" 2>/dev/null | awk '{print "total:     " $1}'

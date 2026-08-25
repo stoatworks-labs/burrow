@@ -65,6 +65,14 @@ pub struct Entry {
     pub demo_url: Option<String>,
     #[serde(default)]
     pub guide: Option<String>,
+    /// The bare YouTube video id, never a URL.
+    ///
+    /// Burrow ships each video's still image and opens the video in the user's
+    /// own browser, so it never makes a request to YouTube on their behalf —
+    /// which would both break the "talks to nothing else" claim and tell
+    /// Google which plugins somebody is looking at.
+    #[serde(default)]
+    pub youtube: Option<String>,
     #[serde(default)]
     pub builds: BTreeMap<Format, BTreeMap<Platform, Asset>>,
     #[serde(default)]

@@ -19,7 +19,7 @@ export type CatalogSource = 'network' | 'cache' | 'baked'
 export interface CatalogInfo {
   source: CatalogSource
   generated: string
-  fetchedAt: string | null
+  fetchedAtEpoch: number | null
   entryCount: number
   /** Set when a fetch failed and something older is being shown instead. */
   error: string | null
@@ -82,6 +82,8 @@ export interface PluginView {
   tags: string[]
   demo: string | null
   guide: string | null
+  /** Bare YouTube video id, or null. Never a URL. */
+  youtube: string | null
   releaseUrl: string | null
   releasesUrl: string | null
   slots: Slot[]
@@ -133,7 +135,7 @@ export interface Settings {
   allowGithubFallback: boolean
   seen: Record<string, string>
   seenAt: string | null
-  lastRefresh: { at: string; ok: boolean; source: string; error: string | null } | null
+  lastRefresh: { at: number; ok: boolean; source: string; error: string | null } | null
 }
 
 export type Action = 'install' | 'update' | 'uninstall'

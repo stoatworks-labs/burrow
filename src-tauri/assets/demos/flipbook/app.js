@@ -89,14 +89,43 @@ function runLength(start, frameCount, cells) {
 	return Math.max(1, Math.min(frameCount, total));
 }
 
+// The frame position, carried forward across a Rate change.
+//
+// `seconds * rate` moves the position by `seconds * delta` the instant Rate
+// changes, and here `seconds` is how long the page has been open -- so dragging
+// the slider a few minutes in cuts the sheet to an unrelated cell instead of
+// simply changing the pace. Mirrors Flipbook.h's UpdateFrameAnchor. This page is
+// where a visitor is guaranteed to be dragging a Rate slider, so it needs this
+// at least as much as the plugin does.
+let frameAnchor = 0;
+let anchorSeconds = 0;
+let anchorRate = -1;
+
 function frameClock(seconds, rate, manualPhase, length, manual) {
 	const run = Math.max(1, length);
 	if (manual) {
 		// Across exactly one pass. The span is length - 1 so the top of the
 		// travel is the LAST frame rather than one past it.
+		//
+		// The anchor keeps following the clock while Manual is selected, so that
+		// switching back to a running sheet resumes rather than leaps.
+		anchorSeconds = seconds;
+		anchorRate = rate;
 		return clamp01(manualPhase) * (run - 1);
 	}
-	return seconds * rate;
+
+	if (anchorRate < 0) {
+		// First frame: anchor stays at zero, so this is exactly the old product
+		// until Rate is touched.
+		anchorRate = rate;
+	} else if (rate !== anchorRate) {
+		// Once per change, not once per frame.
+		frameAnchor += (seconds - anchorSeconds) * anchorRate;
+		anchorSeconds = seconds;
+		anchorRate = rate;
+	}
+
+	return frameAnchor + (seconds - anchorSeconds) * rate;
 }
 
 function frameOffset(framePos, length, mode) {

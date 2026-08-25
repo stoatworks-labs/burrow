@@ -9,6 +9,7 @@ import type {
 } from '../api/types'
 import { FORMAT_LABEL } from '../api/types'
 import { FormatChips } from '../components/FormatChips'
+import { PluginArt } from '../components/PluginArt'
 import { humanSize } from '../api/backend'
 
 /**
@@ -213,14 +214,7 @@ function Row({
 
   return (
     <div className="row">
-      {plugin.thumb && (
-        <img
-          className="thumb"
-          src={`./thumbs/${plugin.slug}.png`}
-          alt=""
-          onError={e => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
-        />
-      )}
+      <PluginArt plugin={plugin} onOpen={onOpen} />
       <div className="body">
         <div className="title">
           <h3>{plugin.name}</h3>

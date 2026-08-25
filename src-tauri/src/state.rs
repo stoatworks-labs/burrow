@@ -31,7 +31,10 @@ pub enum CatalogSource {
 pub struct CatalogInfo {
     pub source: CatalogSource,
     pub generated: String,
-    pub fetched_at: Option<String>,
+    /// Seconds since the epoch. A number rather than a formatted string:
+    /// std has no date formatter, and the frontend has to turn it into "two
+    /// minutes ago" regardless.
+    pub fetched_at_epoch: Option<u64>,
     pub entry_count: usize,
     /// Present when a fetch failed and something older is being shown.
     pub error: Option<String>,
@@ -99,6 +102,13 @@ impl AppState {
     pub fn demo_root(&self) -> PathBuf {
         self.resource_dir.join("assets").join("demos")
     }
+}
+
+fn now_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// Load the ledger — and, unlike settings, do **not** silently reset it.
@@ -303,7 +313,7 @@ fn adopt(
     let info = CatalogInfo {
         source,
         generated: cat.generated.clone(),
-        fetched_at: None,
+        fetched_at_epoch: Some(now_epoch()),
         entry_count: cat.entries.len(),
         error,
         newer_schema: cat.schema > catalog::KNOWN_SCHEMA,
@@ -323,6 +333,16 @@ fn adopt(
             }
             let _ = settings::store(settings_path, &s);
         }
+    }
+
+    if let Ok(mut s) = state.settings.lock() {
+        s.last_refresh = Some(crate::settings::RefreshRecord {
+            at: now_epoch(),
+            ok: info.error.is_none(),
+            source: format!("{:?}", source).to_lowercase(),
+            error: info.error.clone(),
+        });
+        let _ = settings::store(settings_path, &s);
     }
 
     if let Ok(mut slot) = state.catalog.lock() {
@@ -350,6 +370,7 @@ pub struct PluginView {
     pub tags: Vec<String>,
     pub demo: Option<String>,
     pub guide: Option<String>,
+    pub youtube: Option<String>,
     pub release_url: Option<String>,
     pub releases_url: Option<String>,
     /// Every (format, destination) this plugin could occupy on this machine.
@@ -449,6 +470,7 @@ pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Pl
             tags: entry.tags.clone(),
             demo: entry.demo.clone(),
             guide: entry.guide.clone(),
+            youtube: entry.youtube.clone(),
             release_url: entry.release_url.clone(),
             releases_url: entry.releases_url.clone(),
             has_override: settings.has_override(&entry.slug),

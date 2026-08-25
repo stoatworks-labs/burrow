@@ -68,12 +68,14 @@ for required in \
   "Contents/MacOS/burrow-helper" \
   "Contents/Resources/assets/catalog.json" \
   "Contents/Resources/assets/demos" \
-  "Contents/Resources/assets/thumbs"
+  "Contents/Resources/assets/thumbs" \
+  "Contents/Resources/assets/video"
 do
   [ -e "$app/$required" ] || { echo "MISSING: $required" >&2; exit 1; }
 done
-echo "    helper, catalogue, $(ls "$app/Contents/Resources/assets/demos" | wc -l | tr -d ' ') demos and \
-$(ls "$app/Contents/Resources/assets/thumbs" | wc -l | tr -d ' ') thumbnails all present"
+echo "    helper, catalogue, $(ls "$app/Contents/Resources/assets/demos" | wc -l | tr -d ' ') demos, \
+$(ls "$app/Contents/Resources/assets/thumbs" | wc -l | tr -d ' ') thumbnails and \
+$(ls "$app/Contents/Resources/assets/video" | wc -l | tr -d ' ') video stills all present"
 
 echo
 echo "$app"

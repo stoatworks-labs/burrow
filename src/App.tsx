@@ -14,6 +14,7 @@ import { WhatsNew } from './tabs/WhatsNew'
 import { Plugins } from './tabs/Plugins'
 import { SettingsTab } from './tabs/Settings'
 import { Banner } from './components/Banner'
+import { RefreshTools } from './components/RefreshTools'
 import { isFilming, runFilm } from './film'
 
 type TabId = 'whatsnew' | 'plugins' | 'settings'
@@ -33,6 +34,9 @@ export function App() {
   const [error, setError] = useState<string | null>(null)
   const [notes, setNotes] = useState<string[]>([])
   const [filmQuery, setFilmQuery] = useState<string | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [lastScan, setLastScan] = useState<number | null>(null)
+  const [refreshResult, setRefreshResult] = useState<string | null>(null)
 
   /*
    * Subscribe once, on mount, before any job can start.
@@ -75,6 +79,33 @@ export function App() {
     }
   }, [])
 
+  /** What changed between two views of the list, in one short sentence. */
+  const summarise = useCallback((before: PluginView[], after: PluginView[]): string => {
+    const was = new Map(before.map(p => [p.slug, p]))
+    let newlyBehind = 0
+    let versionMoved = 0
+    let installChanged = 0
+    for (const p of after) {
+      const b = was.get(p.slug)
+      if (!b) continue
+      if (b.version !== p.version) versionMoved++
+      if (b.bucket !== 'update-available' && p.bucket === 'update-available') newlyBehind++
+      const state = (v: PluginView) => v.slots.map(s => s.state.state).join(',')
+      if (state(b) !== state(p)) installChanged++
+    }
+    const parts: string[] = []
+    if (versionMoved) parts.push(`${versionMoved} new version${versionMoved === 1 ? '' : 's'}`)
+    if (newlyBehind) parts.push(`${newlyBehind} now needs updating`)
+    if (installChanged && !newlyBehind) {
+      parts.push(`${installChanged} changed on disk`)
+    }
+    if (after.length !== before.length) {
+      const d = after.length - before.length
+      parts.push(d > 0 ? `${d} new plugin${d === 1 ? '' : 's'}` : `${-d} removed`)
+    }
+    return parts.length ? parts.join(' · ') : 'Nothing changed'
+  }, [])
+
   const reload = useCallback(async () => {
     try {
       const [e, s, list] = await Promise.all([
@@ -85,6 +116,7 @@ export function App() {
       setEnv(e)
       setSettings(s)
       setPlugins(list)
+      setLastScan(Math.floor(Date.now() / 1000))
     } catch (err) {
       setError(String(err))
     }
@@ -102,18 +134,45 @@ export function App() {
     })()
   }, [reload])
 
+  /** Fetch the plugin list. The only one of the two that uses the network. */
   const refresh = useCallback(async () => {
     setBusy(true)
     setError(null)
+    setRefreshResult(null)
+    const before = plugins
     try {
       setCatalog(await api.refreshCatalog(true))
-      await reload()
+      const after = await api.listPlugins()
+      setPlugins(after)
+      setRefreshResult(summarise(before, after))
     } catch (err) {
       setError(String(err))
     } finally {
       setBusy(false)
     }
-  }, [reload])
+  }, [plugins, summarise])
+
+  /**
+   * Re-read the plugin folders. No network, so it works offline and stays fast
+   * — and it is the right button after installing or deleting something by
+   * hand, which the catalogue knows nothing about.
+   */
+  const rescan = useCallback(async () => {
+    setScanning(true)
+    setError(null)
+    setRefreshResult(null)
+    const before = plugins
+    try {
+      const after = await api.rescan()
+      setPlugins(after)
+      setLastScan(Math.floor(Date.now() / 1000))
+      setRefreshResult(summarise(before, after))
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setScanning(false)
+    }
+  }, [plugins, summarise])
 
   const runOps = useCallback(
     async (requests: OpRequest[]) => {
@@ -183,6 +242,7 @@ export function App() {
         {isMock && !isShot && <span className="sub">preview — no backend</span>}
       </header>
 
+
       <nav className="tabs" role="tablist">
         <button
           className="tab"
@@ -210,6 +270,16 @@ export function App() {
           Settings
         </button>
       </nav>
+
+      <RefreshTools
+        catalog={catalog}
+        busy={busy}
+        scanning={scanning}
+        lastScanEpoch={lastScan}
+        result={refreshResult}
+        onRescan={rescan}
+        onCheck={refresh}
+      />
 
       <Banner catalog={catalog} error={error} notes={notes} busy={busy} onRefresh={refresh} />
 

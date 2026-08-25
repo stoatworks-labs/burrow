@@ -54,6 +54,31 @@ version in it, so Burrow genuinely cannot tell — it will offer to reinstall th
 current version rather than pretend to know. It also happens on macOS if you built
 a plugin yourself, or installed one before you had Burrow.
 
+## Keeping it current
+
+Two buttons, above the list, because they do different jobs:
+
+**Rescan installed** re-reads your plugin folders. It uses no network at all, so
+it works offline and is instant. Press it after installing or removing a plugin
+by hand — Burrow will notice without being told twice.
+
+**Check for updates** fetches the plugin list. This is the one that finds new
+versions and new release notes, and the only one that goes anywhere.
+
+Both say what they actually did — *"2 new versions · 1 now needs updating"*, or
+*"Nothing changed"* — and each shows when it last ran. If the version numbers
+you are looking at came from the copy that shipped with the app rather than a
+live check, the second button says **not checked** rather than a time.
+
+## Watching a plugin before you install it
+
+Every plugin's video is the picture at the left of its row. Click it and the
+video opens in your own browser.
+
+The still is part of the app rather than something fetched from YouTube — so the
+list works offline, and browsing plugins in Burrow tells Google nothing. Nothing
+is requested until you click.
+
 ## Formats, and which ones you want
 
 Most plugins come in more than one format. They are the same effect; the format is

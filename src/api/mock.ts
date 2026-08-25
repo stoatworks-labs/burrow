@@ -52,6 +52,7 @@ type CatalogEntry = {
   tags: string[]
   demo: string | null
   guide: string | null
+  youtube: string | null
   releaseUrl: string | null
   releasesUrl: string | null
   builds: Record<string, Record<string, { url: string; size?: number; entries?: string[]; extras?: string[] }>>
@@ -195,7 +196,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const info: CatalogInfo = {
         source: (p('source', state === 'ok' ? 'network' : 'baked') as any),
         generated: new Date().toISOString(),
-        fetchedAt: new Date().toISOString(),
+        fetchedAtEpoch: Math.floor(Date.now() / 1000),
         entryCount: entries.length,
         error:
           state === 'offline'
@@ -247,6 +248,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           tags: e.tags ?? [],
           demo: e.demo,
           guide: e.guide,
+          youtube: e.youtube,
           releaseUrl: e.releaseUrl,
           releasesUrl: e.releasesUrl,
           slots,

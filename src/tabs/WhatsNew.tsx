@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { Note, OpRequest, PluginView, Settings } from '../api/types'
 import { FORMAT_LABEL } from '../api/types'
 import { humanDate } from '../api/backend'
+import { PluginArt } from '../components/PluginArt'
 
 /**
  * What has changed since the user last looked.
@@ -89,6 +90,7 @@ export function WhatsNew({
               busy={busy}
               onRun={onRun}
               onDemo={onDemo}
+              onOpen={onOpen}
               onDismiss={() => dismiss(p)}
             />
           ))}
@@ -126,14 +128,7 @@ function UpdateCard({
   return (
     <div className="card">
       <div className="card-head">
-        {plugin.thumb && (
-          <img
-            className="thumb"
-            src={`./thumbs/${plugin.slug}.png`}
-            alt=""
-            onError={e => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
-          />
-        )}
+        <PluginArt plugin={plugin} onOpen={onOpen} />
         <div style={{ flex: 1 }}>
           <h3>{plugin.name}</h3>
           <div className="when">
@@ -187,12 +182,14 @@ function NewCard({
   busy,
   onRun,
   onDemo,
+  onOpen,
   onDismiss,
 }: {
   plugin: PluginView
   busy: boolean
   onRun: (r: OpRequest[]) => void
   onDemo: (slug: string) => void
+  onOpen: (url: string) => void
   onDismiss: () => void
 }) {
   const wanted = plugin.slots.filter(
@@ -201,14 +198,7 @@ function NewCard({
   return (
     <div className="card">
       <div className="card-head">
-        {plugin.thumb && (
-          <img
-            className="thumb"
-            src={`./thumbs/${plugin.slug}.png`}
-            alt=""
-            onError={e => ((e.target as HTMLImageElement).style.visibility = 'hidden')}
-          />
-        )}
+        <PluginArt plugin={plugin} onOpen={onOpen} />
         <div style={{ flex: 1 }}>
           <h3>{plugin.name}</h3>
           <div className="when">

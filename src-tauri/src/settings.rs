@@ -79,7 +79,8 @@ pub struct Settings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshRecord {
-    pub at: String,
+    /// Seconds since the epoch — see CatalogInfo::fetched_at_epoch.
+    pub at: u64,
     pub ok: bool,
     pub source: String,
     pub error: Option<String>,
