@@ -27,7 +27,14 @@ export type PlatformId = 'macos' | 'windows'
  * yet, and the tab says so. It is here rather than added later so that the day
  * it starts arriving, this build files it correctly instead of dropping it.
  */
-export type CategoryId = 'video' | 'audio' | 'netinfra' | 'firmware' | 'unknown'
+export type CategoryId =
+  | 'video'
+  | 'video-plugins'
+  | 'video-tools'
+  | 'audio'
+  | 'netinfra'
+  | 'firmware'
+  | 'unknown'
 
 /** Which of the three headings a plugin sits under. */
 export type Bucket = 'update-available' | 'up-to-date' | 'not-installed'
@@ -98,7 +105,12 @@ export interface VersionEntry {
 export interface PluginView {
   slug: string
   name: string
+  /** The coarse grouping, kept for anything that still reads it. */
   category: CategoryId
+  /** Which tab this sits under — the finer one where the catalogue sends it. */
+  tab: CategoryId
+  /** The project's docker-compose.yml, for the tools you run as a container. */
+  compose: string | null
   /** `plugin`, `app` or `companion` — or something newer this build ignores. */
   kind: string
   /** The software tool this belongs to, for a Companion module. */
@@ -176,9 +188,38 @@ export interface Settings {
   destinations: Record<string, string>
   catalogUrl: string
   allowGithubFallback: boolean
+  /** Ask about a newer Burrow at startup. Off unless the user turns it on. */
+  checkUpdatesOnLaunch: boolean
   seen: Record<string, string>
   seenAt: string | null
   lastRefresh: { at: number; ok: boolean; source: string; error: string | null } | null
+}
+
+/**
+ * What a check for a newer Burrow found.
+ *
+ * `available: null` with no error means up to date — a real answer, and not
+ * the same thing as a check that failed.
+ */
+export interface UpdateInfo {
+  current: string
+  available: string | null
+  /** The release body, as written. Markdown, shown as text. */
+  notes: string | null
+  date: string | null
+  /**
+   * Why this copy could not install an update even if one exists — running
+   * from the disk image, or from a folder this user cannot write. Reported by
+   * the check, before anything is downloaded.
+   */
+  blocked: string | null
+}
+
+export interface UpdateProgress {
+  version: string
+  bytesDone: number
+  bytesTotal: number | null
+  done: boolean
 }
 
 export type Action = 'install' | 'update' | 'uninstall'
@@ -277,6 +318,8 @@ export const FORMAT_HOSTS: Record<string, string> = {
  */
 export const CATEGORY_LABEL: Record<CategoryId, string> = {
   video: 'Video',
+  'video-plugins': 'Video plugins',
+  'video-tools': 'Video tools',
   audio: 'Audio',
   netinfra: 'Networking & Infrastructure',
   firmware: 'Device firmware',

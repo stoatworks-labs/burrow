@@ -40,6 +40,7 @@ export function Plugins({
   onDemo,
   onOpen,
   onPlay,
+  onCompose,
 }: {
   category: CategoryId
   plugins: PluginView[]
@@ -54,6 +55,7 @@ export function Plugins({
   onDemo: (slug: string) => void
   onOpen: (url: string) => void
   onPlay: (plugin: PluginView) => void
+  onCompose: (plugin: PluginView) => void
 }) {
   const [query, setQuery] = useState('')
 
@@ -64,7 +66,7 @@ export function Plugins({
   }, [externalQuery])
 
   const mine = useMemo(
-    () => plugins.filter(p => p.category === category),
+    () => plugins.filter(p => p.tab === category),
     [plugins, category],
   )
 
@@ -198,6 +200,7 @@ export function Plugins({
                   onDemo={onDemo}
                   onOpen={onOpen}
                   onPlay={onPlay}
+                  onCompose={onCompose}
                 />
               ))
             )}
@@ -221,6 +224,7 @@ function Row({
   onDemo,
   onOpen,
   onPlay,
+  onCompose,
 }: {
   plugin: PluginView
   /** Companion modules that drive this one. Usually none or one. */
@@ -233,6 +237,7 @@ function Row({
   onDemo: (slug: string) => void
   onOpen: (url: string) => void
   onPlay: (plugin: PluginView) => void
+  onCompose: (plugin: PluginView) => void
 }) {
   const [showFormats, setShowFormats] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
@@ -333,6 +338,14 @@ function Row({
           {plugin.guide && (
             <button className="btn quiet" onClick={() => onOpen(plugin.guide!)}>
               Guide
+            </button>
+          )}
+          {/* Only for the tools you run as a container. For those the compose
+              file is the instruction, so it gets a button rather than a line in
+              a guide somewhere. */}
+          {plugin.compose && (
+            <button className="btn quiet" onClick={() => onCompose(plugin)}>
+              View compose
             </button>
           )}
           <button className="btn quiet" onClick={() => setShowFormats(v => !v)}>

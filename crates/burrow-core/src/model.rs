@@ -172,7 +172,13 @@ impl Format {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Category {
+    /// The coarse one, and what a client older than the split reads. Still on
+    /// every entry the catalogue emits.
     Video,
+    /// The two halves of it, split by kind: an effect you load into a host is a
+    /// different errand from an application you launch.
+    VideoPlugins,
+    VideoTools,
     Audio,
     /// Networking & infrastructure: the tools that move signals around a
     /// network and the ones that keep a rack running.
@@ -187,12 +193,18 @@ pub enum Category {
 
 impl Category {
     /// The categories this build shows a tab for, in tab order.
-    pub const SHOWN: &'static [Category] =
-        &[Category::Video, Category::Audio, Category::Netinfra];
+    pub const SHOWN: &'static [Category] = &[
+        Category::VideoPlugins,
+        Category::VideoTools,
+        Category::Audio,
+        Category::Netinfra,
+    ];
 
     pub fn id(self) -> &'static str {
         match self {
             Category::Video => "video",
+            Category::VideoPlugins => "video-plugins",
+            Category::VideoTools => "video-tools",
             Category::Audio => "audio",
             Category::Netinfra => "netinfra",
             Category::Firmware => "firmware",
@@ -204,6 +216,8 @@ impl Category {
     pub fn label(self) -> &'static str {
         match self {
             Category::Video => "Video",
+            Category::VideoPlugins => "Video plugins",
+            Category::VideoTools => "Video tools",
             Category::Audio => "Audio",
             Category::Netinfra => "Networking & Infrastructure",
             Category::Firmware => "Device firmware",

@@ -45,6 +45,7 @@ pub fn run() {
             state::open_demo,
             state::open_external,
             state::reveal_path,
+            state::save_compose,
             state::film_mode,
             state::film_delay,
             state::film_beat,

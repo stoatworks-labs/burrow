@@ -14,6 +14,9 @@
  *   ?ofx=missing|empty|readonly|ok     the OpenFX destination's condition
  *   ?job=running|failed|cancelled
  *   ?seen=none|current                 first run, or a real baseline
+ *   ?update=none|available|blocked|error|fail
+ *                                      what a check for a newer Burrow finds,
+ *                                      and whether installing it works
  *
  * It serves the catalogue that actually ships in the app, so the data under
  * test is the data users get.
@@ -33,6 +36,8 @@ import type {
   Progress,
   Settings,
   Slot,
+  UpdateInfo,
+  UpdateProgress,
 } from './types'
 
 const params = new URLSearchParams(
@@ -44,6 +49,8 @@ type CatalogEntry = {
   slug: string
   name: string
   category?: CategoryId
+  tab?: CategoryId
+  compose?: string | null
   kind?: string
   parent?: string | null
   hook: string
@@ -225,6 +232,7 @@ let currentSettings: Settings = {
   destinations: {},
   catalogUrl: 'https://stoatworks-labs.com/catalog.json',
   allowGithubFallback: true,
+  checkUpdatesOnLaunch: false,
   seen: {},
   seenAt: null,
   lastRefresh: null,
@@ -232,6 +240,11 @@ let currentSettings: Settings = {
 
 const progressHandlers: Array<(p: Progress) => void> = []
 const finishedHandlers: Array<(o: BatchOutcome) => void> = []
+const updateHandlers: Array<(p: UpdateProgress) => void> = []
+
+/** The version this preview claims to be running. */
+const MOCK_VERSION = '0.2.2'
+const MOCK_NEXT = '0.2.3'
 
 export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   switch (cmd) {
@@ -255,6 +268,15 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         ],
         destinations: destinations(),
       } as T
+
+    case 'save_compose': {
+      // The real command writes into Downloads and returns where. The preview
+      // has no filesystem, so it returns the path it would have written —
+      // enough to exercise the "Saved to … Show" line without pretending a
+      // file exists.
+      const slug = args!.slug as string
+      return `~/Downloads/docker-compose.${slug}.yml` as T
+    }
 
     case 'get_settings':
       return currentSettings as T
@@ -325,6 +347,10 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           slug: e.slug,
           name: e.name,
           category: e.category ?? 'video',
+          // Same fallback the Rust side uses: the coarse grouping is the only
+          // answer a catalogue written before the split has.
+          tab: e.tab ?? e.category ?? 'video',
+          compose: e.compose ?? null,
           kind: e.kind ?? 'plugin',
           parent: e.parent ?? null,
           hook: e.hook,
@@ -437,6 +463,51 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return outcome as T
     }
 
+    case 'client_version':
+      return MOCK_VERSION as T
+
+    case 'check_update': {
+      const mode = p('update', 'none')
+      if (mode === 'error') throw new Error('could not reach the update list — dns error')
+      const info: UpdateInfo = {
+        current: MOCK_VERSION,
+        available: mode === 'none' ? null : MOCK_NEXT,
+        notes:
+          mode === 'none'
+            ? null
+            : 'Burrow can now update itself from Settings.\n\nThe account name no longer appears in the destination paths.',
+        date: mode === 'none' ? null : new Date().toISOString(),
+        blocked:
+          mode === 'blocked'
+            ? 'Burrow is running from its disk image, which is read-only — drag it to your Applications folder and update from there.'
+            : null,
+      }
+      return info as T
+    }
+
+    // The one command whose real implementation never returns: it restarts the
+    // app. Here it emits a plausible download and then stops, which is what
+    // the button has to look like it is doing.
+    case 'install_update': {
+      const total = 24_600_000
+      for (let done = 0; done < total; done += total / 12) {
+        updateHandlers.forEach(h =>
+          h({ version: MOCK_NEXT, bytesDone: Math.round(done), bytesTotal: total, done: false }),
+        )
+        await new Promise(r => setTimeout(r, 90))
+      }
+      if (p('update') === 'fail') {
+        throw new Error(
+          'that update did not match its signature and was refused. Download Burrow ' +
+            'from its release page instead, and please report this.',
+        )
+      }
+      updateHandlers.forEach(h =>
+        h({ version: MOCK_NEXT, bytesDone: total, bytesTotal: total, done: true }),
+      )
+      return undefined as T
+    }
+
     case 'cancel_batch':
     case 'open_external':
     case 'reveal_path':
@@ -474,6 +545,13 @@ export async function mockListen<T>(
     return () => {
       const i = progressHandlers.indexOf(handler as any)
       if (i >= 0) progressHandlers.splice(i, 1)
+    }
+  }
+  if (event === 'update-progress') {
+    updateHandlers.push(handler as any)
+    return () => {
+      const i = updateHandlers.indexOf(handler as any)
+      if (i >= 0) updateHandlers.splice(i, 1)
     }
   }
   if (event === 'batch-finished') {

@@ -20,6 +20,8 @@ import type {
   PluginView,
   Progress,
   Settings,
+  UpdateInfo,
+  UpdateProgress,
 } from './types'
 import { mockInvoke, mockListen } from './mock'
 
@@ -56,19 +58,36 @@ export const api = {
   videoUrl: (slug: string) => invoke<string | null>('video_url', { slug }),
   openDemo: (slug: string) => invoke<void>('open_demo', { slug }),
   openExternal: (url: string) => invoke<void>('open_external', { url }),
+  saveCompose: (slug: string, text: string) =>
+    invoke<string>('save_compose', { slug, text }),
   revealPath: (path: string) => invoke<void>('reveal_path', { path }),
+  clientVersion: () => invoke<string>('client_version'),
+  checkUpdate: () => invoke<UpdateInfo>('check_update'),
+  /** Does not resolve on success: the app restarts into the new version. */
+  installUpdate: () => invoke<void>('install_update'),
 }
 
 export const onProgress = (h: (p: Progress) => void) => listenRaw<Progress>('batch-progress', h)
 export const onFinished = (h: (o: BatchOutcome) => void) =>
   listenRaw<BatchOutcome>('batch-finished', h)
+/* Its own event, not `batch-progress`: a self-update and a plugin install must
+   not be able to drive the same progress bar. */
+export const onUpdateProgress = (h: (p: UpdateProgress) => void) =>
+  listenRaw<UpdateProgress>('update-progress', h)
 
-/** Bytes, for a person. */
+/**
+ * Bytes, for a person.
+ *
+ * Goes as far as GB because a whole section's worth of downloads does: one
+ * plugin is never a gigabyte, forty of them are, and "1214.2 MB" is a number
+ * to decode rather than read.
+ */
 export function humanSize(n: number | null | undefined): string {
   if (!n) return ''
   if (n < 1000) return `${n} B`
   if (n < 1_000_000) return `${(n / 1000).toFixed(0)} KB`
-  return `${(n / 1_000_000).toFixed(1)} MB`
+  if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)} MB`
+  return `${(n / 1_000_000_000).toFixed(1)} GB`
 }
 
 /** A date, for a person. Catalogue dates are plain `YYYY-MM-DD`. */

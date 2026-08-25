@@ -19,6 +19,7 @@ import { SettingsTab } from './tabs/Settings'
 import { Banner } from './components/Banner'
 import { RefreshTools } from './components/RefreshTools'
 import { VideoModal } from './components/VideoModal'
+import { ComposeModal } from './components/ComposeModal'
 import { filmDelay, isFilming, runFilm } from './film'
 
 /**
@@ -28,7 +29,13 @@ import { filmDelay, isFilming, runFilm } from './film'
 type TabId = 'whatsnew' | CategoryId | 'settings'
 
 /** The category tabs, in order. Firmware is last and empty on purpose. */
-const CATEGORY_TABS: CategoryId[] = ['video', 'audio', 'netinfra', 'firmware']
+const CATEGORY_TABS: CategoryId[] = [
+  'video-plugins',
+  'video-tools',
+  'audio',
+  'netinfra',
+  'firmware',
+]
 
 const TABS: TabId[] = ['whatsnew', ...CATEGORY_TABS, 'settings']
 
@@ -40,8 +47,12 @@ const TABS: TabId[] = ['whatsnew', ...CATEGORY_TABS, 'settings']
  * fall through, so an old link lands where it meant to.
  */
 function initialTab(asked: string): TabId {
-  const wanted = asked === 'plugins' ? 'video' : asked
-  return TABS.includes(wanted as TabId) ? (wanted as TabId) : 'video'
+  // `plugins` was this tab's name when there was one of them, and `video` was
+  // its name before the split. Both are in the film script and in saved preview
+  // URLs, so both land where they meant to rather than on the default.
+  const alias: Record<string, TabId> = { plugins: 'video-plugins', video: 'video-plugins' }
+  const wanted = alias[asked] ?? asked
+  return TABS.includes(wanted as TabId) ? (wanted as TabId) : 'video-plugins'
 }
 
 export function App() {
@@ -59,6 +70,7 @@ export function App() {
   const [lastScan, setLastScan] = useState<number | null>(null)
   const [refreshResult, setRefreshResult] = useState<string | null>(null)
   const [playing, setPlaying] = useState<PluginView | null>(null)
+  const [composing, setComposing] = useState<PluginView | null>(null)
 
   /*
    * Subscribe once, on mount, before any job can start.
@@ -267,7 +279,7 @@ export function App() {
     const out: Record<string, number> = {}
     for (const c of CATEGORY_TABS) out[c] = 0
     for (const p of plugins) {
-      if (p.bucket === 'update-available' && p.category in out) out[p.category]++
+      if (p.bucket === 'update-available' && p.tab in out) out[p.tab]++
     }
     return out
   }, [plugins])
@@ -360,6 +372,7 @@ export function App() {
           onDemo={api.openDemo}
           onOpen={api.openExternal}
           onPlay={setPlaying}
+          onCompose={setComposing}
         />
       ) : (
         <SettingsTab
@@ -369,6 +382,14 @@ export function App() {
           busy={busy}
           onSave={saveSettings}
           onRefresh={refresh}
+          onReveal={api.revealPath}
+        />
+      )}
+
+      {composing?.compose && (
+        <ComposeModal
+          plugin={composing}
+          onClose={() => setComposing(null)}
           onReveal={api.revealPath}
         />
       )}

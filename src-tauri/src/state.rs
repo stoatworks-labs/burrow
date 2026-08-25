@@ -386,8 +386,13 @@ fn adopt(
 pub struct PluginView {
     pub slug: String,
     pub name: String,
-    /// Which tab this belongs under.
+    /// The coarse grouping, kept for anything that still reads it.
     pub category: burrow_core::model::Category,
+    /// Which tab this belongs under — the finer one where the catalogue sends
+    /// it, the coarse one where it does not.
+    pub tab: burrow_core::model::Category,
+    /// The project's compose file, for the tools you run as a container.
+    pub compose: Option<String>,
     /// `plugin`, `app` or `companion`. Carried through verbatim, including a
     /// value this build has never heard of — the UI shows what it can and the
     /// catalogue stays free to grow.
@@ -520,6 +525,8 @@ pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Pl
             slug: entry.slug.clone(),
             name: entry.name.clone(),
             category: entry.category,
+            tab: entry.tab(),
+            compose: entry.compose.clone(),
             kind: entry.kind.clone(),
             parent: entry.parent.clone(),
             hook: entry.hook.clone(),
@@ -679,6 +686,39 @@ pub fn open_external(app: AppHandle, url: String) -> Result<(), String> {
     tauri_plugin_opener::OpenerExt::opener(&app)
         .open_url(url, None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+/// Write a compose file into the user's Downloads folder, and say where.
+///
+/// **Downloads and a reveal, rather than a save dialog.** A dialog would mean
+/// adding `tauri-plugin-dialog` and a capability for it, and this app's
+/// permission list is short on purpose. Downloads is where a browser would put
+/// it, the app already knows how to reveal a path in Finder, and the button
+/// says exactly what it will do.
+///
+/// The name carries the slug: `docker-compose.flock.yml` stays recognisable in
+/// a folder full of other people's downloads, where a bare
+/// `docker-compose.yml` would not.
+#[tauri::command]
+pub fn save_compose(app: AppHandle, slug: String, text: String) -> Result<String, String> {
+    // The slug reaches this from the catalogue, which comes off the network,
+    // and it is about to become a filename. Anything but the shape a slug
+    // actually takes is refused rather than sanitised — quietly rewriting a
+    // hostile name into a harmless one hides that it was sent at all.
+    if slug.is_empty()
+        || slug.len() > 64
+        || !slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!("{slug} is not a project name"));
+    }
+
+    let dir = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("could not find your Downloads folder: {e}"))?;
+    let path = dir.join(format!("docker-compose.{slug}.yml"));
+    std::fs::write(&path, text).map_err(|e| format!("could not write {}: {e}", path.display()))?;
+    Ok(path.display().to_string())
 }
 
 #[tauri::command]

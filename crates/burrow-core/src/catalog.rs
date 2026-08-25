@@ -74,6 +74,14 @@ pub struct Entry {
     /// says.
     #[serde(default = "video")]
     pub category: Category,
+    /// The finer grouping — what the app shows as a tab.
+    ///
+    /// `video` splits into `video-plugins` and `video-tools`; everything else
+    /// is the same value as `category`. Absent on a catalogue written before
+    /// the split, where the coarse one is the only answer there is, so it
+    /// falls back to it — see [`Entry::tab`].
+    #[serde(default)]
+    pub tab: Option<Category>,
     /// The slug of the software tool this belongs to, for a thing that is not
     /// used on its own.
     ///
@@ -92,6 +100,15 @@ pub struct Entry {
     pub role: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// The project's `docker-compose.yml`, verbatim, for the tools you run as a
+    /// container. None for everything else.
+    ///
+    /// Embedded in the catalogue rather than fetched: Burrow reads one file and
+    /// downloads from GitHub, and going to a third host to read a compose file
+    /// would be a new claim to make in its Settings pane for about six
+    /// kilobytes across the whole fleet.
+    #[serde(default)]
+    pub compose: Option<String>,
     #[serde(default)]
     pub thumb: Option<String>,
     #[serde(default)]
@@ -295,6 +312,12 @@ fn video() -> Category {
 }
 
 impl Entry {
+    /// Which tab this belongs under: the finer grouping where the catalogue
+    /// sends one, and the coarse category where it does not.
+    pub fn tab(&self) -> Category {
+        self.tab.unwrap_or(self.category)
+    }
+
     /// The artefact for a format on a platform, for this machine's
     /// architecture, if the catalogue has one.
     pub fn asset(&self, format: Format, platform: Platform) -> Option<&Asset> {
@@ -443,6 +466,39 @@ mod tests {
         let e = &c.entries[0];
         // The unknown format is retained but never offered.
         assert_eq!(e.formats_for(Platform::Macos), vec![Format::Ffgl, Format::Openfx]);
+    }
+
+    #[test]
+    fn a_catalogue_without_the_video_split_still_files_its_entries() {
+        // The whole reason `category` survives beside `tab`: a client reading a
+        // catalogue that predates the split — or a catalogue reading a client
+        // that predates it — must not lose the entry. MINIMAL has no `tab`.
+        let c = parse(MINIMAL).unwrap();
+        let e = &c.entries[0];
+        assert_eq!(e.category, Category::Video);
+        assert_eq!(e.tab(), Category::Video);
+    }
+
+    #[test]
+    fn the_finer_tab_wins_where_the_catalogue_sends_one() {
+        let body = MINIMAL.replace(
+            "\"kind\": \"plugin\",",
+            "\"kind\": \"plugin\", \"category\": \"video\", \"tab\": \"video-plugins\",",
+        );
+        let e = &parse(&body).unwrap().entries[0];
+        // Coarse for anything that has not heard of the split, fine for this.
+        assert_eq!(e.category, Category::Video);
+        assert_eq!(e.tab(), Category::VideoPlugins);
+    }
+
+    #[test]
+    fn a_tab_this_build_has_never_heard_of_does_not_fail_the_parse() {
+        let body = MINIMAL.replace(
+            "\"kind\": \"plugin\",",
+            "\"kind\": \"plugin\", \"tab\": \"video-something-new\",",
+        );
+        let e = &parse(&body).unwrap().entries[0];
+        assert_eq!(e.tab(), Category::Unknown);
     }
 
     #[test]
