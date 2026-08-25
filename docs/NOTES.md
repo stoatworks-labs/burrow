@@ -470,6 +470,44 @@ Not installed section of the video tab is 1.2 of them, and it was reading
   shortcut**. Burrow says so in the batch notes rather than writing outside the
   folder it was given.
 
+## 2026-08-25 — a Self-hosted tab, and the first entry that installs nothing
+
+Two changes in one. The eight tools that ship a `docker-compose.yml` were
+spread across Video tools, Audio and Networking, and the fleet's fifteen
+browser tools were in no tab at all — `burrowKind` returned null for
+`browserapp`, because none of them is something Burrow installs. Both now sit
+under **Self-hosted**, because *how you run a thing* decides what the row can
+offer, and neither of these has an installer.
+
+**`kind: "web"` is the first entry with nothing to install**, and every gate in
+the catalogue route was written on the assumption that could not happen. Three
+of them dropped it silently: `KINDS`, the app-placeability check, and — the one
+that took longest to find — a closing `.filter(e => e.assets.length > 0)`. The
+entry count stayed at 68 through two of those fixes with nothing reporting why.
+
+⚠️ **`demo` means two different things and they collided.** For a plugin,
+`p.demo` is a try-before-you-install page; for a browser tool it is where the
+tool *lives*. Emitting it unchanged gave every web row a **Try demo** button
+next to **Open**, one of which would have gone looking for a demo bundled
+inside the app that does not exist. The hosted address is now `hostedUrl` and
+nothing else.
+
+**A browser tool needed its own heading too.** Filed by `bucket` it landed
+under *Not installed*, which reads as something you have failed to do. It gets
+"Runs in a browser", with no bulk buttons above it — a header acting on all of
+them would act on nothing.
+
+⚠️ **This moves eight entries between tabs, and a shipped client will lose
+them.** v0.2.3 knows `video-plugins` and `video-tools` but not `selfhosted`, so
+`Category` parses it as `Unknown` and files those eight under nothing — flock,
+srt-router, rfutils and the rest vanish from Video tools, Audio and Networking
+until the user updates. This is the asymmetry AGENTS §4 is about, and the
+fleet's precedent is to hold the change back until the new version is the
+oldest in the wild (the website filtered Linux out of the platform list for
+exactly this reason). It is being accepted here rather than gated because
+v0.2.3 is hours old and now updates itself — but it *is* the trap, and the same
+call should not be made casually next time.
+
 ## 2026-08-25 — claiming what somebody installed by hand
 
 Burrow can now adopt software already on the machine: **Settings → Software

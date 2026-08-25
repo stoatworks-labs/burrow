@@ -183,6 +183,14 @@ pub enum Category {
     /// Networking & infrastructure: the tools that move signals around a
     /// network and the ones that keep a rack running.
     Netinfra,
+    /// Things you run rather than install: the tools that ship a
+    /// `docker-compose.yml`, and the browser tools that run on the website and
+    /// can be cloned and run anywhere.
+    ///
+    /// It cuts across the others — a container that talks to an ATEM is still
+    /// video — because *how you run it* is the thing that decides what you do
+    /// with the row. Nothing here has an installer.
+    SelfHosted,
     /// Device firmware. Nothing carries this yet — the tab says so — but the
     /// value is representable so that the day the catalogue starts emitting it,
     /// clients already in the field file it correctly instead of dropping it.
@@ -198,6 +206,7 @@ impl Category {
         Category::VideoTools,
         Category::Audio,
         Category::Netinfra,
+        Category::SelfHosted,
     ];
 
     pub fn id(self) -> &'static str {
@@ -207,6 +216,7 @@ impl Category {
             Category::VideoTools => "video-tools",
             Category::Audio => "audio",
             Category::Netinfra => "netinfra",
+            Category::SelfHosted => "selfhosted",
             Category::Firmware => "firmware",
             Category::Unknown => "unknown",
         }
@@ -220,6 +230,7 @@ impl Category {
             Category::VideoTools => "Video tools",
             Category::Audio => "Audio",
             Category::Netinfra => "Networking & Infrastructure",
+            Category::SelfHosted => "Self-hosted",
             Category::Firmware => "Device firmware",
             Category::Unknown => "Other",
         }

@@ -122,6 +122,16 @@ pub struct Entry {
     /// hand-installed copy of this", never "this is not ours".
     #[serde(default)]
     pub identifiers: Vec<String>,
+    /// Where a browser tool already runs. `None` for everything else.
+    ///
+    /// Not `demo_url`, which is a *plugin's* try-before-you-install page. For a
+    /// browser tool this is not a demo of anything — it is the tool.
+    #[serde(default)]
+    pub hosted_url: Option<String>,
+    /// The repository, so running your own copy can be offered without the app
+    /// knowing the organisation's name.
+    #[serde(default)]
+    pub repo_url: Option<String>,
     /// The project's `docker-compose.yml`, verbatim, for the tools you run as a
     /// container. None for everything else.
     ///

@@ -31,6 +31,7 @@ export type CategoryId =
   | 'video'
   | 'video-plugins'
   | 'video-tools'
+  | 'selfhosted'
   | 'audio'
   | 'netinfra'
   | 'firmware'
@@ -135,6 +136,10 @@ export interface PluginView {
   /** A copy Burrow can stream itself. Null means offer YouTube instead. */
   videoUrl: string | null
   releaseUrl: string | null
+  /** Where a browser tool already runs. Null for anything Burrow installs. */
+  hostedUrl: string | null
+  /** Its source, for running your own copy. */
+  repoUrl: string | null
   releasesUrl: string | null
   slots: Slot[]
   bucket: Bucket
@@ -360,6 +365,7 @@ export const CATEGORY_LABEL: Record<CategoryId, string> = {
   video: 'Video',
   'video-plugins': 'Video plugins',
   'video-tools': 'Video tools',
+  selfhosted: 'Self-hosted',
   audio: 'Audio',
   netinfra: 'Networking & Infrastructure',
   firmware: 'Device firmware',

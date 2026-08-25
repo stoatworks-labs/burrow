@@ -377,6 +377,8 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           youtube: e.youtube,
           videoUrl: e.videoUrl ?? null,
           releaseUrl: e.releaseUrl,
+          hostedUrl: (e as any).hostedUrl ?? null,
+          repoUrl: (e as any).repoUrl ?? null,
           releasesUrl: e.releasesUrl,
           slots,
           bucket,

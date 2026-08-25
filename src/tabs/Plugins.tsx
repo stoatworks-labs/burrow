@@ -108,6 +108,15 @@ export function Plugins({
     return top.filter(p => matches(p) || (children.get(p.slug) ?? []).some(matches))
   }, [top, children, query])
 
+  /*
+   * A browser tool has nothing to install, so it belongs under none of the
+   * three install headings — filed by bucket it lands in "Not installed",
+   * which reads as something you have failed to do. It gets its own heading
+   * instead, and is taken out of the others.
+   */
+  const web = filtered.filter(p => p.kind === 'web')
+  const installable = filtered.filter(p => p.kind !== 'web')
+
   const groups: Array<[string, PluginView['bucket'], string]> = [
     ['Up to date', 'up-to-date', 'Nothing installed yet.'],
     ['Update available', 'update-available', 'Everything you have is current.'],
@@ -154,8 +163,35 @@ export function Plugins({
         </div>
       )}
 
+      {web.length > 0 && (
+        <section key="web">
+          <div className="sec">
+            <span className="sec-label">Runs in a browser</span>
+            <span className="sec-count">{web.length}</span>
+          </div>
+          {/* No bulk buttons: there is nothing to install for any of them, so
+              a header acting on all of them would act on nothing. */}
+          {web.map(p => (
+            <Row
+              key={p.slug}
+              plugin={p}
+              modules={children.get(p.slug) ?? []}
+              settings={settings}
+              busy={busy}
+              progress={progress}
+              onRun={onRun}
+              onSaveSettings={onSaveSettings}
+              onDemo={onDemo}
+              onOpen={onOpen}
+              onPlay={onPlay}
+              onCompose={onCompose}
+            />
+          ))}
+        </section>
+      )}
+
       {groups.map(([label, bucket, emptyText]) => {
-        const rows = filtered.filter(p => p.bucket === bucket)
+        const rows = installable.filter(p => p.bucket === bucket)
         if (query && rows.length === 0) return null
         return (
           <section key={bucket}>
@@ -309,14 +345,35 @@ function Row({
           {/* Only for the tools you run as a container. For those the compose
               file is the instruction, so it gets a button rather than a line in
               a guide somewhere. */}
-          {plugin.compose && (
-            <button className="btn quiet" onClick={() => onCompose(plugin)}>
-              View compose
+          {/* A browser tool runs on the website and installs nothing, so the
+              primary action is to open it. The clone is offered beside it,
+              because every one of them is a public repo and running your own
+              is the point of the tab it sits in. */}
+          {plugin.kind === 'web' && plugin.hostedUrl && (
+            <button className="btn primary" onClick={() => onOpen(plugin.hostedUrl!)}>
+              Open
             </button>
           )}
-          <button className="btn quiet" onClick={() => setShowFormats(v => !v)}>
-            Formats&hellip;
-          </button>
+          {plugin.kind === 'web' && plugin.repoUrl && (
+            <button className="btn quiet" onClick={() => onOpen(plugin.repoUrl!)}>
+              Source
+            </button>
+          )}
+          {/* For anything you run yourself the compose file *is* the
+              instruction, so it gets a button rather than a line in a guide
+              somewhere — and for a browser tool it is how you host your own. */}
+          {plugin.compose && (
+            <button className="btn quiet" onClick={() => onCompose(plugin)}>
+              {plugin.kind === 'web' ? 'Run your own' : 'View compose'}
+            </button>
+          )}
+          {/* Nothing to install means no formats to choose between. Offering
+              the menu would be offering an install that cannot happen. */}
+          {plugin.kind !== 'web' && (
+            <button className="btn quiet" onClick={() => setShowFormats(v => !v)}>
+              Formats&hellip;
+            </button>
+          )}
           {plugin.versions.length > 0 && (
             <button className="btn quiet" onClick={() => setShowVersions(v => !v)}>
               Previous versions&hellip;
