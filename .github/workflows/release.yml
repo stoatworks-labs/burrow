@@ -306,7 +306,11 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "$TAG" --json body -q .body > release-body.md
-          node scripts/make-latest-json.mjs "$TAG" artifacts release-body.md > latest.json
+          # ⚠️ The names GitHub gave the assets, not the ones we uploaded.
+          # A space becomes a dot on upload, so a URL built from the local
+          # filename 404s — which is what v0.2.3 shipped, for Windows only.
+          GH_ASSET_NAMES="$(gh release view "$TAG" --json assets -q '.assets[].name')" \
+            node scripts/make-latest-json.mjs "$TAG" artifacts release-body.md > latest.json
           cat latest.json
           gh release upload "$TAG" latest.json --clobber
 
@@ -322,18 +326,39 @@ jobs:
         run: |
           set -euo pipefail
           url=https://github.com/stoatworks-labs/burrow/releases/latest/download/latest.json
-          served=$(curl -fsSL "$url")
-          echo "$served" | node -e '
+          # That alias lags the upload by up to a minute, so a check the instant
+          # the upload returns can read the release before this one. Measured at
+          # ~60s on 2026-08-25; this waits rather than guessing.
+          want="${TAG#v}"
+          for attempt in $(seq 1 12); do
+            served=$(curl -fsSL "$url?cb=$RANDOM" || true)
+            got=$(printf '%s' "$served" | node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).version))}catch{process.stdout.write("")}')
+            [ "$got" = "$want" ] && break
+            echo "  alias serves '$got', waiting for '$want' (attempt $attempt)"
+            sleep 15
+          done
+          [ "$got" = "$want" ] || {
+            echo "the /latest/ alias still serves '$got', not '$want' — a newer" >&2
+            echo "release, or a prerelease published as a full one, is on top." >&2
+            exit 1
+          }
+
+          # Every platform present, and — the part v0.2.3 taught us — every URL
+          # it names actually resolving. A manifest can be perfectly well formed
+          # and still hand one platform a 404, which nobody discovers until
+          # somebody on that platform presses the button.
+          printf '%s' "$served" | node -e '
             const m = JSON.parse(require("fs").readFileSync(0, "utf8"))
-            const want = process.env.TAG.replace(/^v/, "")
             const keys = Object.keys(m.platforms ?? {})
-            if (m.version !== want) {
-              console.error(`the /latest/ alias serves ${m.version}, not ${want} — ` +
-                "a newer release, or a prerelease published as a full one, is on top")
-              process.exit(1)
-            }
             for (const k of ["darwin-aarch64", "darwin-x86_64", "windows-x86_64"]) {
               if (!keys.includes(k)) { console.error(`no ${k} in the manifest`); process.exit(1) }
             }
-            console.log(`ok — ${m.version} for ${keys.join(", ")}`)
-          '
+            console.log(keys.map(k => `${k} ${m.platforms[k].url}`).join("\n"))
+          ' > urls.txt
+          cat urls.txt
+          while read -r key u; do
+            code=$(curl -sIL -o /dev/null -w '%{http_code}' "$u")
+            echo "  $key -> HTTP $code"
+            [ "$code" = "200" ] || { echo "$key's update URL does not resolve" >&2; exit 1; }
+          done < urls.txt
+          echo "ok — $want, all three platforms, all URLs resolve"

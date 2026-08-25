@@ -55,6 +55,43 @@ const wanted = [
   { key: 'windows-x86_64', match: /-setup\.exe$/ },
 ]
 
+/**
+ * What GitHub called the asset, which is not always what we called the file.
+ *
+ * ⚠️ **Release assets are renamed on upload.** `Stoatworks Burrow_0.2.3_x64-setup.exe`
+ * is published as `Stoatworks.Burrow_0.2.3_x64-setup.exe` — every space becomes
+ * a dot. A manifest built from the local filename therefore names a URL that
+ * 404s, and it does so for exactly one platform while the other two work.
+ *
+ * That is what shipped in v0.2.3: macOS updated fine and every Windows copy
+ * would have failed the download. The published release is the authority on
+ * what its own assets are called, so ask it rather than assume.
+ *
+ * `GH_ASSET_NAMES` is that list, newline-separated, passed in by the workflow —
+ * so this stays a pure function of its inputs and can still be run by hand.
+ * With no list the local name is used unchanged, which is right for a dry run
+ * over artefacts that have not been published yet.
+ */
+const published = (process.env.GH_ASSET_NAMES || '')
+  .split('\n')
+  .map(x => x.trim())
+  .filter(Boolean)
+
+/** GitHub's substitution, applied to both sides so the comparison is fair. */
+const ghNormalise = name => name.replace(/[^A-Za-z0-9._-]/g, '.')
+
+function publishedName(local) {
+  if (published.length === 0 || published.includes(local)) return local
+  const hit = published.filter(n => ghNormalise(n) === ghNormalise(local))
+  if (hit.length === 1) return hit[0]
+  // Refuse rather than emit a URL that will 404 — invisible until somebody
+  // presses the button, and then only on one platform.
+  console.error(`cannot match local artefact ${local} to a published asset`)
+  console.error('published assets:')
+  for (const n of published) console.error(`  ${n}`)
+  process.exit(1)
+}
+
 const platforms = {}
 const missing = []
 
@@ -75,7 +112,7 @@ for (const { key, match } of wanted) {
     // is newest" would describe one release and hand over another the moment
     // the next one is cut.
     url: `https://github.com/stoatworks-labs/burrow/releases/download/${tag}/${encodeURIComponent(
-      file.split('/').pop(),
+      publishedName(file.split('/').pop()),
     )}`,
   }
 }

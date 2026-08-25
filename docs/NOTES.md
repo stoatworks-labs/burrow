@@ -470,6 +470,42 @@ Not installed section of the video tab is 1.2 of them, and it was reading
   shortcut**. Burrow says so in the batch notes rather than writing outside the
   folder it was given.
 
+## 2026-08-25 — the Windows update URL 404'd, and the release said it was fine
+
+v0.2.3 published a manifest whose Windows entry pointed at
+`Stoatworks%20Burrow_0.2.3_x64-setup.exe`. The asset on the release is
+`Stoatworks.Burrow_0.2.3_x64-setup.exe`.
+
+**GitHub renames release assets on upload** — every space becomes a dot — and
+`make-latest-json.mjs` built the URL from the *local* filename. macOS was
+unaffected, because those names have no spaces in them. So two platforms
+updated perfectly and the third would have failed at the download, which is the
+shape of defect that survives longest: the thing looks released, one platform
+is silently broken, and nobody finds out until somebody on that platform
+presses the button.
+
+⚠️ **My own verification step passed it.** It asserted the version and that all
+three platform keys were present — form, not substance. A manifest can be
+perfectly well formed and still hand one platform a 404. It now fetches every
+URL it names and requires a 200, which is the check that would have caught this
+on the first release rather than after it.
+
+The generator now takes `GH_ASSET_NAMES` — the published names, from the
+release itself — and matches each local artefact against them, normalising
+both sides the way GitHub does (anything outside `[A-Za-z0-9._-]` becomes a
+dot). No match, or an ambiguous one, and it refuses rather than emitting a URL
+that will 404. Given no list it uses the local name unchanged, so a dry run
+over unpublished artefacts still works.
+
+**Also learned, and it nearly sent me the wrong way twice:** the
+`/releases/latest/download/` alias — the endpoint compiled into every copy —
+**lags the upload by about a minute**. After fixing the live manifest I read
+that URL, saw the old content, and concluded the upload had silently failed;
+`gh release view` showed `updatedAt` had moved and the by-tag URL already had
+the fix. Both were being served with `cache-control: no-cache`, so the header
+is no guide. Measured at ~60s. The release workflow now waits for the alias to
+report the tag it just published instead of reading it once and believing it.
+
 ## 2026-08-25 — Burrow can replace itself
 
 There is a **Check for a new version** button in Settings, under *Burrow itself*,
