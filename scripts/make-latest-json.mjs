@@ -127,16 +127,22 @@ if (missing.length > 0) {
 /**
  * What the app shows before installing.
  *
- * The release body opens with a standing description of what Burrow is, which
- * is the wrong thing to read when deciding whether to accept an update — so
- * the generated "What's Changed" section is preferred where there is one, and
- * the whole body is the fallback.
+ * ⚠️ **Not the release body.** That opens with a standing description of what
+ * Burrow *is* — true, unchanging, and the wrong thing to read when deciding
+ * whether to replace the copy you are running.
+ *
+ * The annotated tag's message is used instead, because it is the one text
+ * written per release about that release. `## What's Changed` was the first
+ * choice and turned out never to exist here: `generate_release_notes` builds
+ * that section from merged pull requests, and this repo commits to main, so
+ * v0.2.4 got a bare `**Full Changelog**` link and the body fallback every
+ * time. Kept as the second choice for a repo that does use PRs.
  */
 function notes() {
   if (!notesFile) return `Stoatworks Burrow ${version}`
-  const body = readFileSync(notesFile, 'utf8')
-  const changed = body.indexOf("## What's Changed")
-  return (changed >= 0 ? body.slice(changed) : body).trim() || `Stoatworks Burrow ${version}`
+  const text = readFileSync(notesFile, 'utf8')
+  const changed = text.indexOf("## What's Changed")
+  return (changed >= 0 ? text.slice(changed) : text).trim() || `Stoatworks Burrow ${version}`
 }
 
 console.log(

@@ -470,6 +470,29 @@ Not installed section of the video tab is 1.2 of them, and it was reading
   shortcut**. Burrow says so in the batch notes rather than writing outside the
   folder it was given.
 
+## 2026-08-25 — the update prompt was describing the app, not the release
+
+v0.2.4's manifest opened with *"An optional desktop client for the Stoatworks
+software…"* — the standing description of what Burrow is. True, unchanging, and
+the wrong thing to read when deciding whether to replace the copy you are
+running.
+
+The generator preferred the release's `## What's Changed` section and fell back
+to the whole body. **That section never exists here.**
+`generate_release_notes: true` builds it from merged pull requests, and this
+repo commits straight to main — so v0.2.4 got a bare `**Full Changelog**` link
+and the fallback fired every time. A preference whose first choice is
+structurally unreachable is just a fallback with extra steps.
+
+The notes now come from the **annotated tag's message**, which is the one text
+written per release about that release. `## What's Changed` is kept as the
+second choice for a repo that does use PRs, and the body as the third.
+
+Worth noticing how this surfaced: the release was green, every URL resolved,
+and the verification step passed — because it checks that the manifest is
+*correct*, and this was correct and useless. Reading the thing a user would
+read is a different check from asserting it parses.
+
 ## 2026-08-25 — a Self-hosted tab, and the first entry that installs nothing
 
 Two changes in one. The eight tools that ship a `docker-compose.yml` were

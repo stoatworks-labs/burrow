@@ -305,7 +305,18 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release view "$TAG" --json body -q .body > release-body.md
+          # The annotated tag's own message: the one text written per release
+          # about that release. The release body opens with a standing
+          # description of the app, and `generate_release_notes` only produces
+          # a "What's Changed" section from merged PRs — this repo has none, so
+          # it yields a bare Full Changelog link. Fall back to the body only if
+          # the tag carries no message.
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG" --no-tags 2>/dev/null || true
+          git tag -l --format='%(contents)' "$TAG" > release-body.md
+          if [ ! -s release-body.md ]; then
+            gh release view "$TAG" --json body -q .body > release-body.md
+          fi
+          head -5 release-body.md
           # ⚠️ The names GitHub gave the assets, not the ones we uploaded.
           # A space becomes a dot on upload, so a URL built from the local
           # filename 404s — which is what v0.2.3 shipped, for Windows only.
