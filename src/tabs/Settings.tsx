@@ -2,7 +2,13 @@ import type { CatalogInfo, Environment, FormatId, Settings } from '../api/types'
 import { FORMAT_HOSTS, FORMAT_LABEL } from '../api/types'
 import { humanDate } from '../api/backend'
 
-const INSTALLABLE: FormatId[] = ['ffgl', 'openfx', 'adobe']
+/**
+ * Every format Burrow installs, in the order they are offered.
+ *
+ * Two of them ask for a password and the rest never do, which is the only
+ * distinction worth making here — see the note under the list.
+ */
+const INSTALLABLE: FormatId[] = ['ffgl', 'openfx', 'adobe', 'vst3', 'au', 'app', 'companion']
 
 export function SettingsTab({
   env,
@@ -30,7 +36,7 @@ export function SettingsTab({
   return (
     <>
       <div className="field">
-        <span className="lab">Formats to install by default</span>
+        <span className="lab">What to install by default</span>
         {INSTALLABLE.map(f => (
           <div className="opt" key={f}>
             <input
@@ -46,13 +52,15 @@ export function SettingsTab({
           </div>
         ))}
         <div className="help">
-          You can choose differently for any single plugin from its row in Plugin
-          management.
+          Applies to whatever a given thing actually has — a video plugin has no
+          VST3 build, and an audio plugin has no FFGL one. You can choose
+          differently for any single one of them from its row, under
+          <em> Formats&hellip;</em>.
         </div>
       </div>
 
       <div className="field">
-        <span className="lab">Where plugins go</span>
+        <span className="lab">Where things go</span>
         {env.destinations.map(d => (
           <div key={d.id} style={{ marginBottom: 13 }}>
             <div className="opt" style={{ padding: 0 }}>
@@ -90,6 +98,24 @@ export function SettingsTab({
                 because Resolve builds its own effects into the application.
               </div>
             )}
+            {d.format === 'companion' && (
+              <div className="help">
+                Companion has no fixed modules folder — it reads the one you name in
+                its own <em>Settings &rarr; Developer modules path</em>. Point that at
+                this folder, and restart Companion after installing a module: it reads
+                the folder once, at startup. Already have a modules folder? Change this
+                path to it.
+              </div>
+            )}
+            {d.format === 'app' && (
+              <div className="help">
+                Applications are placed here directly, and never with a password: if
+                this machine&rsquo;s {d.path.startsWith('/Applications')
+                  ? 'Applications folder were not writable by you, Burrow would use your own ~/Applications instead'
+                  : 'shared folder is not writable by you, this is your own per-user one'}
+                .
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -111,13 +137,30 @@ export function SettingsTab({
         </div>
       )}
 
+      {env.otherHosts.length > 0 && (
+        <div className="field">
+          <span className="lab">Other hosts</span>
+          {env.otherHosts.map(h => (
+            <div className="opt" key={h.name}>
+              <div>
+                <div className="t">
+                  {h.name}
+                  {!h.loadsEffects && <span className="d"> — not found here</span>}
+                </div>
+                {h.note && <div className="d">{h.note}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="field">
-        <span className="lab">Plugin list</span>
+        <span className="lab">The list Burrow reads</span>
         <div className="path">{settings.catalogUrl}</div>
         <div className="stat">
           {catalog ? (
             <>
-              {catalog.entryCount} plugins ·{' '}
+              {catalog.entryCount} plugins, tools and modules ·{' '}
               {catalog.source === 'network'
                 ? 'downloaded just now'
                 : catalog.source === 'cache'
@@ -145,7 +188,7 @@ export function SettingsTab({
             }
           />
           <label htmlFor="gh">
-            <div className="t">Ask GitHub directly if the plugin list is unreachable</div>
+            <div className="t">Ask GitHub directly if that list is unreachable</div>
             <div className="d">
               Public release information only. Turning this off means Burrow shows the
               last list it has when the site is down, rather than checking each project.
@@ -158,10 +201,10 @@ export function SettingsTab({
         <span className="lab">What Burrow sends</span>
         <div className="prose-block">
           <p>
-            Burrow fetches the plugin list from{' '}
-            <code>stoatworks-labs.com</code> and downloads plugin archives and
-            project videos from GitHub. That is everything it does on the network,
-            and there is no third party in it anywhere.
+            Burrow fetches one list from <code>stoatworks-labs.com</code> and
+            downloads the archives, disk images and project videos from GitHub. That
+            is everything it does on the network, and there is no third party in it
+            anywhere.
           </p>
           <p>
             There is no account and no sign-in. It sends no identifier, no list of what

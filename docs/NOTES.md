@@ -259,6 +259,89 @@ playing it, seeking included.
 The CSP got smaller as a result — `media-src` is loopback only, because the
 webview no longer talks to GitHub at all. The Rust side does.
 
+## 2026-08-25 — the rest of the fleet, in four tabs
+
+Burrow was the video plugin installer. It now covers the fleet's audio plugins,
+its applications and its Companion modules, under **Video**, **Audio** and
+**Networking & Infrastructure**, with a **Device firmware** tab that says "coming
+soon" and is honest about it. 24 catalogue entries became 65.
+
+Most of the work was not in the app.
+
+**The category is the website's decision, not Burrow's.** `catalog.json.ts` folds
+the fleet's eight `category` values into three by a priority list — `audio` before
+`infra` before `av` — so squawk (`audio,infra`) lands in Audio and srt-router
+(`av,infra`) lands in Networking. It is the one piece of editorial judgement in
+that file, and when something looks filed oddly the fix is its `category` in
+`projects.json`, which the website itself reads too.
+
+⚠️ **A Companion module inherits its parent's category, or it would be filed away
+from the thing it drives.** companion-flock is tagged `av,infra`, which is a true
+description of what it is *for* and would have put it in a different tab from
+flock. They are nested in the UI under the app's row — a module is not something
+anyone goes looking for on its own.
+
+**Applications come out of disk images, and that was checked rather than assumed.**
+The obvious reading is that a `.zip` beside a `.dmg` is the same application, more
+conveniently packaged. It is not: reading the central directory of every
+application archive in the catalogue over HTTP range requests found nine holding a
+`.app` and two holding a command-line binary. `oxbow-0.1.1-macos-universal.zip` is
+`oxbow`, a README and a LICENCE. Nothing in the filename says which you have. Every
+real application in the fleet publishes a `.dmg`, so the image is the artefact and
+`isPlaceableApp` uses "does it ship a dmg" as the test for whether a project is an
+application at all — which is also what keeps flock's and srt-router's command-line
+builds out, since both publish a GUI dmg *and* a CLI archive.
+
+⚠️ **Skipping symlinks quietly breaks every Electron app.** `copy_tree` skipped
+them, on the reasoning that archive extraction refuses them anyway. That was right
+for plugins and wrong the moment applications arrived: the macOS framework layout
+*is* symlinks — `Versions/Current -> A` — and a `.app` copied without them is not a
+slightly imperfect copy, it is an application that does not launch, with nothing
+reporting anything. They are now recreated when they point inside the payload and
+**fail the copy** when they do not. The hash includes their targets, so a repointed
+link is noticed rather than invisible.
+
+**Nothing new asks for a password.** Four formats were added and the privileged
+helper's whitelist did not change, which was the point. `/Applications` is
+`drwxrwxr-x root:admin`, so an administrator writes to it directly and a standard
+user gets `~/Applications` — indexed identically by Spotlight and Launchpad —
+rather than Burrow teaching the one component that runs as root to delete things in
+the directory holding every application on the machine. Windows VST3 goes to the
+per-user location the VST3 spec defines, `%LOCALAPPDATA%\Programs\Common\VST3`,
+for the same reason. A test pins it.
+
+**"No build" nearly swallowed all 41 new entries.** `reconcile_one` treated an
+empty `declared` — the payload names the catalogue carries — as "no artefact for
+this platform". That was safe while every entry was a video plugin, because those
+names are read out of the archives at release time by `gen-catalog-data.py`.
+Nothing probes an application, an audio plugin or a Companion module, so every one
+of them would have reported *no build for your machine* while sitting beside a
+perfectly good download: the most confusing possible way to fail, because the row
+looks like a platform problem. `has_asset` is now a separate argument, and where
+the catalogue declares nothing the ledger's own record is used instead.
+
+**The arch dimension had to go beside `builds`, not inside it.** A video plugin
+ships one universal macOS bundle; almost every application ships separate arm64 and
+x64 builds, which `format → platform → one asset` cannot express. Nesting a third
+level would have changed the shape of a field every shipped client already parses —
+and this project has already had one website deploy stop every copy of Burrow in
+the field from reading the catalogue at all. So `assets` is a flat, arch-aware list
+*beside* the map, preferred where present, ignored by anything older; and `builds`
+is derived from it so the two cannot drift. Verified: every existing video plugin's
+`builds` is byte-identical to what it was before.
+
+**Settings needed a migration, or every existing user would have seen nothing.** A
+settings file written before this says `"defaultFormats": ["ffgl"]`, which meant
+"everything that needs no password" when it was written and silently becomes "no
+audio plugins, no applications, no Companion modules" afterwards. Schema 2 adds the
+new password-free formats and does *not* re-add FFGL if it is absent, because that
+absence is a choice somebody made.
+
+**What a real disk image does.** simpleVIS 0.4.0, downloaded and run through the
+whole unprivileged path with `cargo run --example place`: mounted, `simpleVIS.app`
+taken, layout validated, quarantine cleared, committed, version read back from the
+bundle's `Info.plist` as 0.4.0, and uninstalled again cleanly.
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects
@@ -273,3 +356,16 @@ webview no longer talks to GitHub at all. The Rust side does.
   UAC-manifested binary and an owner-SID provenance check in place of the uid
   comparison.
 - No CI, no release workflow, no user guide yet.
+- **The new entries have no release notes.** `gen-catalog-data.py`'s own `KINDS` is
+  still plugins-only, so "What's new" is quiet about every application, audio
+  plugin and Companion module, and none of them offers previous versions. The
+  catalogue route is ready for them — the notes simply are not collected yet.
+- Nothing has probed an application, audio plugin or Companion module archive for
+  its payload names, so Burrow cannot recognise a hand-installed copy of one until
+  it has installed it once itself.
+- No application has been installed into a real `/Applications`, and no Companion
+  module into a real Companion. The disk image path is proven against a temporary
+  directory only.
+- Windows applications are placed as a program folder with **no Start-menu
+  shortcut**. Burrow says so in the batch notes rather than writing outside the
+  folder it was given.

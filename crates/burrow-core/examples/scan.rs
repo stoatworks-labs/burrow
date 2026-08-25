@@ -47,8 +47,16 @@ fn main() {
         };
         println!("  Resolume {:<7} {note}", product.name());
     }
+    println!(
+        "  Companion {}",
+        if dest::detect_companion(&applications) {
+            "found"
+        } else {
+            "not found — modules can still be installed for it, see companion_modules_dir"
+        }
+    );
 
-    let destinations = dest::discover(platform, &applications, &documents, &BTreeMap::new());
+    let destinations = dest::discover(platform, &applications, &documents, &home, &BTreeMap::new());
     println!("\ndestinations:");
     for d in &destinations {
         println!(
@@ -66,7 +74,8 @@ fn main() {
     println!("\nplugins:");
 
     for entry in &cat.entries {
-        for d in &destinations {
+        let known = entry.known_formats();
+        for d in destinations.iter().filter(|d| known.contains(&d.format)) {
             let asset = entry.asset(d.format, platform);
             let declared: Vec<String> = asset.map(|a| a.entries.clone()).unwrap_or_default();
             let r = ledger::reconcile_one(
@@ -76,6 +85,7 @@ fn main() {
                 &d.id,
                 &d.path,
                 &declared,
+                asset.is_some(),
                 entry.version.as_deref(),
             );
 

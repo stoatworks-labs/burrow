@@ -1,6 +1,6 @@
 //! Run a real release archive through the whole unprivileged install path.
 //!
-//!     cargo run --example place -- <archive.zip> <format> <destination>
+//!     cargo run --example place -- <archive> <format> <destination> [module-name]
 //!
 //! extract → validate layout → clear quarantine → commit → verify → uninstall.
 //! Writes only inside the destination you name. Use a temporary directory.
@@ -11,7 +11,10 @@ use std::path::PathBuf;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 4 {
-        eprintln!("usage: place <archive.zip> <ffgl|openfx|adobe> <destination-dir>");
+        eprintln!(
+            "usage: place <archive> <ffgl|openfx|adobe|vst3|au|app|companion> \
+             <destination-dir> [module-name]"
+        );
         std::process::exit(2);
     }
     let zip = PathBuf::from(&args[1]);
@@ -19,19 +22,33 @@ fn main() {
         "ffgl" => Format::Ffgl,
         "openfx" => Format::Openfx,
         "adobe" => Format::Adobe,
+        "vst3" => Format::Vst3,
+        "au" => Format::Au,
+        "app" => Format::App,
+        "companion" => Format::Companion,
         other => {
             eprintln!("unknown format {other}");
             std::process::exit(2);
         }
     };
     let dest = PathBuf::from(&args[3]);
+    // Only a Companion module needs this: its archive is an npm tarball whose
+    // single `package/` root carries no name of its own.
+    let module_name = args.get(4).map(String::as_str);
     let platform = Platform::current().expect("no plugin platform here");
 
     let staging = std::env::temp_dir().join(format!("burrow-example-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&staging);
 
     println!("archive   {}", zip.display());
-    let unpacked = match archive::extract(&zip, &staging) {
+    // A macOS application arrives as a disk image, which is mounted rather
+    // than unpacked. Everything after this is identical either way.
+    let opened = if zip.extension().is_some_and(|e| e.eq_ignore_ascii_case("dmg")) {
+        burrow_core::dmg::extract_app(&zip, &staging)
+    } else {
+        archive::extract(&zip, &staging, format, platform, module_name)
+    };
+    let unpacked = match opened {
         Ok(u) => u,
         Err(e) => {
             eprintln!("extract failed: {e}");

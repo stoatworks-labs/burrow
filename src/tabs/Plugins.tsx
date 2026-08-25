@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type {
+  CategoryId,
   Environment,
   OpRequest,
   PluginView,
@@ -7,13 +8,13 @@ import type {
   Settings,
   Slot,
 } from '../api/types'
-import { FORMAT_LABEL } from '../api/types'
+import { CATEGORY_LABEL, FORMAT_LABEL } from '../api/types'
 import { FormatChips } from '../components/FormatChips'
 import { PluginArt } from '../components/PluginArt'
 import { humanSize } from '../api/backend'
 
 /**
- * The flat list, with a search bar, under three headings.
+ * One category's list, with a search bar, under three headings.
  *
  * The heading a plugin sits under is computed in Rust (`bucket_for`), so the
  * ordering rule lives with the reconciliation that decides it rather than
@@ -21,8 +22,13 @@ import { humanSize } from '../api/backend'
  * formats and not others is **up to date** so long as what is installed is
  * current — the heading answers "does this need my attention for what I
  * actually have", and a format the user never chose is not a pending update.
+ *
+ * The same component serves every category. Which one it is showing changes
+ * the list and one line of copy, and nothing else: an audio plugin and a video
+ * plugin differ in where they install, which is the backend's business.
  */
 export function Plugins({
+  category,
   plugins,
   env,
   settings,
@@ -35,6 +41,7 @@ export function Plugins({
   onOpen,
   onPlay,
 }: {
+  category: CategoryId
   plugins: PluginView[]
   env: Environment
   settings: Settings
@@ -56,16 +63,47 @@ export function Plugins({
     if (externalQuery !== null && externalQuery !== undefined) setQuery(externalQuery)
   }, [externalQuery])
 
+  const mine = useMemo(
+    () => plugins.filter(p => p.category === category),
+    [plugins, category],
+  )
+
+  /**
+   * The Companion modules, filed under the tool each one drives.
+   *
+   * A module is not a thing anyone goes looking for on its own — you install
+   * the Companion module for SimpleCue *because* you have SimpleCue. Listing
+   * it as a peer would put fourteen rows in the list that only make sense next
+   * to another row.
+   *
+   * A module whose parent is not in this tab stays top-level rather than
+   * disappearing. That happens legitimately: the two are categorised
+   * separately in the fleet's own data, and a module nobody can see is worse
+   * than one filed oddly.
+   */
+  const { children, top } = useMemo(() => {
+    const here = new Set(mine.map(p => p.slug))
+    const children = new Map<string, PluginView[]>()
+    for (const p of mine) {
+      if (p.parent && here.has(p.parent)) {
+        const list = children.get(p.parent) ?? []
+        list.push(p)
+        children.set(p.parent, list)
+      }
+    }
+    const nested = new Set([...children.values()].flat().map(p => p.slug))
+    return { children, top: mine.filter(p => !nested.has(p.slug)) }
+  }, [mine])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return plugins
-    return plugins.filter(p =>
-      [p.name, p.slug, p.hook, p.summary, ...p.tags]
-        .join(' ')
-        .toLowerCase()
-        .includes(q),
-    )
-  }, [plugins, query])
+    if (!q) return top
+    const matches = (p: PluginView) =>
+      [p.name, p.slug, p.hook, p.summary, ...p.tags].join(' ').toLowerCase().includes(q)
+    // A search for "companion" should find the tools that have one, not an
+    // empty list — so a row matches when one of its modules does.
+    return top.filter(p => matches(p) || (children.get(p.slug) ?? []).some(matches))
+  }, [top, children, query])
 
   const groups: Array<[string, PluginView['bucket'], string]> = [
     ['Up to date', 'up-to-date', 'Nothing installed yet.'],
@@ -73,11 +111,11 @@ export function Plugins({
     [
       'Not installed',
       'not-installed',
-      'You have every plugin that has a build for this machine.',
+      'You have everything here that has a build for this machine.',
     ],
   ]
 
-  const updates = plugins.filter(p => p.bucket === 'update-available')
+  const updates = mine.filter(p => p.bucket === 'update-available')
 
   function updateAll() {
     const reqs: OpRequest[] = []
@@ -101,13 +139,13 @@ export function Plugins({
       <div className="search">
         <input
           type="search"
-          placeholder="Search plugins"
+          placeholder={`Search ${CATEGORY_LABEL[category]}`}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          aria-label="Search plugins"
+          aria-label={`Search ${CATEGORY_LABEL[category]}`}
         />
         <span className="n">
-          {filtered.length} of {plugins.length}
+          {filtered.length} of {top.length}
           {updates.length > 0 && ` · ${updates.length} with updates`}
         </span>
         {updates.length > 1 && (
@@ -117,10 +155,12 @@ export function Plugins({
         )}
       </div>
 
-      {plugins.length === 0 && (
+      {mine.length === 0 && (
         <div className="empty">
-          <strong>No plugins to show</strong>
-          The plugin list hasn&rsquo;t loaded yet.
+          <strong>Nothing here yet</strong>
+          {plugins.length === 0
+            ? 'The list hasn\u2019t loaded yet.'
+            : `The catalogue has nothing under ${CATEGORY_LABEL[category]} for this machine.`}
         </div>
       )}
 
@@ -149,6 +189,7 @@ export function Plugins({
                 <Row
                   key={p.slug}
                   plugin={p}
+                  modules={children.get(p.slug) ?? []}
                   settings={settings}
                   busy={busy}
                   progress={progress}
@@ -171,6 +212,7 @@ export function Plugins({
 
 function Row({
   plugin,
+  modules,
   settings,
   busy,
   progress,
@@ -181,6 +223,8 @@ function Row({
   onPlay,
 }: {
   plugin: PluginView
+  /** Companion modules that drive this one. Usually none or one. */
+  modules: PluginView[]
   settings: Settings
   busy: boolean
   progress: Record<string, Progress>
@@ -307,6 +351,17 @@ function Row({
           </div>
         )}
 
+        {modules.map(m => (
+          <CompanionModule
+            key={m.slug}
+            module={m}
+            busy={busy}
+            progress={progress}
+            onRun={onRun}
+            onOpen={onOpen}
+          />
+        ))}
+
         {showVersions && (
           <PreviousVersions
             plugin={plugin}
@@ -326,6 +381,89 @@ function Row({
           />
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * A Companion module, shown inside its tool's row.
+ *
+ * Deliberately smaller than a row of its own: one line, one button. The module
+ * is an accessory to the thing above it, and it should read like one.
+ *
+ * Installing it is the same machinery as everything else — the module's slot,
+ * its destination, its version — because to Burrow it is another payload going
+ * into another folder. What is different is that Companion has to be told: it
+ * reads its developer modules folder at startup, so the module does not appear
+ * until it is restarted. That sentence arrives in the batch notes after an
+ * install; here it is the tooltip on the folder.
+ */
+function CompanionModule({
+  module,
+  busy,
+  progress,
+  onRun,
+  onOpen,
+}: {
+  module: PluginView
+  busy: boolean
+  progress: Record<string, Progress>
+  onRun: (r: OpRequest[]) => void
+  onOpen: (url: string) => void
+}) {
+  const slots = module.slots.filter(s => s.state.state !== 'no-build')
+  const behind = slots.filter(s => s.state.state === 'update-available')
+  const installed = slots.filter(
+    s => s.state.state === 'up-to-date' || s.state.state === 'version-unknown',
+  )
+  const offered = slots.filter(s => s.state.state === 'not-installed' && !s.foreign)
+  const live = slots.map(s => progress[`${module.slug}:${s.format}`]).find(Boolean)
+
+  const req = (list: Slot[], action: OpRequest['action']): OpRequest[] =>
+    list.map(s => ({
+      slug: module.slug,
+      format: s.format,
+      destinationId: s.destinationId,
+      action,
+    }))
+
+  return (
+    <div className="module">
+      <span className="module-name">
+        Companion module
+        {module.version && <span className="ver">{module.version}</span>}
+      </span>
+      <span className="module-state">
+        {installed.length > 0 && behind.length === 0 && 'installed'}
+        {behind.length > 0 && 'update available'}
+        {installed.length === 0 && offered.length > 0 && slots[0]?.destinationLabel}
+        {slots.length === 0 && 'no build for this machine'}
+        {live && ` · ${live.phase}`}
+      </span>
+      {behind.length > 0 && (
+        <button className="btn primary" disabled={busy} onClick={() => onRun(req(behind, 'update'))}>
+          Update
+        </button>
+      )}
+      {installed.length === 0 && offered.length > 0 && (
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={() => onRun(req(offered, 'install'))}
+        >
+          Install
+        </button>
+      )}
+      {installed.length > 0 && (
+        <button className="btn quiet" disabled={busy} onClick={() => onRun(req(installed, 'uninstall'))}>
+          Remove
+        </button>
+      )}
+      {module.releasesUrl && (
+        <button className="btn quiet" onClick={() => onOpen(module.releasesUrl!)}>
+          Releases
+        </button>
+      )}
     </div>
   )
 }
@@ -376,7 +514,14 @@ function FormatOverride({
         <label htmlFor={`inh-${plugin.slug}`}>
           <div className="t">Use my defaults</div>
           <div className="d">
-            {settings.defaultFormats.map(f => FORMAT_LABEL[f] ?? f).join(', ') || 'none'}
+            {/* Only the defaults that mean anything here. The global list
+                spans every format Burrow installs, and reading "FFGL, VST3,
+                Audio Unit, Application, Companion module" under an
+                application would be noise pretending to be information. */}
+            {settings.defaultFormats
+              .filter(f => plugin.slots.some(s => s.format === f))
+              .map(f => FORMAT_LABEL[f] ?? f)
+              .join(', ') || 'nothing this one has'}
           </div>
         </label>
       </div>

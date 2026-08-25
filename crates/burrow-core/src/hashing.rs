@@ -16,15 +16,26 @@ use walkdir::WalkDir;
 /// forward slashes, or the same bundle hashes differently on Windows and macOS
 /// and a cross-platform ledger becomes meaningless.
 ///
-/// Symlinks are not followed: a bundle containing one would otherwise let the
-/// hash depend on something outside the payload.
+/// Symlinks are recorded by their target and never followed. Recording them
+/// matters now that applications are installed: an `.app` is full of framework
+/// links, and skipping them entirely would mean a payload whose links had been
+/// repointed still hashed as untouched. Following them would make the hash
+/// depend on whatever they point at, which is the thing to avoid.
+/// What one node in the tree is. The discriminant is fed into the hash, so a
+/// file and a link of the same name and content cannot collide.
+enum Node {
+    Dir,
+    File(Vec<u8>),
+    Link(Vec<u8>),
+}
+
 fn feed(hasher: &mut Sha256, root: &Path) -> io::Result<()> {
-    let mut nodes: Vec<(String, Option<Vec<u8>>)> = Vec::new();
+    let mut nodes: Vec<(String, Node)> = Vec::new();
 
     if root.is_file() {
         nodes.push((
             root.file_name().unwrap_or_default().to_string_lossy().to_string(),
-            Some(std::fs::read(root)?),
+            Node::File(std::fs::read(root)?),
         ));
     } else {
         for entry in WalkDir::new(root).follow_links(false).sort_by_file_name() {
@@ -35,12 +46,17 @@ fn feed(hasher: &mut Sha256, root: &Path) -> io::Result<()> {
                 .map_err(io::Error::other)?
                 .to_string_lossy()
                 .replace('\\', "/");
-            if entry.file_type().is_dir() {
-                nodes.push((rel, None));
+            if entry.file_type().is_symlink() {
+                let target = std::fs::read_link(entry.path())?;
+                nodes.push((
+                    rel,
+                    Node::Link(target.to_string_lossy().replace('\\', "/").into_bytes()),
+                ));
+            } else if entry.file_type().is_dir() {
+                nodes.push((rel, Node::Dir));
             } else if entry.file_type().is_file() {
-                nodes.push((rel, Some(std::fs::read(entry.path())?)));
+                nodes.push((rel, Node::File(std::fs::read(entry.path())?)));
             }
-            // Symlinks are deliberately skipped rather than followed.
         }
     }
 
@@ -48,15 +64,20 @@ fn feed(hasher: &mut Sha256, root: &Path) -> io::Result<()> {
     // the order the filesystem happened to hand entries back in.
     nodes.sort_by(|a, b| a.0.cmp(&b.0));
 
-    for (rel, contents) in nodes {
+    for (rel, node) in nodes {
         hasher.update((rel.len() as u64).to_le_bytes());
         hasher.update(rel.as_bytes());
-        match contents {
-            None => hasher.update([0u8]),
-            Some(bytes) => {
+        match node {
+            Node::Dir => hasher.update([0u8]),
+            Node::File(bytes) => {
                 hasher.update([1u8]);
                 hasher.update((bytes.len() as u64).to_le_bytes());
                 hasher.update(&bytes);
+            }
+            Node::Link(target) => {
+                hasher.update([2u8]);
+                hasher.update((target.len() as u64).to_le_bytes());
+                hasher.update(&target);
             }
         }
     }

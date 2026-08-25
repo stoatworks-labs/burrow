@@ -15,6 +15,25 @@ pub enum Format {
     /// Final Cut Pro and Motion. A live fleet port that ships in no release
     /// yet, so it is representable and not offered — see [`Format::SHIPPING`].
     Fxplug,
+    /// VST3 — every DAW and live-sound host worth naming.
+    Vst3,
+    /// Audio Units. macOS only, and there is no Windows equivalent to fall
+    /// back to: `au` on a Windows machine is not a missing build, it is a
+    /// format that does not exist there.
+    Au,
+    /// An application, placed whole rather than loaded by a host.
+    ///
+    /// The fleet's software tools ship a `.app` on macOS and a program folder
+    /// on Windows, and Burrow places them the same way it places a plugin:
+    /// staged, validated, de-quarantined, then renamed into place.
+    App,
+    /// A Bitfocus Companion module.
+    ///
+    /// The odd one out in two ways. Its archive is an npm `.tgz` rather than a
+    /// zip, and its destination is a folder the *user* nominates in Companion's
+    /// own settings — Companion has no fixed modules directory to find. See
+    /// [`crate::dest::companion_modules_dir`].
+    Companion,
     /// A format this build has never heard of, arriving from a newer
     /// catalogue.
     ///
@@ -34,7 +53,15 @@ impl Format {
     /// exists but registers without appearing in Final Cut's effects browser,
     /// and no release carries an FxPlug artefact. Offering it would mean
     /// offering an install that cannot succeed.
-    pub const SHIPPING: &'static [Format] = &[Format::Ffgl, Format::Openfx, Format::Adobe];
+    pub const SHIPPING: &'static [Format] = &[
+        Format::Ffgl,
+        Format::Openfx,
+        Format::Adobe,
+        Format::Vst3,
+        Format::Au,
+        Format::App,
+        Format::Companion,
+    ];
 
     pub fn is_shipping(self) -> bool {
         Self::SHIPPING.contains(&self)
@@ -46,6 +73,10 @@ impl Format {
             Format::Openfx => "openfx",
             Format::Adobe => "adobe",
             Format::Fxplug => "fxplug",
+            Format::Vst3 => "vst3",
+            Format::Au => "au",
+            Format::App => "app",
+            Format::Companion => "companion",
             Format::Unknown => "unknown",
         }
     }
@@ -57,17 +88,127 @@ impl Format {
             Format::Openfx => "OpenFX",
             Format::Adobe => "Adobe",
             Format::Fxplug => "FxPlug",
+            Format::Vst3 => "VST3",
+            Format::Au => "Audio Unit",
+            Format::App => "Application",
+            Format::Companion => "Companion module",
             Format::Unknown => "Unknown",
         }
     }
 
-    /// Whether installing this format needs a directory only root can write.
+    /// Whether installing this format *may* need a directory only root can
+    /// write. The final answer is this AND the destination probing unwritable
+    /// — see [`crate::dest`].
     ///
-    /// FFGL goes into the user's own Documents folder. The other two go into
-    /// `/Library` or `Program Files`, and there is no user-writable
-    /// alternative a host would look in.
+    /// FFGL goes into the user's own Documents folder, and both audio plugin
+    /// formats have a per-user directory every host scans, so none of those
+    /// three ever need a password. OpenFX and Adobe go into `/Library` or
+    /// `Program Files` with no user-writable alternative any host looks in.
+    ///
+    /// Applications are the interesting omission. `/Applications` does need a
+    /// password for a standard user — and rather than teach the privileged
+    /// helper to write there, Burrow installs into `~/Applications` instead.
+    /// See [`crate::dest::applications_dir`]. Nothing in this list widens what
+    /// the helper can touch, which is the point: the four formats added for the
+    /// audio, application and Companion categories introduced no new elevated
+    /// path at all.
     pub fn needs_elevation(self) -> bool {
         matches!(self, Format::Openfx | Format::Adobe)
+    }
+
+    /// What a payload of this format is called, as filename suffixes.
+    ///
+    /// This is the rule that replaces "copy every top-level entry", and it is
+    /// load-bearing: it is what lets Burrow take exactly the `.vst3` out of an
+    /// archive that also contains an `.component`, a `Standalone/` app and a
+    /// `README`, without a probe having told it the names in advance.
+    ///
+    /// Empty where the format has no suffix to recognise: see
+    /// [`Format::payload_is_whole_archive`]. Empty means "this format cannot
+    /// be recognised by suffix", never "anything goes".
+    pub fn payload_extensions(self) -> &'static [&'static str] {
+        match self {
+            // `.ofx.bundle` is covered by `.bundle`.
+            Format::Ffgl => &[".bundle", ".dll"],
+            Format::Openfx => &[".ofx", ".bundle"],
+            Format::Adobe => &[".plugin", ".aex", ".bundle"],
+            Format::Vst3 => &[".vst3"],
+            Format::Au => &[".component"],
+            Format::App => &[".app", ".exe"],
+            Format::Fxplug => &[".fxplug"],
+            Format::Companion | Format::Unknown => &[],
+        }
+    }
+
+    /// Whether the *whole* archive is the thing installed, under a name the
+    /// catalogue supplies, rather than named artefacts picked out of it.
+    ///
+    /// Two cases, both of which look nothing like a plugin:
+    ///
+    /// A **Companion module** is an `npm pack` tarball: one `package/`
+    /// directory with a `package.json` in it, and no suffix anywhere to
+    /// recognise it by.
+    ///
+    /// A **Windows application** is a folder, not a file. The `.exe` at the
+    /// top of the archive is useless without the DLLs and the `resources/`
+    /// beside it, so picking out the executable — the obvious reading of
+    /// "install the app" — would place something that cannot start. macOS is
+    /// the opposite: a `.app` *is* the whole thing, and the archive may hold
+    /// other things beside it.
+    pub fn payload_is_whole_archive(self, platform: Platform) -> bool {
+        matches!(
+            (self, platform),
+            (Format::Companion, _) | (Format::App, Platform::Windows)
+        )
+    }
+}
+
+/// Which part of the fleet an entry belongs to.
+///
+/// A tab in the app, and an open vocabulary in the catalogue: the website
+/// decides what goes where, sends the label alongside the id, and a client
+/// that has never heard of a category keeps parsing rather than failing. The
+/// same lesson as [`Platform::Unknown`], applied before it could bite.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Category {
+    Video,
+    Audio,
+    /// Networking & infrastructure: the tools that move signals around a
+    /// network and the ones that keep a rack running.
+    Netinfra,
+    /// Device firmware. Nothing carries this yet — the tab says so — but the
+    /// value is representable so that the day the catalogue starts emitting it,
+    /// clients already in the field file it correctly instead of dropping it.
+    Firmware,
+    #[serde(other)]
+    Unknown,
+}
+
+impl Category {
+    /// The categories this build shows a tab for, in tab order.
+    pub const SHOWN: &'static [Category] =
+        &[Category::Video, Category::Audio, Category::Netinfra];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Category::Video => "video",
+            Category::Audio => "audio",
+            Category::Netinfra => "netinfra",
+            Category::Firmware => "firmware",
+            Category::Unknown => "unknown",
+        }
+    }
+
+    /// The fallback label, used only when the catalogue did not send one.
+    pub fn label(self) -> &'static str {
+        match self {
+            Category::Video => "Video",
+            Category::Audio => "Audio",
+            Category::Netinfra => "Networking & Infrastructure",
+            Category::Firmware => "Device firmware",
+            Category::Unknown => "Other",
+        }
     }
 }
 
@@ -121,6 +262,63 @@ impl Platform {
             Platform::Windows => "windows",
             Platform::Linux => "linux",
             Platform::Unknown => "unknown",
+        }
+    }
+}
+
+/// A machine architecture, as the catalogue spells it.
+///
+/// Only present because the software tools need it. Every video plugin in the
+/// fleet ships one universal macOS bundle and one x64 Windows DLL, so the
+/// question never came up; almost every application ships a separate arm64 and
+/// x64 build, and handing someone the wrong one produces a download that
+/// simply will not launch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Arch {
+    X64,
+    Arm64,
+    /// One binary that runs on both. The default when the catalogue says
+    /// nothing, because that is what every artefact predating this field was.
+    #[default]
+    Universal,
+    #[serde(other)]
+    Unknown,
+}
+
+impl Arch {
+    /// The architecture this copy of Burrow was built for.
+    ///
+    /// Note what this is *not*: the architecture of the machine. A Burrow
+    /// built for x86_64 running under Rosetta on Apple silicon reports x64,
+    /// and that is the right answer for a plugin it is about to hand to a
+    /// host — but it is the wrong one for an application the user will launch
+    /// themselves. Nothing depends on the difference yet; it will the day a
+    /// universal build of Burrow exists.
+    pub fn current() -> Self {
+        match std::env::consts::ARCH {
+            "x86_64" => Arch::X64,
+            "aarch64" => Arch::Arm64,
+            _ => Arch::Unknown,
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Arch::X64 => "x64",
+            Arch::Arm64 => "arm64",
+            Arch::Universal => "universal",
+            Arch::Unknown => "unknown",
+        }
+    }
+
+    /// What a person calls it, for a download the app cannot place itself.
+    pub fn label(self) -> &'static str {
+        match self {
+            Arch::X64 => "Intel",
+            Arch::Arm64 => "Apple silicon",
+            Arch::Universal => "Universal",
+            Arch::Unknown => "Unknown",
         }
     }
 }

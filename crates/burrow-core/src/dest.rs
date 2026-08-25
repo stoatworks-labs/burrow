@@ -204,6 +204,113 @@ pub fn adobe_dir(platform: Platform) -> Option<PathBuf> {
     }
 }
 
+/// The per-user VST3 directory.
+///
+/// macOS has both `~/Library/Audio/Plug-Ins/VST3` and the system-wide
+/// `/Library/...` copy, and every host scans both. Burrow uses the user one:
+/// it needs no password, it does not touch a directory other software also
+/// writes to, and an uninstall cannot affect another account. That is the
+/// opposite of the OpenFX story, where there is no per-user directory to
+/// choose — which is why one format asks for a password and the other never
+/// does.
+///
+/// Windows has two locations in the VST3 specification —
+/// `%CommonProgramFiles%\VST3` for everyone and
+/// `%LOCALAPPDATA%\Programs\Common\VST3` for one user — and this uses the
+/// per-user one, for the same reasons as macOS. The trade is real and worth
+/// stating: a host that scans only the common folder, instead of asking the
+/// VST3 SDK where to look, will not see a plugin installed here. The answer to
+/// that is the host's own scan-path setting, not a password prompt from Burrow.
+pub fn vst3_dir(platform: Platform, home: &Path) -> Option<PathBuf> {
+    match platform {
+        Platform::Macos => Some(home.join("Library/Audio/Plug-Ins/VST3")),
+        Platform::Windows => std::env::var("LOCALAPPDATA")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|base| PathBuf::from(base).join("Programs").join("Common").join("VST3")),
+        // The VST3 spec's Linux location, and where Reaper and Bitwig look.
+        Platform::Linux => Some(home.join(".vst3")),
+        Platform::Unknown => None,
+    }
+}
+
+/// The per-user Audio Units component directory.
+///
+/// macOS only, and not because Burrow has not got round to the others: Audio
+/// Units are a macOS format. An `au` build on Windows is not a missing artefact
+/// to apologise for, it is a category error, so the destination does not exist
+/// and the slot never appears.
+pub fn au_dir(platform: Platform, home: &Path) -> Option<PathBuf> {
+    match platform {
+        Platform::Macos => Some(home.join("Library/Audio/Plug-Ins/Components")),
+        _ => None,
+    }
+}
+
+/// Where an application goes.
+///
+/// **No application install ever asks for a password**, and that is a decision
+/// rather than a limitation. `/Applications` is `drwxrwxr-x root:admin`: an
+/// administrator can write to it directly, and this uses it when the probe says
+/// so. A standard user cannot — and the tempting fix, handing `/Applications`
+/// to the privileged helper, would mean teaching the one component that runs as
+/// root to replace and delete things in the directory holding every application
+/// on the machine, in order to install software that has a perfectly good
+/// per-user home. macOS indexes `~/Applications` in Spotlight and Launchpad
+/// like any other; on a shared Mac a per-user install is the more correct
+/// answer anyway.
+///
+/// On Windows this is `%LOCALAPPDATA%\Programs`, where Squirrel and
+/// electron-builder already install per-user, for the same reason. What it does
+/// not do is create a Start-menu shortcut — see the note Burrow attaches to a
+/// Windows application install.
+pub fn applications_dir(platform: Platform, home: &Path) -> Option<PathBuf> {
+    match platform {
+        Platform::Macos => {
+            let shared = PathBuf::from("/Applications");
+            Some(if probe_writable(&shared) {
+                shared
+            } else {
+                home.join("Applications")
+            })
+        }
+        Platform::Windows => std::env::var("LOCALAPPDATA")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|base| PathBuf::from(base).join("Programs")),
+        Platform::Linux | Platform::Unknown => None,
+    }
+}
+
+/// Where Burrow puts Companion modules.
+///
+/// **This one is genuinely different, and the difference is not Burrow's.**
+/// Bitfocus Companion has no modules directory to find: modules that are not in
+/// its store are loaded from a folder the user nominates themselves, in
+/// Settings → Developer modules path, and it is empty until they do. There is
+/// nothing to locate.
+///
+/// So this is the only destination in the file that is *proposed* rather than
+/// located — a folder in Documents that Burrow will create and fill, leaving
+/// the user one setting to point Companion at it. Anyone who already has a
+/// modules folder points Burrow at theirs instead, in Settings, and this is
+/// never used.
+pub fn companion_modules_dir(documents: &Path) -> PathBuf {
+    documents.join("Companion Modules")
+}
+
+/// Whether Bitfocus Companion is on this machine.
+///
+/// Only used to say so. It deliberately does not gate the destination: a
+/// portable Companion, or one installed somewhere unusual, would fail this
+/// check while working perfectly, and a module that cannot be installed with no
+/// explanation is worse than one installed for an app that turns up later.
+pub fn detect_companion(applications: &Path) -> bool {
+    ["Companion.app", "Companion", "Bitfocus Companion.app"]
+        .iter()
+        .any(|n| applications.join(n).exists())
+}
+
 fn destination(
     id: &str,
     format: Format,
@@ -236,6 +343,7 @@ pub fn discover(
     platform: Platform,
     applications: &Path,
     documents: &Path,
+    home: &Path,
     overrides: &std::collections::BTreeMap<String, PathBuf>,
 ) -> Vec<Destination> {
     let mut out = Vec::new();
@@ -284,6 +392,53 @@ pub fn discover(
         ));
     }
 
+    if let Some(p) = vst3_dir(platform, home) {
+        let path = overrides.get("vst3").cloned().unwrap_or(p);
+        out.push(destination(
+            "vst3",
+            Format::Vst3,
+            "VST3 hosts".into(),
+            path,
+            overrides.contains_key("vst3"),
+        ));
+    }
+
+    if let Some(p) = au_dir(platform, home) {
+        let path = overrides.get("au").cloned().unwrap_or(p);
+        out.push(destination(
+            "au",
+            Format::Au,
+            "Logic Pro & Final Cut Pro".into(),
+            path,
+            overrides.contains_key("au"),
+        ));
+    }
+
+    if let Some(p) = applications_dir(platform, home) {
+        let path = overrides.get("applications").cloned().unwrap_or(p);
+        out.push(destination(
+            "applications",
+            Format::App,
+            if platform == Platform::Macos { "Applications" } else { "Programs" }.into(),
+            path,
+            overrides.contains_key("applications"),
+        ));
+    }
+
+    if matches!(platform, Platform::Macos | Platform::Windows | Platform::Linux) {
+        let path = overrides
+            .get("companion")
+            .cloned()
+            .unwrap_or_else(|| companion_modules_dir(documents));
+        out.push(destination(
+            "companion",
+            Format::Companion,
+            "Companion modules".into(),
+            path,
+            overrides.contains_key("companion"),
+        ));
+    }
+
     out
 }
 
@@ -319,6 +474,7 @@ mod tests {
     fn alley_and_wire_are_detected_but_never_offered_as_destinations() {
         let apps = TempDir::new().unwrap();
         let docs = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
         std::fs::create_dir_all(apps.path().join("Resolume Alley")).unwrap();
         std::fs::create_dir_all(apps.path().join("Resolume Wire")).unwrap();
 
@@ -328,7 +484,7 @@ mod tests {
         assert!(found.iter().all(|(_, hosts)| !hosts));
 
         // ...and discovery offers no FFGL destination for them.
-        let dests = discover(Platform::Macos, apps.path(), docs.path(), &BTreeMap::new());
+        let dests = discover(Platform::Macos, apps.path(), docs.path(), home.path(), &BTreeMap::new());
         assert!(!dests.iter().any(|d| d.format == Format::Ffgl));
     }
 
@@ -338,10 +494,11 @@ mod tests {
         // independent ids or uninstalling from one forgets the other.
         let apps = TempDir::new().unwrap();
         let docs = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
         std::fs::create_dir_all(apps.path().join("Resolume Arena")).unwrap();
         std::fs::create_dir_all(apps.path().join("Resolume Avenue")).unwrap();
 
-        let dests = discover(Platform::Macos, apps.path(), docs.path(), &BTreeMap::new());
+        let dests = discover(Platform::Macos, apps.path(), docs.path(), home.path(), &BTreeMap::new());
         let ffgl: Vec<_> = dests
             .iter()
             .filter(|d| d.format == Format::Ffgl)
@@ -394,14 +551,89 @@ mod tests {
     fn a_custom_destination_is_never_marked_for_elevation() {
         let apps = TempDir::new().unwrap();
         let docs = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
         let custom = TempDir::new().unwrap();
         let mut ov = BTreeMap::new();
         ov.insert("openfx".to_string(), custom.path().to_path_buf());
 
-        let dests = discover(Platform::Macos, apps.path(), docs.path(), &ov);
+        let dests = discover(Platform::Macos, apps.path(), docs.path(), home.path(), &ov);
         let ofx = dests.iter().find(|d| d.id == "openfx").unwrap();
         assert!(ofx.custom);
         assert!(!ofx.needs_elevation);
+    }
+
+    #[test]
+    fn the_audio_destinations_are_per_user_and_never_ask_for_a_password() {
+        // The point of choosing ~/Library over /Library for both: an audio
+        // plugin install is the one case where the user directory is scanned
+        // by every host, so there is no reason to ask for a password.
+        let apps = TempDir::new().unwrap();
+        let docs = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let dests = discover(Platform::Macos, apps.path(), docs.path(), home.path(), &BTreeMap::new());
+
+        let vst3 = dests.iter().find(|d| d.id == "vst3").unwrap();
+        assert_eq!(vst3.path, home.path().join("Library/Audio/Plug-Ins/VST3"));
+        assert!(!vst3.needs_elevation);
+
+        let au = dests.iter().find(|d| d.id == "au").unwrap();
+        assert_eq!(au.path, home.path().join("Library/Audio/Plug-Ins/Components"));
+        assert!(!au.needs_elevation);
+    }
+
+    #[test]
+    fn audio_units_do_not_exist_off_macos() {
+        // Not a missing build to apologise for — a format that does not exist
+        // there. No destination, so no slot, so nothing to explain.
+        let home = Path::new("/home/x");
+        assert!(au_dir(Platform::Windows, home).is_none());
+        assert!(au_dir(Platform::Linux, home).is_none());
+        assert!(vst3_dir(Platform::Linux, home).is_some());
+    }
+
+    #[test]
+    fn no_format_added_for_the_new_categories_can_ask_for_a_password() {
+        // The security statement, as a test. Widening the privileged helper's
+        // whitelist is a change to what this app *is* (AGENTS.md §6), and
+        // adding audio plugins, applications and Companion modules did not
+        // require one: every new destination is somewhere the user can already
+        // write.
+        for f in [Format::Vst3, Format::Au, Format::App, Format::Companion] {
+            assert!(!f.needs_elevation(), "{} should never elevate", f.label());
+        }
+        assert!(Format::Openfx.needs_elevation());
+        assert!(Format::Adobe.needs_elevation());
+    }
+
+    #[test]
+    fn an_application_falls_back_to_the_users_own_folder_rather_than_to_a_password() {
+        // A standard user cannot write to /Applications. The answer is
+        // ~/Applications, which macOS indexes identically — not root.
+        let home = TempDir::new().unwrap();
+        let p = applications_dir(Platform::Macos, home.path()).unwrap();
+        let shared = Path::new("/Applications");
+        if probe_writable(shared) {
+            assert_eq!(p, shared);
+        } else {
+            assert_eq!(p, home.path().join("Applications"));
+        }
+    }
+
+    #[test]
+    fn the_companion_destination_is_offered_even_though_companion_was_not_found() {
+        // Companion has no modules directory to locate — the user nominates
+        // one in its own settings. Withholding the destination until Companion
+        // is detected would leave a portable install with a module it cannot
+        // install and no explanation.
+        let apps = TempDir::new().unwrap();
+        let docs = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        assert!(!detect_companion(apps.path()));
+
+        let dests = discover(Platform::Macos, apps.path(), docs.path(), home.path(), &BTreeMap::new());
+        let c = dests.iter().find(|d| d.id == "companion").unwrap();
+        assert_eq!(c.path, docs.path().join("Companion Modules"));
+        assert!(!c.needs_elevation);
     }
 
     #[test]
@@ -409,7 +641,8 @@ mod tests {
     fn the_real_system_directories_need_elevation_on_this_machine() {
         let apps = TempDir::new().unwrap();
         let docs = TempDir::new().unwrap();
-        let dests = discover(Platform::Macos, apps.path(), docs.path(), &BTreeMap::new());
+        let home = TempDir::new().unwrap();
+        let dests = discover(Platform::Macos, apps.path(), docs.path(), home.path(), &BTreeMap::new());
         for id in ["openfx", "adobe"] {
             let d = dests.iter().find(|d| d.id == id).unwrap();
             assert!(!d.writable, "{id} unexpectedly writable");

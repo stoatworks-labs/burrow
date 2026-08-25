@@ -3227,7 +3227,7 @@ mountDemo({
       display: (v) => linear(v, -1, 1).toFixed(2),
       hint: 'Half-wave on X folds the left half of the figure onto one line, and the beam then sits there for half of every cycle. The bright bar that appears is dwell, not a drawn line.',
     }),
-    opt('rectRouting', 'Rectifier Routing', ROUTING_NAMES, 1, 'Rectifier'),
+    opt('rectRouting', 'Rectify Routing', ROUTING_NAMES, 1, 'Rectifier'),
 
     bool('slewOn', 'Slew Limiter', 0, 'Slew'),
     std('slewRise', 'Rise', 1, 'Slew', { display: (v) => `${expo(v, 0.5, 5000).toFixed(0)} V/s` }),
@@ -3284,7 +3284,7 @@ mountDemo({
     std('delayMix', 'Delay Mix', 0.4, 'Delay'),
     opt('delayRouting', 'Delay Routing', ROUTING_NAMES, 0, 'Delay',
       'Ping-Pong feeds each axis’s output into the other’s input, so the ghost walks diagonally across the screen.'),
-    bool('delayTimeMode', 'Crossfade Time Changes', 0, 'Delay',
+    bool('delayTimeMode', 'Crossfade Time', 0, 'Delay',
       'Off is Repitch: the read pointer’s rate ramps and the ghosts audibly swoop, which is bucket-brigade behaviour.'),
 
     std('outGain', 'Deflection', 0.5, 'Deflection Amplifier', { display: (v) => `${linear(v, 0, 2).toFixed(2)}×` }),

@@ -8,8 +8,26 @@
  * line up.
  */
 
-export type FormatId = 'ffgl' | 'openfx' | 'adobe' | 'fxplug' | 'unknown'
+export type FormatId =
+  | 'ffgl'
+  | 'openfx'
+  | 'adobe'
+  | 'fxplug'
+  | 'vst3'
+  | 'au'
+  | 'app'
+  | 'companion'
+  | 'unknown'
 export type PlatformId = 'macos' | 'windows'
+
+/**
+ * Which tab an entry sits under.
+ *
+ * `firmware` is representable and empty: the catalogue emits nothing with it
+ * yet, and the tab says so. It is here rather than added later so that the day
+ * it starts arriving, this build files it correctly instead of dropping it.
+ */
+export type CategoryId = 'video' | 'audio' | 'netinfra' | 'firmware' | 'unknown'
 
 /** Which of the three headings a plugin sits under. */
 export type Bucket = 'update-available' | 'up-to-date' | 'not-installed'
@@ -80,6 +98,11 @@ export interface VersionEntry {
 export interface PluginView {
   slug: string
   name: string
+  category: CategoryId
+  /** `plugin`, `app` or `companion` — or something newer this build ignores. */
+  kind: string
+  /** The software tool this belongs to, for a Companion module. */
+  parent: string | null
   hook: string
   summary: string
   blurb: string | null
@@ -224,10 +247,30 @@ export const FORMAT_LABEL: Record<string, string> = {
   openfx: 'OpenFX',
   adobe: 'Adobe',
   fxplug: 'FxPlug',
+  vst3: 'VST3',
+  au: 'Audio Unit',
+  app: 'Application',
+  companion: 'Companion module',
 }
 
 export const FORMAT_HOSTS: Record<string, string> = {
   ffgl: 'Resolume Arena & Avenue',
   openfx: 'DaVinci Resolve, Vegas Pro, Nuke, Natron',
   adobe: 'After Effects & Premiere Pro',
+  vst3: 'Ableton Live, REAPER, Cubase, Studio One, SuperRack',
+  au: 'Logic Pro, GarageBand, Final Cut Pro',
+  app: 'Runs on its own',
+  companion: 'Bitfocus Companion',
+}
+
+/**
+ * The tabs, in order. The label is a fallback: the catalogue sends its own,
+ * so the website can rename a category without an app update.
+ */
+export const CATEGORY_LABEL: Record<CategoryId, string> = {
+  video: 'Video',
+  audio: 'Audio',
+  netinfra: 'Networking & Infrastructure',
+  firmware: 'Device firmware',
+  unknown: 'Other',
 }

@@ -93,9 +93,38 @@ impl std::fmt::Display for CommitError {
 }
 
 /// Copy a file or directory tree. Used to get a payload from the app's cache
-/// into the destination's own filesystem before the rename.
+/// into the destination's own filesystem before the rename, and to lift an
+/// application off a mounted disk image.
+///
+/// # Symlinks
+///
+/// Recreated, and only when they point inside the payload.
+///
+/// They used to be skipped, on the reasoning that archive extraction refuses
+/// them anyway so one here would have to have been created after the fact. That
+/// reasoning was right for plugins and is wrong for applications: the macOS
+/// framework layout **is** symlinks. Every Electron application carries
+/// `Versions/Current -> A`, and a `.app` copied without them is not a slightly
+/// imperfect copy, it is an application that does not launch.
+///
+/// So a link is recreated when its target is relative and stays inside the tree
+/// being copied, and the copy **fails** otherwise rather than skipping it. An
+/// absolute link, or one climbing out with `..`, is either something this does
+/// not understand or something it should not be reproducing inside a user's
+/// Applications folder — and silently dropping it is how a payload arrives
+/// looking complete and broken.
 pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
-    if from.is_file() {
+    copy_within(from, to, to)
+}
+
+/// `root` is the top of the tree being copied, which is what a symlink target
+/// has to stay inside. It is threaded through the recursion unchanged.
+fn copy_within(from: &Path, to: &Path, root: &Path) -> io::Result<()> {
+    let meta = fs::symlink_metadata(from)?;
+    if meta.file_type().is_symlink() {
+        return copy_symlink(from, to, root);
+    }
+    if meta.is_file() {
         if let Some(p) = to.parent() {
             fs::create_dir_all(p)?;
         }
@@ -107,8 +136,10 @@ pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
         let entry = entry?;
         let target = to.join(entry.file_name());
         let ft = entry.file_type()?;
-        if ft.is_dir() {
-            copy_tree(&entry.path(), &target)?;
+        if ft.is_symlink() {
+            copy_symlink(&entry.path(), &target, root)?;
+        } else if ft.is_dir() {
+            copy_within(&entry.path(), &target, root)?;
         } else if ft.is_file() {
             fs::copy(entry.path(), &target)?;
             #[cfg(unix)]
@@ -118,10 +149,61 @@ pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
                 let _ = fs::set_permissions(&target, fs::Permissions::from_mode(mode));
             }
         }
-        // Symlinks are skipped: archive extraction already refuses them, so
-        // one here would mean something created it after the fact.
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn copy_symlink(from: &Path, to: &Path, root: &Path) -> io::Result<()> {
+    let target = fs::read_link(from)?;
+    if target.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{} points outside the payload, at {}", from.display(), target.display()),
+        ));
+    }
+    // Resolved lexically against the link's own directory. Lexically, not by
+    // asking the filesystem: canonicalize() would resolve through whatever is
+    // there now, which is the classic way to check the wrong path.
+    let base = to.parent().unwrap_or(root);
+    let mut resolved = base.to_path_buf();
+    for part in target.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                if !resolved.pop() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("{} climbs out of the payload", from.display()),
+                    ));
+                }
+            }
+            std::path::Component::CurDir => {}
+            other => resolved.push(other.as_os_str()),
+        }
+    }
+    if !resolved.starts_with(root) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{} points outside the payload, at {}", from.display(), target.display()),
+        ));
+    }
+    if let Some(p) = to.parent() {
+        fs::create_dir_all(p)?;
+    }
+    let _ = fs::remove_file(to);
+    std::os::unix::fs::symlink(&target, to)
+}
+
+#[cfg(not(unix))]
+fn copy_symlink(from: &Path, _to: &Path, _root: &Path) -> io::Result<()> {
+    // Windows payloads do not contain them, and creating one needs a privilege
+    // an ordinary account does not have. Refused rather than skipped, for the
+    // reason in copy_tree's doc: a payload that arrives looking complete and
+    // is not is the worst of the available outcomes.
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("{} is a symbolic link, which cannot be recreated here", from.display()),
+    ))
 }
 
 fn remove_any(p: &Path) -> io::Result<()> {
@@ -267,6 +349,92 @@ pub fn sweep_leftovers(dest: &Path) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A framework layout in miniature: the shape every Electron and Tauri
+    /// application carries, and the reason copy_tree recreates links at all.
+    #[cfg(unix)]
+    fn make_app(root: &Path) {
+        let versions = root.join("Contents/Frameworks/Thing.framework/Versions");
+        fs::create_dir_all(versions.join("A/Resources")).unwrap();
+        fs::write(versions.join("A/Thing"), b"MZ").unwrap();
+        fs::write(versions.join("A/Resources/Info.plist"), b"<plist/>").unwrap();
+        std::os::unix::fs::symlink("A", versions.join("Current")).unwrap();
+        std::os::unix::fs::symlink(
+            "Versions/Current/Thing",
+            versions.parent().unwrap().join("Thing"),
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("Contents/MacOS")).unwrap();
+        fs::write(root.join("Contents/MacOS/Thing"), b"MZ").unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn an_applications_framework_symlinks_survive_the_copy() {
+        // Skipping them, which is what this used to do, produces an
+        // application that looks complete in Finder and does not launch.
+        let t = TempDir::new().unwrap();
+        let src = t.path().join("Thing.app");
+        make_app(&src);
+
+        let dst = t.path().join("out/Thing.app");
+        copy_tree(&src, &dst).unwrap();
+
+        let current = dst.join("Contents/Frameworks/Thing.framework/Versions/Current");
+        assert!(fs::symlink_metadata(&current).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_link(&current).unwrap(), Path::new("A"));
+        // And it still resolves, which is the point of recreating it.
+        assert!(current.join("Thing").is_file());
+
+        let shortcut = dst.join("Contents/Frameworks/Thing.framework/Thing");
+        assert!(fs::symlink_metadata(&shortcut).unwrap().file_type().is_symlink());
+        assert!(shortcut.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_symlink_pointing_out_of_the_payload_fails_the_copy() {
+        // Rather than being skipped. A payload that arrives looking complete
+        // and is not is the worst of the outcomes available here — and a link
+        // to somewhere else on the disk is not part of what was downloaded.
+        let t = TempDir::new().unwrap();
+        let src = t.path().join("Thing.app");
+        fs::create_dir_all(&src).unwrap();
+        std::os::unix::fs::symlink("/etc/passwd", src.join("secrets")).unwrap();
+
+        let err = copy_tree(&src, &t.path().join("out/Thing.app")).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_symlink_climbing_out_with_dot_dot_fails_the_copy() {
+        let t = TempDir::new().unwrap();
+        let src = t.path().join("Thing.app");
+        fs::create_dir_all(&src).unwrap();
+        std::os::unix::fs::symlink("../../elsewhere", src.join("escape")).unwrap();
+
+        assert!(copy_tree(&src, &t.path().join("out/Thing.app")).is_err());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_repointed_symlink_changes_the_payload_hash() {
+        // What hashing symlink targets buys: the ledger notices.
+        use crate::hashing::hash_entries;
+        let t = TempDir::new().unwrap();
+        let dir = t.path();
+        fs::create_dir_all(dir.join("Thing.app")).unwrap();
+        fs::write(dir.join("Thing.app/real"), b"x").unwrap();
+        std::os::unix::fs::symlink("real", dir.join("Thing.app/link")).unwrap();
+        let before = hash_entries(dir, &["Thing.app".into()]).unwrap();
+
+        fs::remove_file(dir.join("Thing.app/link")).unwrap();
+        std::os::unix::fs::symlink("elsewhere", dir.join("Thing.app/link")).unwrap();
+        let after = hash_entries(dir, &["Thing.app".into()]).unwrap();
+
+        assert_ne!(before, after);
+    }
     use tempfile::TempDir;
 
     fn bundle(root: &Path, name: &str, body: &[u8]) {

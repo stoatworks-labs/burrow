@@ -4,28 +4,48 @@ import { mockInitialTab, isShot } from './api/mock'
 import type {
   BatchOutcome,
   CatalogInfo,
+  CategoryId,
   Environment,
   OpRequest,
   PluginView,
   Progress,
   Settings,
 } from './api/types'
+import { CATEGORY_LABEL } from './api/types'
 import { WhatsNew } from './tabs/WhatsNew'
 import { Plugins } from './tabs/Plugins'
+import { Firmware } from './tabs/Firmware'
 import { SettingsTab } from './tabs/Settings'
 import { Banner } from './components/Banner'
 import { RefreshTools } from './components/RefreshTools'
 import { VideoModal } from './components/VideoModal'
 import { isFilming, runFilm } from './film'
 
-type TabId = 'whatsnew' | 'plugins' | 'settings'
+/**
+ * A category tab is the category's own id, so `tab === p.category` is the
+ * filter and there is no second vocabulary mapping one to the other.
+ */
+type TabId = 'whatsnew' | CategoryId | 'settings'
+
+/** The category tabs, in order. Firmware is last and empty on purpose. */
+const CATEGORY_TABS: CategoryId[] = ['video', 'audio', 'netinfra', 'firmware']
+
+const TABS: TabId[] = ['whatsnew', ...CATEGORY_TABS, 'settings']
+
+/**
+ * The tab a `?tab=` preview URL asks for.
+ *
+ * `plugins` is what the video tab was called when it was the only one, and it
+ * is in the film script and in saved preview URLs — aliased rather than left to
+ * fall through, so an old link lands where it meant to.
+ */
+function initialTab(asked: string): TabId {
+  const wanted = asked === 'plugins' ? 'video' : asked
+  return TABS.includes(wanted as TabId) ? (wanted as TabId) : 'video'
+}
 
 export function App() {
-  const [tab, setTab] = useState<TabId>(
-    (['whatsnew', 'plugins', 'settings'].includes(mockInitialTab)
-      ? mockInitialTab
-      : 'plugins') as TabId,
-  )
+  const [tab, setTab] = useState<TabId>(initialTab(mockInitialTab))
   const [env, setEnv] = useState<Environment | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [catalog, setCatalog] = useState<CatalogInfo | null>(null)
@@ -233,13 +253,23 @@ export function App() {
     [plugins],
   )
 
+  /** How many things in each category need updating. */
+  const counts = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const c of CATEGORY_TABS) out[c] = 0
+    for (const p of plugins) {
+      if (p.bucket === 'update-available' && p.category in out) out[p.category]++
+    }
+    return out
+  }, [plugins])
+
   const loading = env === null || settings === null
 
   return (
     <>
       <header className="head">
         <h1>Stoatworks Burrow</h1>
-        <span className="sub">Video plugins</span>
+        <span className="sub">Plugins, tools &amp; modules</span>
         <span className="spacer" />
         {isMock && !isShot && <span className="sub">preview — no backend</span>}
       </header>
@@ -255,14 +285,21 @@ export function App() {
           What&rsquo;s new
           {updateCount > 0 && <span className="count">{updateCount}</span>}
         </button>
-        <button
-          className="tab"
-          role="tab"
-          aria-selected={tab === 'plugins'}
-          onClick={() => setTab('plugins')}
-        >
-          Plugin management
-        </button>
+        {CATEGORY_TABS.map(c => (
+          <button
+            key={c}
+            className="tab"
+            role="tab"
+            aria-selected={tab === c}
+            onClick={() => setTab(c)}
+          >
+            {CATEGORY_LABEL[c]}
+            {/* The count is what each tab is worth glancing at: how much in
+                here needs attention. Firmware has nothing in it and says so
+                in the panel rather than with a zero. */}
+            {counts[c] > 0 && <span className="count">{counts[c]}</span>}
+          </button>
+        ))}
         <button
           className="tab"
           role="tab"
@@ -298,8 +335,11 @@ export function App() {
           onDemo={api.openDemo}
           onPlay={setPlaying}
         />
-      ) : tab === 'plugins' ? (
+      ) : tab === 'firmware' ? (
+        <Firmware />
+      ) : tab !== 'settings' ? (
         <Plugins
+          category={tab}
           plugins={plugins}
           env={env!}
           settings={settings!}

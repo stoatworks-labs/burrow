@@ -6,7 +6,7 @@
 //! never brick a copy of Burrow already in the field. What it may not do is
 //! arrive as something other than the catalogue: see [`parse`].
 
-use crate::model::{Format, Platform};
+use crate::model::{Arch, Category, Format, Platform};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -19,7 +19,20 @@ pub struct Catalog {
     pub generated: String,
     #[serde(default)]
     pub formats: BTreeMap<String, FormatInfo>,
+    /// Category id → how to name it, sent for the same reason `formats` is:
+    /// so the website can add a category and have it appear correctly labelled
+    /// in a copy of Burrow nobody has updated. Empty on a schema-1 catalogue,
+    /// which predates categories entirely — see [`Entry::category`].
+    #[serde(default)]
+    pub categories: BTreeMap<String, CategoryInfo>,
     pub entries: Vec<Entry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CategoryInfo {
+    pub label: String,
+    #[serde(default)]
+    pub blurb: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +50,23 @@ pub struct Entry {
     /// `plugin` today; `app` when Burrow learns to install one. An entry whose
     /// kind this build does not manage is kept and not offered.
     pub kind: String,
+    /// Which tab this belongs under.
+    ///
+    /// Defaults to [`Category::Video`] rather than to unknown, and the reason
+    /// is the cached and baked copies: every catalogue written before this
+    /// field existed is video plugins and nothing else, so "absent" means
+    /// video as a matter of fact, not as a guess. A newer catalogue always
+    /// says.
+    #[serde(default = "video")]
+    pub category: Category,
+    /// The slug of the software tool this belongs to, for a thing that is not
+    /// used on its own.
+    ///
+    /// Set on the Companion modules, which exist to drive one specific app —
+    /// the app is the reason anyone would install the module. The UI nests
+    /// them under their parent rather than listing them as peers.
+    #[serde(default)]
+    pub parent: Option<String>,
     #[serde(default)]
     pub hook: String,
     #[serde(default)]
@@ -86,6 +116,21 @@ pub struct Entry {
     pub video_url: Option<String>,
     #[serde(default)]
     pub builds: BTreeMap<Format, BTreeMap<Platform, Asset>>,
+    /// Every artefact, flat, with its architecture.
+    ///
+    /// `builds` cannot express two archives for one (format, platform), and
+    /// the software tools need exactly that: almost all of them ship a
+    /// separate arm64 and x64 build, where a video plugin ships one universal
+    /// bundle. The obvious fix — a third level of nesting inside `builds` —
+    /// would change the shape of a field that shipped clients already parse,
+    /// and this project has already had one website deploy stop every copy of
+    /// Burrow in the field from reading the catalogue at all. So this is
+    /// **additive**: a new list beside the old map, preferred when it is
+    /// there, ignored by anything that has never heard of it.
+    ///
+    /// `builds` stays authoritative for anything absent here.
+    #[serde(default)]
+    pub assets: Vec<FlatAsset>,
     #[serde(default)]
     pub notes: Vec<Note>,
     /// Earlier releases a user can roll back to, newest first.
@@ -114,12 +159,67 @@ pub struct VersionEntry {
     pub prerelease: bool,
     #[serde(default)]
     pub builds: BTreeMap<Format, BTreeMap<Platform, Asset>>,
+    #[serde(default)]
+    pub assets: Vec<FlatAsset>,
 }
 
 impl VersionEntry {
+    /// The artefact to roll back to, for this machine's architecture.
     pub fn asset(&self, format: Format, platform: Platform) -> Option<&Asset> {
-        self.builds.get(&format)?.get(&platform)
+        pick(&self.assets, &self.builds, format, platform, Arch::current())
     }
+}
+
+/// One artefact, with everything needed to choose between two of them.
+///
+/// Flattened rather than nested so that adding a dimension — architecture
+/// today, something else later — is a new field on a row instead of a new
+/// level of map that older clients cannot parse.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlatAsset {
+    pub format: Format,
+    pub platform: Platform,
+    #[serde(default)]
+    pub arch: Arch,
+    #[serde(flatten)]
+    pub asset: Asset,
+}
+
+/// Choose the artefact for a (format, platform) on a machine of this
+/// architecture, preferring the flat list and falling back to `builds`.
+///
+/// An exact architecture match wins; a universal build serves anything; and an
+/// artefact that names no architecture at all is taken as universal, because
+/// that is what it meant for every catalogue written before this field
+/// existed. A build for the *other* architecture is never chosen — an arm64
+/// binary on an Intel machine is not a degraded install, it is one that cannot
+/// run, and "no build" is the honest answer.
+fn pick<'a>(
+    assets: &'a [FlatAsset],
+    builds: &'a BTreeMap<Format, BTreeMap<Platform, Asset>>,
+    format: Format,
+    platform: Platform,
+    arch: Arch,
+) -> Option<&'a Asset> {
+    let matching = || {
+        assets
+            .iter()
+            .filter(|a| a.format == format && a.platform == platform)
+    };
+    if let Some(a) = matching().find(|a| a.arch == arch) {
+        return Some(&a.asset);
+    }
+    if let Some(a) = matching().find(|a| a.arch == Arch::Universal) {
+        return Some(&a.asset);
+    }
+    if matching().next().is_some() {
+        // The flat list covers this (format, platform) and none of its rows
+        // run here. Falling through to `builds` would hand back exactly the
+        // artefact just rejected.
+        return None;
+    }
+    builds.get(&format)?.get(&platform)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,10 +275,40 @@ pub struct Note {
     pub filtered: u32,
 }
 
+fn video() -> Category {
+    Category::Video
+}
+
 impl Entry {
-    /// The artefact for a format on a platform, if the catalogue has one.
+    /// The artefact for a format on a platform, for this machine's
+    /// architecture, if the catalogue has one.
     pub fn asset(&self, format: Format, platform: Platform) -> Option<&Asset> {
-        self.builds.get(&format)?.get(&platform)
+        self.asset_for(format, platform, Arch::current())
+    }
+
+    /// The same, for a stated architecture. Split out so the choice can be
+    /// tested for a machine that is not this one.
+    pub fn asset_for(&self, format: Format, platform: Platform, arch: Arch) -> Option<&Asset> {
+        pick(&self.assets, &self.builds, format, platform, arch)
+    }
+
+    /// Every format this entry has an artefact for *somewhere*, whatever the
+    /// platform or architecture.
+    ///
+    /// This is what decides which destinations an entry is even asked about.
+    /// Without it, adding the audio and application formats would give every
+    /// video plugin a row of empty VST3, Audio Unit and Application slots, and
+    /// every software tool a row of empty FFGL ones.
+    ///
+    /// A format present here but absent for *this* platform is a real answer —
+    /// "no build for your machine" — and that distinction is the whole reason
+    /// this is not just `formats_for`.
+    pub fn known_formats(&self) -> std::collections::BTreeSet<Format> {
+        self.builds
+            .keys()
+            .copied()
+            .chain(self.assets.iter().map(|a| a.format))
+            .collect()
     }
 
     /// The formats this entry actually offers on this platform, in a stable

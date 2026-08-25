@@ -161,6 +161,13 @@ pub fn get_environment(app: AppHandle, state: State<'_, AppState>) -> Result<Env
         .path()
         .document_dir()
         .map_err(|e| format!("could not find your Documents folder: {e}"))?;
+    // Through the path resolver for the same reason Documents is: a home
+    // directory is not always under /Users, and on Windows it is not always
+    // %USERPROFILE% either.
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| format!("could not find your home folder: {e}"))?;
     let applications = PathBuf::from(if cfg!(target_os = "macos") {
         "/Applications"
     } else {
@@ -169,7 +176,7 @@ pub fn get_environment(app: AppHandle, state: State<'_, AppState>) -> Result<Env
 
     let overrides = settings.destinations.clone().into_iter().collect();
     let destinations = match platform {
-        Some(p) => dest::discover(p, &applications, &documents, &overrides),
+        Some(p) => dest::discover(p, &applications, &documents, &home, &overrides),
         None => Vec::new(),
     };
 
@@ -188,7 +195,26 @@ pub fn get_environment(app: AppHandle, state: State<'_, AppState>) -> Result<Env
         });
     }
 
-    Ok(Environment { platform, resolume, other_hosts: Vec::new(), destinations })
+    // Companion is reported rather than required. Its modules directory is
+    // one the user nominates inside Companion itself, so not finding the app
+    // says nothing about whether a module can be installed — see
+    // `dest::companion_modules_dir`.
+    let other_hosts = vec![dest::DetectedHost {
+        name: "Bitfocus Companion".into(),
+        loads_effects: dest::detect_companion(&applications),
+        note: Some(
+            if dest::detect_companion(&applications) {
+                "Modules go in the folder Companion's Settings → Developer modules path \
+                 points at. Set that to the folder below and restart Companion."
+            } else {
+                "Not found here. Modules can still be installed — point Companion's \
+                 Settings → Developer modules path at the folder below when you do have it."
+            }
+            .into(),
+        ),
+    }];
+
+    Ok(Environment { platform, resolume, other_hosts, destinations })
 }
 
 #[tauri::command]
@@ -360,6 +386,15 @@ fn adopt(
 pub struct PluginView {
     pub slug: String,
     pub name: String,
+    /// Which tab this belongs under.
+    pub category: burrow_core::model::Category,
+    /// `plugin`, `app` or `companion`. Carried through verbatim, including a
+    /// value this build has never heard of — the UI shows what it can and the
+    /// catalogue stays free to grow.
+    pub kind: String,
+    /// The software tool this belongs to, for a Companion module. The UI nests
+    /// it under that row instead of listing it as a peer.
+    pub parent: Option<String>,
     pub hook: String,
     pub summary: String,
     pub blurb: Option<String>,
@@ -428,7 +463,17 @@ pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Pl
         let mut slots = Vec::new();
         let mut extras: Vec<String> = Vec::new();
 
-        for d in &env.destinations {
+        // Only the destinations this entry could ever occupy. Without this,
+        // every video plugin would show empty VST3, Audio Unit and Application
+        // slots, and every software tool an empty FFGL one — a row of
+        // permanent dashes for a format it was never going to have.
+        //
+        // A format the entry *does* have somewhere, but not for this machine,
+        // still gets a slot: "no build for your platform" is a real answer, and
+        // it is how cartridge tells a Windows user it is macOS-only.
+        let known = entry.known_formats();
+
+        for d in env.destinations.iter().filter(|d| known.contains(&d.format)) {
             let asset = entry.asset(d.format, platform);
             if let Some(a) = asset {
                 for x in &a.extras {
@@ -445,6 +490,7 @@ pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Pl
                 &d.id,
                 &d.path,
                 &declared,
+                asset.is_some(),
                 entry.version.as_deref(),
             );
             slots.push(Slot {
@@ -463,6 +509,9 @@ pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Pl
             bucket: bucket_for(&slots),
             slug: entry.slug.clone(),
             name: entry.name.clone(),
+            category: entry.category,
+            kind: entry.kind.clone(),
+            parent: entry.parent.clone(),
             hook: entry.hook.clone(),
             summary: entry.summary.clone(),
             blurb: entry.blurb.clone(),

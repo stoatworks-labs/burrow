@@ -1,9 +1,10 @@
 # Stoatworks Burrow user guide
 
-**Burrow installs, updates and removes the Stoatworks video plugins.** One list,
-one click each, and it knows where every format goes on your machine.
+**Burrow installs, updates and removes the Stoatworks plugins, tools and Companion
+modules.** One list, one click each, and it knows where every format goes on your
+machine.
 
-> **Status at v0.1.3 — read this first.**
+> **Status at v0.2.0 — read this first.**
 >
 > Burrow has been tested thoroughly against real plugin downloads, but **no plugin
 > has yet been installed into a running Resolume, Resolve or After Effects through
@@ -13,6 +14,10 @@ one click each, and it knows where every format goes on your machine.
 > On Windows it can install FFGL plugins for Resolume, but not OpenFX or After
 > Effects plugins — that part is not written yet, and it says so rather than
 > half-working.
+>
+> Applications and Companion modules are newer still, and **no application has yet
+> been installed into a real Applications folder through it**, nor a module into a
+> real Companion.
 >
 > This is an AI-assisted project, directed and reviewed by a human author.
 
@@ -26,6 +31,20 @@ the installer.
 
 Burrow is not required for anything. Every plugin can still be downloaded and
 installed by hand, exactly as before — Burrow only saves you doing it.
+
+## The four tabs
+
+The fleet is bigger than the video plugins now, so it is split by what a thing is
+for:
+
+| Tab | What's in it |
+|---|---|
+| **Video** | The Resolume, Resolve and After Effects plugins, and the video tools around them |
+| **Audio** | VST3 and Audio Unit plugins, and the audio tools that run on their own |
+| **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running |
+| **Device firmware** | Coming soon — nothing in it yet, and it says so |
+
+A number beside a tab is how many things in it need updating.
 
 ## The first thing you'll see
 
@@ -99,19 +118,54 @@ just which application loads it.
 | **FFGL** | Resolume Arena and Avenue |
 | **OpenFX** | DaVinci Resolve, Vegas Pro, Nuke, Natron |
 | **Adobe** | After Effects and Premiere Pro |
+| **VST3** | Ableton Live, REAPER, Cubase, Studio One, SuperRack |
+| **Audio Unit** | Logic Pro, GarageBand, Final Cut Pro |
+| **Application** | Nothing — it runs on its own |
+| **Companion module** | Bitfocus Companion |
 
-In **Settings**, tick the ones you use. Burrow starts with FFGL only, because
-that's the one that needs no password.
+In **Settings**, tick the ones you use. Burrow starts with everything that needs no
+password ticked, and OpenFX and Adobe left off — those are the two that do.
+
+Nothing has every format: a video plugin has no VST3 build and an audio plugin has
+no FFGL one, so ticking a format you never use costs nothing.
 
 You can override this for a single plugin from its row — **Formats…** — if there's
 one you want in Resolve but not Resolume, or the other way round. A row with its
 own choice shows a small **custom formats** label so you can see at a glance that
 it isn't following your defaults.
 
+## Companion modules
+
+A tool that has a Bitfocus Companion module shows it on the tool's own row, below
+the buttons: *Companion module v1.0.1*, with **Install** beside it.
+
+Companion has no fixed folder for modules that aren't in its store. It reads the
+one you name in **Settings → Developer modules path**, so:
+
+1. Install the module in Burrow. It goes to `Documents/Companion Modules` unless
+   you tell Burrow otherwise, in Settings → *Where things go*.
+2. Point Companion's Developer modules path at that folder.
+3. **Restart Companion.** It reads that folder once, when it starts.
+
+Already have a modules folder? Change the path in Burrow's Settings to yours and
+step 2 is done.
+
+## Applications
+
+Applications install straight into your Applications folder — or, if you're not an
+administrator on this machine, into your own `~/Applications`, which Spotlight and
+Launchpad index just the same. Either way it never asks for a password.
+
+On Windows they go into `%LOCALAPPDATA%\Programs`, and **no Start-menu shortcut is
+created**: Burrow places the program folder and doesn't write anywhere else. Make a
+shortcut yourself if you want one.
+
 ## Why it asks for your password
 
-FFGL plugins go into your own Documents folder, and Burrow never needs anything
-special for those.
+Two of the seven formats do, and the rest never do. FFGL plugins go into your own
+Documents folder, VST3s and Audio Units into your own `~/Library/Audio/Plug-Ins`,
+Companion modules into a folder you chose, and applications as above — Burrow needs
+nothing special for any of those.
 
 OpenFX and After Effects plugins are different. They go into folders that belong
 to the system:

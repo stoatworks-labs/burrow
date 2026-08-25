@@ -18,6 +18,7 @@ pub mod bundleinfo;
 pub mod catalog;
 pub mod commit;
 pub mod dest;
+pub mod dmg;
 pub mod hashing;
 pub mod ledger;
 pub mod model;

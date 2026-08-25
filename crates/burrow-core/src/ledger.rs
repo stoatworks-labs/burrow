@@ -124,7 +124,27 @@ pub struct Reconciled {
 ///
 /// `declared` is what the catalogue says this plugin's payload is called for
 /// this format and platform — the only names that will be looked at.
+/// `has_asset` is whether the catalogue has an artefact here at all.
 /// `latest` is the catalogue's current version.
+///
+/// # Why those are two arguments and not one
+///
+/// They used to be one: an empty `declared` meant "no build for this platform",
+/// which was true while every entry in the catalogue was a video plugin, since
+/// those carry payload names read out of the archive at release time.
+///
+/// It stopped being true the moment the catalogue grew applications, audio
+/// plugins and Companion modules, whose names nothing has probed. Left as it
+/// was, every one of them would have reported "no build for your machine" while
+/// sitting beside a perfectly good download — the most confusing possible way
+/// to fail, because the row would look like a platform problem.
+///
+/// So: `has_asset` decides whether there is anything on offer, and `declared`
+/// decides what to look for. Where the catalogue declares nothing, the ledger's
+/// own record of what it installed is used instead — which is exact for
+/// anything Burrow installed, and blank for a copy somebody installed by hand.
+/// Not being able to see a hand-installed application is a degraded answer, not
+/// a wrong one; Burrow learns the names the first time it installs one.
 ///
 /// A pure-ish function: it reads the filesystem but makes no decisions from
 /// anything else, which is what makes it the single most testable and most
@@ -136,6 +156,7 @@ pub fn reconcile_one(
     dest_id: &str,
     dest: &Path,
     declared: &[String],
+    has_asset: bool,
     latest: Option<&str>,
 ) -> Reconciled {
     let record = ledger.key(slug, format, dest_id);
@@ -152,14 +173,21 @@ pub fn reconcile_one(
     // No artefact for this format on this platform — cartridge has no Windows
     // build, most plugins have no Adobe build. Distinct from "not installed",
     // because there is nothing to offer.
-    if declared.is_empty() {
+    if !has_asset && record.is_none() {
         base.state = InstallState::NoBuild;
         return base;
     }
 
-    // Only names the catalogue declares are ever considered. This is the line
-    // that keeps every foreign bundle in a shared folder invisible.
-    let present: Vec<&String> = declared.iter().filter(|n| dest.join(n).exists()).collect();
+    // Only declared names are ever considered — never a directory listing.
+    // This is the line that keeps every foreign bundle in a shared folder
+    // invisible, and it is why the fallback below is the ledger rather than
+    // "whatever is in there".
+    let recorded: Vec<String> = record.map(|r| r.entries.clone()).unwrap_or_default();
+    let names: &[String] = if declared.is_empty() { &recorded } else { declared };
+    if names.is_empty() {
+        return base;
+    }
+    let present: Vec<&String> = names.iter().filter(|n| dest.join(n).exists()).collect();
 
     if let Some(rec) = record {
         base.missing = rec
@@ -272,7 +300,9 @@ mod tests {
         declared: &[String],
         latest: Option<&str>,
     ) -> Reconciled {
-        reconcile_one(ledger, "tinsel", Format::Ffgl, "arena", dest, declared, latest)
+        // The tests here are all video plugins, which always have both: an
+        // artefact and the payload names read out of it at release time.
+        reconcile_one(ledger, "tinsel", Format::Ffgl, "arena", dest, declared, !declared.is_empty(), latest)
     }
 
     #[test]
@@ -465,10 +495,78 @@ mod tests {
             "arena",
             t.path(),
             &entries,
+            true,
             Some("v1.0.2"),
         );
         assert_eq!(r.missing, vec!["Downpour Over.bundle".to_string()]);
         assert!(matches!(r.state, InstallState::UpToDate { .. }));
+    }
+
+    #[test]
+    fn an_artefact_with_no_declared_names_is_offered_rather_than_reported_as_no_build() {
+        // The bug this exists for, in the form it would have taken: every
+        // application, audio plugin and Companion module reading "no build for
+        // your machine" while sitting beside a perfectly good download,
+        // because nothing has probed their archives for payload names.
+        let t = TempDir::new().unwrap();
+        let r = reconcile_one(
+            &Ledger::default(),
+            "simplevis",
+            Format::App,
+            "applications",
+            t.path(),
+            &[],
+            true, // there is an artefact
+            Some("v0.4.0"),
+        );
+        assert_eq!(r.state, InstallState::NotInstalled);
+
+        // And with no artefact either, it is still "no build".
+        let r = reconcile_one(
+            &Ledger::default(),
+            "simplevis",
+            Format::App,
+            "applications",
+            t.path(),
+            &[],
+            false,
+            Some("v0.4.0"),
+        );
+        assert_eq!(r.state, InstallState::NoBuild);
+    }
+
+    #[test]
+    fn what_burrow_installed_is_recognised_from_the_ledger_when_the_catalogue_declares_nothing() {
+        // The other half: once Burrow has installed an application it knows
+        // exactly what it placed, so the row reports the truth from then on
+        // even though the catalogue never named it.
+        let t = TempDir::new().unwrap();
+        bundle(t.path(), "simpleVIS.app", "com.allansargeant.simplevis", "0.4.0");
+
+        let mut l = Ledger::default();
+        l.upsert(LedgerEntry {
+            slug: "simplevis".into(),
+            format: Format::App,
+            destination_id: "applications".into(),
+            destination: t.path().into(),
+            entries: vec!["simpleVIS.app".into()],
+            version: "v0.4.0".into(),
+            installed_at: "2026-08-25T00:00:00Z".into(),
+            payload_sha256: "whatever".into(),
+        });
+
+        let r = reconcile_one(
+            &l,
+            "simplevis",
+            Format::App,
+            "applications",
+            t.path(),
+            &[],
+            true,
+            Some("v0.4.0"),
+        );
+        assert!(matches!(r.state, InstallState::UpToDate { .. }), "{:?}", r.state);
+        assert!(!r.foreign);
     }
 
     #[test]
@@ -479,10 +577,10 @@ mod tests {
         // Avenue has nothing.
         let d = decl(&["Tinsel.bundle"]);
         let a = reconcile_one(
-            &Ledger::default(), "tinsel", Format::Ffgl, "arena", arena.path(), &d, Some("v1.0.2"),
+            &Ledger::default(), "tinsel", Format::Ffgl, "arena", arena.path(), &d, true, Some("v1.0.2"),
         );
         let b = reconcile_one(
-            &Ledger::default(), "tinsel", Format::Ffgl, "avenue", avenue.path(), &d, Some("v1.0.2"),
+            &Ledger::default(), "tinsel", Format::Ffgl, "avenue", avenue.path(), &d, true, Some("v1.0.2"),
         );
         assert!(matches!(a.state, InstallState::UpToDate { .. }));
         assert_eq!(b.state, InstallState::NotInstalled);

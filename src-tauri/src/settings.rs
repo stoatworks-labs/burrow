@@ -86,6 +86,12 @@ pub struct RefreshRecord {
     pub error: Option<String>,
 }
 
+/// The current settings schema.
+///
+/// 1 → 2 added the formats that came with the audio, application and Companion
+/// categories. See [`Settings::migrate`].
+pub const SCHEMA: u32 = 2;
+
 fn one() -> u32 {
     1
 }
@@ -96,16 +102,27 @@ fn default_catalog_url() -> String {
     DEFAULT_CATALOG_URL.to_string()
 }
 fn default_formats() -> Vec<Format> {
-    // FFGL only. Installing OpenFX by default would mean the very first
-    // install prompts for an admin password, which is a bad first impression
-    // and, for someone who only uses Resolume, entirely unnecessary.
-    vec![Format::Ffgl]
+    // Everything that needs no password. Installing OpenFX or Adobe by default
+    // would mean the very first install prompts for an administrator password,
+    // which is a bad first impression and, for someone who only uses Resolume,
+    // entirely unnecessary.
+    //
+    // The rule reads the same as it did when it was "FFGL only" — that was the
+    // whole of the password-free list at the time. It is not a wider default so
+    // much as the same default, now that there is more than one kind of thing
+    // in the catalogue: a video plugin has no VST3 build to install, and an
+    // audio plugin has no FFGL one.
+    Format::SHIPPING
+        .iter()
+        .copied()
+        .filter(|f| !f.needs_elevation())
+        .collect()
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            schema: 1,
+            schema: SCHEMA,
             default_formats: default_formats(),
             plugin_formats: BTreeMap::new(),
             destinations: BTreeMap::new(),
@@ -129,6 +146,31 @@ impl Settings {
 
     pub fn has_override(&self, slug: &str) -> bool {
         matches!(self.plugin_formats.get(slug), Some(Some(_)))
+    }
+
+    /// Bring an older settings file forward.
+    ///
+    /// Only one migration so far, and it exists because leaving it out would
+    /// have been invisible rather than noisy: a settings file written before
+    /// the audio and application categories says `"defaultFormats": ["ffgl"]`,
+    /// which was "everything that needs no password" when it was written and
+    /// silently becomes "no audio plugins, no applications, no Companion
+    /// modules" afterwards. Every existing user would have found the new tabs
+    /// full of software with nothing on offer, and nothing would have said why.
+    ///
+    /// A format the user explicitly took *away* is not restored — only formats
+    /// that did not exist to be chosen are added.
+    fn migrate(&mut self) {
+        if self.schema < 2 {
+            for f in default_formats() {
+                // FFGL is not re-added: if it is absent from a schema-1 file,
+                // the user removed it on purpose.
+                if f != Format::Ffgl && !self.default_formats.contains(&f) {
+                    self.default_formats.push(f);
+                }
+            }
+        }
+        self.schema = SCHEMA;
     }
 
     /// Drop anything meaningless before writing, so the file stays readable
@@ -160,6 +202,7 @@ pub fn load(path: &std::path::Path) -> Settings {
     };
     match serde_json::from_str::<Settings>(&body) {
         Ok(mut s) => {
+            s.migrate();
             s.normalise();
             s
         }
@@ -198,7 +241,10 @@ mod tests {
     #[test]
     fn a_missing_file_yields_defaults_rather_than_an_error() {
         let s = load(std::path::Path::new("/nowhere/settings.json"));
-        assert_eq!(s.default_formats, vec![Format::Ffgl]);
+        assert!(s.default_formats.contains(&Format::Ffgl));
+        // The defining property of the defaults, which is not "FFGL": nothing
+        // Burrow offers out of the box can ask for a password.
+        assert!(s.default_formats.iter().all(|f| !f.needs_elevation()));
     }
 
     #[test]
@@ -206,6 +252,47 @@ mod tests {
         let t = TempDir::new().unwrap();
         let p = t.path().join("settings.json");
         std::fs::write(&p, "{ this is not json").unwrap();
+        assert_eq!(load(&p).default_formats, Settings::default().default_formats);
+    }
+
+    #[test]
+    fn a_settings_file_written_before_the_new_categories_gains_their_formats() {
+        // The invisible failure this exists for: "defaultFormats": ["ffgl"]
+        // meant "everything that needs no password" when it was written, and
+        // would silently mean "no audio plugins and no applications" now.
+        let t = TempDir::new().unwrap();
+        let p = t.path().join("settings.json");
+        std::fs::write(&p, r#"{"schema":1,"defaultFormats":["ffgl"]}"#).unwrap();
+
+        let s = load(&p);
+        assert_eq!(s.schema, SCHEMA);
+        for f in [Format::Ffgl, Format::Vst3, Format::Au, Format::App, Format::Companion] {
+            assert!(s.default_formats.contains(&f), "{} missing", f.label());
+        }
+        // And it does not quietly turn on the two that would prompt.
+        assert!(!s.default_formats.contains(&Format::Openfx));
+    }
+
+    #[test]
+    fn migration_does_not_restore_a_format_the_user_removed() {
+        // Someone who took FFGL out of their defaults gets it back only by
+        // putting it back. The migration adds what did not exist to be chosen;
+        // it does not overrule a choice.
+        let t = TempDir::new().unwrap();
+        let p = t.path().join("settings.json");
+        std::fs::write(&p, r#"{"schema":1,"defaultFormats":["openfx"]}"#).unwrap();
+
+        let s = load(&p);
+        assert!(!s.default_formats.contains(&Format::Ffgl));
+        assert!(s.default_formats.contains(&Format::Openfx));
+        assert!(s.default_formats.contains(&Format::Vst3));
+    }
+
+    #[test]
+    fn a_current_settings_file_is_left_alone() {
+        let t = TempDir::new().unwrap();
+        let p = t.path().join("settings.json");
+        std::fs::write(&p, r#"{"schema":2,"defaultFormats":["ffgl"]}"#).unwrap();
         assert_eq!(load(&p).default_formats, vec![Format::Ffgl]);
     }
 
@@ -273,7 +360,7 @@ mod tests {
         let p = t.path().join("settings.json");
         std::fs::write(
             &p,
-            r#"{"schema":1,"defaultFormats":["ffgl"],"somethingNew":{"a":1}}"#,
+            r#"{"schema":2,"defaultFormats":["ffgl"],"somethingNew":{"a":1}}"#,
         )
         .unwrap();
         assert_eq!(load(&p).default_formats, vec![Format::Ffgl]);

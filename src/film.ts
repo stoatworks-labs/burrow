@@ -45,31 +45,35 @@ const invokeBeat = async (label: string, at: number) => {
  * the screen, short enough that the whole thing moves.
  */
 export function choreography(
-  setTab: (t: 'whatsnew' | 'plugins' | 'settings') => void,
+  setTab: (t: 'whatsnew' | 'video' | 'audio' | 'netinfra' | 'settings') => void,
   setQuery: (q: string) => void,
 ): Step[] {
   return [
     // Open where the value is: the whole list, and what needs attention.
-    { at: 1200, label: 'plugins', run: () => setTab('plugins') },
+    { at: 1200, label: 'video', run: () => setTab('video') },
 
     // Search, because "twenty-four plugins" is only a virtue if you can find one.
     { at: 6000, label: 'search', run: () => setQuery('cathode') },
     { at: 10500, label: 'search-clear', run: () => setQuery('') },
 
+    // The fleet is wider than the plugins now, and one tab move says so
+    // better than any caption would.
+    { at: 13500, label: 'audio', run: () => setTab('audio') },
+
     // What changed, in the plugins you already have.
-    { at: 13500, label: 'whatsnew', run: () => setTab('whatsnew') },
+    { at: 18000, label: 'whatsnew', run: () => setTab('whatsnew') },
 
     // Where things go, and the honest paragraph about what it sends.
-    { at: 21000, label: 'settings', run: () => setTab('settings') },
+    { at: 24000, label: 'settings', run: () => setTab('settings') },
 
     // Back to the list to end on the thing the app is for.
-    { at: 27000, label: 'plugins-end', run: () => setTab('plugins') },
+    { at: 30000, label: 'video-end', run: () => setTab('video') },
   ]
 }
 
 /** Run the choreography, reporting each beat as it fires. */
 export function runFilm(
-  setTab: (t: 'whatsnew' | 'plugins' | 'settings') => void,
+  setTab: (t: 'whatsnew' | 'video' | 'audio' | 'netinfra' | 'settings') => void,
   setQuery: (q: string) => void,
 ): () => void {
   const started = performance.now()

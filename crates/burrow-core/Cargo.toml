@@ -1,6 +1,6 @@
 [package]
 name = "burrow-core"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.85"
 description = "Burrow's catalogue model, host detection, install ledger and reconciliation — everything that does not need Tauri."
@@ -21,6 +21,14 @@ hex = "0.4"
 # deflate only. The fleet's archives are all deflate, and dropping bzip2/zstd/
 # lzma shrinks both the binary and the amount of parser this is exposed to.
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# The Companion modules, and only those, arrive as an npm `.tgz` rather than a
+# zip — that is what `npm pack` produces and what Companion's own developer
+# modules path expects to be handed. Two small pure-Rust crates, chosen with the
+# same instinct as the zip feature list above: `flate2`'s default backend is the
+# Rust one, and `tar` has no dependencies of its own beyond libc.
+tar = "0.4"
+flate2 = "1"
 
 # The quarantine call. Deliberately not the `xattr` crate: its `remove` follows
 # symlinks and offers no way to pass XATTR_NOFOLLOW, and exact parity with the

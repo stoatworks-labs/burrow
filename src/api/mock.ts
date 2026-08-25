@@ -6,7 +6,7 @@
  * password prompt — is reachable here by adding a parameter to the URL. That
  * makes them reviewable in a browser and capturable as screenshots.
  *
- *   ?tab=whatsnew|plugins|settings
+ *   ?tab=whatsnew|video|audio|netinfra|firmware|settings   (`plugins` = video)
  *   ?source=network|cache|baked        where the catalogue came from
  *   ?state=ok|offline|error            what the last refresh did
  *   ?installed=tinsel:ffgl@1.0.1,orrery:ffgl,idler:ffgl@?
@@ -23,6 +23,7 @@ import type {
   BatchOutcome,
   BatchPlan,
   CatalogInfo,
+  CategoryId,
   Destination,
   FormatId,
   InstallState,
@@ -42,6 +43,9 @@ const p = (k: string, fallback = '') => params.get(k) ?? fallback
 type CatalogEntry = {
   slug: string
   name: string
+  category?: CategoryId
+  kind?: string
+  parent?: string | null
   hook: string
   summary: string
   blurb: string | null
@@ -57,6 +61,15 @@ type CatalogEntry = {
   releaseUrl: string | null
   releasesUrl: string | null
   builds: Record<string, Record<string, { url: string; size?: number; entries?: string[]; extras?: string[] }>>
+  /** The arch-aware flat list. Preferred over `builds` where it exists. */
+  assets?: Array<{
+    format: FormatId
+    platform: string
+    arch?: string
+    url: string
+    size?: number
+    extras?: string[]
+  }>
   notes: Note[]
   versions?: any[]
 }
@@ -126,6 +139,49 @@ function destinations(): Destination[] {
       needsElevation: true,
       custom: false,
     },
+    // None of these four can ask for a password — see dest::applications_dir
+    // and the test that pins it. The mock says so too, or the preview would
+    // show a padlock the real app never shows.
+    {
+      id: 'vst3',
+      format: 'vst3',
+      label: 'VST3 hosts',
+      path: '~/Library/Audio/Plug-Ins/VST3',
+      exists: true,
+      writable: true,
+      needsElevation: false,
+      custom: false,
+    },
+    {
+      id: 'au',
+      format: 'au',
+      label: 'Logic Pro & Final Cut Pro',
+      path: '~/Library/Audio/Plug-Ins/Components',
+      exists: true,
+      writable: true,
+      needsElevation: false,
+      custom: false,
+    },
+    {
+      id: 'applications',
+      format: 'app',
+      label: 'Applications',
+      path: '/Applications',
+      exists: true,
+      writable: true,
+      needsElevation: false,
+      custom: false,
+    },
+    {
+      id: 'companion',
+      format: 'companion',
+      label: 'Companion modules',
+      path: '~/Documents/Companion Modules',
+      exists: false,
+      writable: true,
+      needsElevation: false,
+      custom: false,
+    },
   ]
 }
 
@@ -152,8 +208,9 @@ function stateFor(
 }
 
 let currentSettings: Settings = {
-  schema: 1,
-  defaultFormats: ['ffgl'],
+  schema: 2,
+  // Everything that needs no password, as the real defaults are.
+  defaultFormats: ['ffgl', 'vst3', 'au', 'app', 'companion'],
   pluginFormats: {},
   destinations: {},
   catalogUrl: 'https://stoatworks-labs.com/catalog.json',
@@ -179,7 +236,13 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
             note: 'Alley links the same effects engine but does not scan an Extra Effects folder, so plugins installed for it would never appear.',
           },
         ],
-        otherHosts: [],
+        otherHosts: [
+          {
+            name: 'Bitfocus Companion',
+            loadsEffects: true,
+            note: "Modules go in the folder Companion's Settings → Developer modules path points at. Set that to the folder below and restart Companion.",
+          },
+        ],
         destinations: destinations(),
       } as T
 
@@ -217,8 +280,19 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const has = installedSpec()
       const dests = destinations()
       const views: PluginView[] = entries.map(e => {
-        const slots: Slot[] = dests.map(d => {
-          const offered = Boolean(e.builds?.[d.format]?.macos)
+        // Mirrors `Entry::known_formats` in Rust: a row is only asked about
+        // destinations its own catalogue entry could ever occupy.
+        const known = new Set<string>([
+          ...Object.keys(e.builds ?? {}),
+          ...(e.assets ?? []).map(a => a.format),
+        ])
+        const assetFor = (format: string) =>
+          (e.assets ?? []).find(a => a.format === format && a.platform === 'macos') ??
+          e.builds?.[format]?.macos
+        const slots: Slot[] = dests
+          .filter(d => known.has(d.format))
+          .map(d => {
+          const offered = Boolean(assetFor(d.format))
           return {
             format: d.format,
             destinationId: d.id,
@@ -227,7 +301,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
             needsElevation: d.needsElevation,
             missing: [],
             foreign: false,
-            size: e.builds?.[d.format]?.macos?.size ?? null,
+            size: assetFor(d.format)?.size ?? null,
           }
         })
         const bucket = slots.some(s => s.state.state === 'update-available')
@@ -240,6 +314,9 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         return {
           slug: e.slug,
           name: e.name,
+          category: e.category ?? 'video',
+          kind: e.kind ?? 'plugin',
+          parent: e.parent ?? null,
           hook: e.hook,
           summary: e.summary,
           blurb: e.blurb,
@@ -260,9 +337,12 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           wantedFormats: currentSettings.pluginFormats[e.slug] ?? currentSettings.defaultFormats,
           notes: e.notes ?? [],
           versions: e.versions ?? [],
-          extras: Object.values(e.builds ?? {}).flatMap(pl =>
-            Object.values(pl).flatMap(a => a.extras ?? []),
-          ),
+          extras: [
+            ...Object.values(e.builds ?? {}).flatMap(pl =>
+              Object.values(pl).flatMap(a => a.extras ?? []),
+            ),
+            ...(e.assets ?? []).flatMap(a => a.extras ?? []),
+          ],
         }
       })
       return views as T

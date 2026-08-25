@@ -6,12 +6,19 @@ Orientation for an AI assistant, or a human, picking this repo up cold.
 
 ## 1. What this is
 
-An optional desktop app that installs, updates and removes the fleet's video
-plugins. Tauri v2: Rust behind, React + TypeScript in front.
+An optional desktop app that installs, updates and removes the fleet's software:
+plugins, applications and Companion modules. Tauri v2: Rust behind, React +
+TypeScript in front.
 
-It exists because installing one of these plugins by hand means choosing between
-six archives per plugin and knowing three different destination directories, two
-of which need an administrator password.
+It exists because installing one of these by hand means choosing between six
+archives per video plugin and knowing three different destination directories, two
+of which need an administrator password — and then something different again for an
+audio plugin, an application and a Companion module.
+
+**Four tabs, three of them populated.** Video, Audio, Networking & Infrastructure,
+and a Device firmware tab that says "coming soon" and means it. The category is a
+field on each catalogue entry, chosen by the website from the fleet's own
+`category` data — see §4.
 
 **It is a client, not a service.** There is no account, no telemetry and no
 backend. One HTTPS GET for the plugin list, and downloads straight from GitHub.
@@ -25,12 +32,13 @@ crates/burrow-plan/     The file-operation vocabulary the privileged helper
                         accepts, and the validator both sides run. No I/O.
 crates/burrow-helper/   The binary that runs as root. Depends on burrow-plan,
                         serde and libc — and must never depend on more.
-crates/burrow-core/     Catalogue model, host detection, archive handling,
-                        quarantine, commit/rollback, the install ledger and
-                        reconciliation. Free of Tauri, so it is all unit-testable.
+crates/burrow-core/     Catalogue model, host detection, archive handling, disk
+                        images, quarantine, commit/rollback, the install ledger
+                        and reconciliation. Free of Tauri, so it is all
+                        unit-testable.
 src-tauri/              The shell: network, commands, job runner, demo server,
                         the elevation prompt.
-src/                    React UI. Three tabs, plus a mock backend.
+src/                    React UI. Six tabs, plus a mock backend.
 scripts/sync-assets.sh  Gathers the catalogue, demos, thumbnails and helper that
                         ship inside the app.
 ```
@@ -44,6 +52,29 @@ one on the author's machine also holds `WebLinked.bundle`, `Metal_Gain_Example.b
 and five `OFX_*_Example` bundles. Burrow considers *only* the entry names the
 catalogue declares for a given plugin and format. An installer that enumerates a
 directory it does not own is one bug away from deleting somebody else's work.
+
+**A payload is what the format's suffix says it is.** This is the rule that
+replaced "copy every top-level entry", and it is what makes it safe to install from
+an archive nobody probed: a `.vst3` for VST3, a `.component` for an Audio Unit, a
+`.app` for an application, and everything else in the archive is an extra. The
+audio plugins ship `VST3/`, `AU/` and `Standalone/` in one zip and each format
+takes exactly its own. Two formats are named rather than recognised — a Companion
+module and a Windows application are whole archives, placed under a name from the
+catalogue — because a `package/` directory and a folder of DLLs have no suffix to
+go on. See `Format::payload_extensions` and `payload_is_whole_archive`.
+
+**A macOS application comes out of a disk image, not an archive.** Every GUI
+application in the fleet publishes a `.dmg`; the archives beside them are
+command-line binaries. That was checked, not assumed —
+`oxbow-0.1.1-macos-universal.zip` holds `oxbow`, a README and a LICENCE. `dmg.rs`
+mounts with `-nobrowse` on a mount point of its own choosing, takes exactly one
+top-level `.app`, and detaches whichever way the copy goes.
+
+**Symlinks inside a payload are recreated, and only inwards.** They used to be
+skipped, which was right for plugins and wrong for applications: the macOS
+framework layout *is* symlinks, and a `.app` copied without them is not an
+imperfect copy, it is an application that does not launch. A link pointing out of
+the payload fails the copy rather than being dropped — see `commit::copy_tree`.
 
 **Never assume what an archive contains.** Four of the twenty-four ship more than
 plugins: burin and flipbook include a sample asset, gridiron a folder of logos, and
@@ -96,6 +127,28 @@ build time (`src/pages/catalog.json.ts`) from `projects.json` + `downloads.json`
 the same arrangement as `releases.xml.ts` and `llms.txt.ts` there. It therefore
 cannot advertise a version the download tables disagree with.
 
+**Three kinds and three categories, decided there and not here.** `kind` is
+`plugin`, `app` or `companion`; `category` is `video`, `audio` or `netinfra`, folded
+from the fleet's eight categories by a priority list in that route. When something
+looks filed oddly in the app, the fix is usually its `category` in `projects.json` —
+which the website itself reads too — rather than a special case in Burrow.
+
+⚠️ **`assets` is additive beside `builds`, never inside it.** `builds` is
+format → platform → one asset, which cannot express the separate arm64 and x64
+builds almost every application ships. Nesting a third level would have changed the
+shape of a field shipped clients already parse, and a website deploy has stopped
+every copy of Burrow in the field from reading the catalogue once already. So the
+flat, arch-aware list sits beside the map, is preferred where present, and is
+ignored by anything that has never heard of it. `builds` is *derived* from it, so
+the two cannot drift.
+
+**Payload names are only known for the video plugins.** `gen-catalog-data.py` probes
+their archives at release time; nothing probes an application, an audio plugin or a
+Companion module. So `reconcile_one` takes `has_asset` separately from `declared`:
+an artefact with no declared names is *offered*, not reported as "no build". Burrow
+learns the names when it installs, and until then cannot see a hand-installed copy —
+a degraded answer, not a wrong one.
+
 Two things a build-time route cannot know come from
 `stoatworks-backend/release/gen-catalog-data.py`, run at release time: release
 notes, and what each archive unpacks to. The second is read from the archives'
@@ -140,10 +193,18 @@ Flag these rather than implementing them quietly:
 - Widening the helper's whitelist, its operation set, or its dependencies.
 - Removing the `connect-src 'none'` the demo server sends.
 
+**The audio, application and Companion formats added no elevated path.** That was a
+decision, and it is why `/Applications` is not in the helper's whitelist: a standard
+user cannot write there, and the answer is `~/Applications` — which macOS indexes
+identically — rather than teaching the one component that runs as root to delete
+things in the directory holding every application on the machine. Windows VST3 goes
+to the per-user location in the VST3 spec for the same reason. There is a test
+pinning it: `no_format_added_for_the_new_categories_can_ask_for_a_password`.
+
 ## 7. Testing
 
 ```bash
-cargo test --workspace     # 98 tests, no Tauri, every platform
+cargo test --workspace     # 99 tests, no Tauri, every platform
 npm run build              # type-checks the UI
 ```
 
@@ -151,7 +212,7 @@ The UI runs in an ordinary browser against a mock backend, which is how the
 awkward states get looked at:
 
 ```
-?tab=whatsnew|plugins|settings
+?tab=whatsnew|video|audio|netinfra|firmware|settings   (`plugins` = video)
 ?installed=tinsel:ffgl@0.2.0,idler:ffgl@?     behind / current / unknown version
 ?ofx=missing|empty|readonly|ok                the OpenFX destination's condition
 ?state=ok|offline|error                       what the last refresh did

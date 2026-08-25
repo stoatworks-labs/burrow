@@ -23,7 +23,7 @@
 //! *failed* — because nothing went wrong, they said no.
 
 use burrow_core::model::{Format, Platform};
-use burrow_core::{archive, commit, ledger, quarantine};
+use burrow_core::{archive, commit, dmg, ledger, quarantine};
 use burrow_plan::Op;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -74,6 +74,14 @@ pub struct PlannedUnit {
     pub size: Option<u64>,
     pub entries: Vec<String>,
     pub needs_elevation: bool,
+    /// The single name the payload must end up under, for the two formats
+    /// whose archive *is* the payload: a Companion module (named from the
+    /// repository, because `npm pack` calls every tarball's root `package/`)
+    /// and a Windows application (named from the catalogue, because a program
+    /// folder has no name of its own). None for everything else, which is
+    /// named by what the archive holds.
+    #[serde(default)]
+    pub install_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,6 +235,17 @@ pub fn plan_batch(
             elevated_destinations.push(dest.path.clone());
         }
 
+        let install_name = if req.format.payload_is_whole_archive(platform) {
+            Some(match req.format {
+                // The repository name, which is what a Companion developer
+                // modules folder holds a directory of.
+                Format::Companion => entry.repo.clone(),
+                _ => entry.name.clone(),
+            })
+        } else {
+            None
+        };
+
         units.push(PlannedUnit {
             slug: req.slug.clone(),
             name: entry.name.clone(),
@@ -239,6 +258,7 @@ pub fn plan_batch(
             size,
             entries,
             needs_elevation: dest.needs_elevation,
+            install_name,
         });
     }
 
@@ -310,7 +330,25 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
         };
 
         emit(&app, progress(&plan, i, total, unit, "downloading", 0, unit.size, None));
-        let file = downloads.join(format!("{}-{}-{}.zip", unit.slug, unit.format.id(), plan.batch));
+        // Named for what it is: a macOS application arrives as a disk image, a
+        // Companion module as an npm tarball, everything else as a zip. The
+        // container is settled by the file's own magic bytes rather than by
+        // this name — but a half-downloaded file left in the cache by a crash
+        // should not lie about its format.
+        let is_image = url.to_ascii_lowercase().ends_with(".dmg");
+        let suffix = if is_image {
+            "dmg"
+        } else if unit.format == Format::Companion {
+            "tgz"
+        } else {
+            "zip"
+        };
+        let file = downloads.join(format!(
+            "{}-{}-{}.{suffix}",
+            unit.slug,
+            unit.format.id(),
+            plan.batch
+        ));
 
         let app_for_progress = app.clone();
         let plan_id = plan.batch.clone();
@@ -343,7 +381,21 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
 
         emit(&app, progress(&plan, i, total, unit, "extracting", 0, None, None));
         let staged = staging_root.join(format!("{}-{}", unit.slug, unit.format.id()));
-        let unpacked = match archive::extract(&file, &staged) {
+        // A disk image is mounted rather than unpacked; everything after this
+        // point is identical either way, which is the whole point of both
+        // returning an `Unpacked`.
+        let opened = if is_image {
+            dmg::extract_app(&file, &staged)
+        } else {
+            archive::extract(
+                &file,
+                &staged,
+                unit.format,
+                platform,
+                unit.install_name.as_deref(),
+            )
+        };
+        let unpacked = match opened {
             Ok(u) => u,
             Err(e) => {
                 let _ = std::fs::remove_file(&file);
@@ -371,6 +423,29 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
                  not put in the plugin folder.",
                 unit.name,
                 unpacked.extras.join(", ")
+            ));
+        }
+
+        // Two installs finish somewhere other than where the user expects, and
+        // both are worth a sentence rather than a support question.
+        if unit.format == Format::Companion && unit.action != Action::Uninstall {
+            notes.push(format!(
+                "Point Companion's Settings → Developer modules path at {} and restart it — \
+                 Companion reads that folder when it starts, so {} will not appear until \
+                 you do.",
+                unit.destination.display(),
+                unit.name
+            ));
+        }
+        if unit.format == Format::App
+            && platform == Platform::Windows
+            && unit.action != Action::Uninstall
+        {
+            notes.push(format!(
+                "{} is in {}. No Start-menu shortcut was created — Burrow places the \
+                 program folder and does not write anywhere else.",
+                unit.name,
+                unit.destination.display()
             ));
         }
 
