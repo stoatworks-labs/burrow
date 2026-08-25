@@ -194,19 +194,21 @@ jobs:
         with:
           files: artifacts/**/*
           body: |
-            An optional desktop client for the Stoatworks video plugins. Shows
-            every plugin, what you have installed and what has an update, and
-            installs each one in whichever formats you use.
+            An optional desktop client for the Stoatworks software. Shows every
+            plugin, tool and Companion module, what you have installed and what
+            has an update, and installs each one in whichever formats you use —
+            under Video, Audio, and Networking & Infrastructure.
 
-            Using it is entirely optional — every plugin is still a normal
+            Using it is entirely optional — everything in it is still a normal
             download from its own release page.
 
             **macOS** — `.dmg` to drag it across, or `.pkg` to install it. Both
             architectures.
 
-            **Windows** — `-setup.exe`, x86_64. FFGL plugins for Resolume install
-            normally; OpenFX and After Effects installs are not supported on
-            Windows in this release and Burrow says so rather than half-working.
+            **Windows** — `-setup.exe`, x86_64. FFGL plugins for Resolume,
+            applications, VST3 plugins and Companion modules install normally;
+            OpenFX and After Effects installs are not supported on Windows in
+            this release and Burrow says so rather than half-working.
 
             **No Linux build yet.** Resolve runs on Linux and OpenFX has a home
             there, but no plugin in the fleet ships a Linux artefact — so a Linux
@@ -215,12 +217,14 @@ jobs:
 
             ---
 
-            **This is a first release, and one thing has not been tested:** no
-            plugin has yet been installed into a running Resolume, Resolve or
-            After Effects *through the app*. The install path is verified against
-            real plugin downloads and against temporary folders, but the last step
-            is not. Try it somewhere a broken plugin folder would cost you
-            nothing, and please [report anything that
+            **What has not been tested:** nothing has yet been installed into a
+            running Resolume, Resolve, After Effects or DAW *through the app*, no
+            application into a real Applications folder, and no module into a real
+            Companion. The install path is verified against real downloads and
+            against temporary folders — including a real disk image, mounted,
+            installed and removed again — but the last step is not. Try it
+            somewhere a broken plugin folder would cost you nothing, and please
+            [report anything that
             misbehaves](https://github.com/stoatworks-labs/burrow/issues).
 
             The [user guide](https://stoatworks-labs.com/software/burrow/guide)
