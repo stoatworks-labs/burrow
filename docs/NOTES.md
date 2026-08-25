@@ -382,6 +382,34 @@ The elevated destinations were already fine — `/Library/OFX/Plugins` and Adobe
 MediaCore are outside the home directory, so the password prompt never carried a
 name.
 
+## 2026-08-25 — two traps found by other people's failures
+
+**`videos-v1` is a prerelease now.** That tag carries the twenty .mp4s Burrow
+streams, and it is not a release of the app — but `gen-downloads.py` picks the
+newest non-prerelease and describes it, so for the forty minutes it sat on top it
+made Burrow look like a project with no downloads at all: `· burrow: videos-v1,
+no recognisable assets`, and the entry vanishes from `downloads.json` and from
+the site. Another session hit it and said so.
+
+The prerelease flag costs nothing here — assets are addressed by tag, and a range
+request for `videos-v1/tinsel.mp4` still answers 206 with a real MP4 header after
+flipping it — and it stops GitHub calling the video dump "Latest" on the releases
+page, which it should never have been. Any future asset-only tag wants the same
+treatment on the day it is cut, not after somebody's downloads pass eats the
+entry.
+
+⚠️ **Clippy on this Mac says nothing about two thirds of CI.** CI runs
+`cargo clippy --workspace --all-targets -- -D warnings` on macOS, Windows *and*
+Ubuntu, and everything behind `cfg(target_os = "macos")` — most of `dmg.rs` — is
+dead code on the other two. `-D warnings` makes dead code a build failure, so CI
+went red on the first push of the category work and **stayed red for three
+releases** while every local check passed. The release workflow does not run
+clippy, so the artefacts were fine and nothing else complained.
+
+    cargo clippy --workspace --all-targets --target aarch64-pc-windows-msvc -- -D warnings
+
+is the command that finds that class from here. It is in AGENTS.md §7 now.
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects
