@@ -1,86 +1,67 @@
-import { useEffect, useRef, useState } from 'react'
-import { api } from '../api/backend'
+import { useEffect, useRef } from 'react'
+import type { PluginView } from '../api/types'
 
 /**
  * A plugin's video, playing inside the window.
  *
- * ## Click to play, and why the poster is local
+ * ## Burrow streams its own copy
  *
- * The still behind this is bundled with the app, so the plugin list itself
- * makes no request to Google — you can browse all twenty-four plugins offline
- * and nothing is fetched. Only opening this modal loads anything, and only for
- * the one video you chose.
+ * Not a YouTube embed. The video is an ordinary `.mp4` on a GitHub release,
+ * played by an ordinary `<video>` element.
  *
- * That is the difference between "this app talks to YouTube" and "this app
- * opens a video when you ask it to", and it is worth the extra component.
+ * That is the whole point. Burrow's claim is that it fetches the plugin list,
+ * downloads plugins from GitHub, and talks to nothing else — and GitHub is
+ * already in that trust set, because every plugin comes from there. Embedding
+ * YouTube made the claim false and needed a paragraph of caveats;
+ * `youtube-nocookie.com` only withheld tracking cookies *until playback
+ * started*, so it bought a qualification rather than a guarantee. It also
+ * refused to play at all from a `tauri://` origin, which needed a loopback
+ * page purely to give it an http one.
  *
- * ## The extra hop, and why it is not optional
+ * Playing our own copy means no third party, no cookies, no ads, no suggested
+ * videos, and nothing to explain. It also means autoplay is fine again, because
+ * there is no longer anything being withheld until you press play.
  *
- * The app does not frame YouTube directly. It frames a one-line page served by
- * Burrow's own loopback server, and *that* page frames the video.
+ * The files are 720p, around 11 MB each, encoded with `-movflags +faststart`
+ * so the moov atom sits at the front and playback begins on the first range
+ * request rather than after the whole download.
  *
- * YouTube refuses to play in a frame whose page origin is not http(s), and a
- * Tauri window is `tauri://localhost`. Embedding it directly gives **error 153,
- * "Video player configuration error"** — and only in the packaged app, because
- * a browser preview runs on `http://localhost` and plays perfectly. That is a
- * particularly unhelpful shape of bug, so the hop stays even though it looks
- * redundant from here.
+ * ## When there is no copy
  *
- * ## youtube-nocookie.com
- *
- * The embed uses `youtube-nocookie.com` — YouTube's privacy-enhanced host. It
- * does not set its tracking cookies until playback actually starts, and it
- * keeps what it does store out of the profile used for ad personalisation.
- *
- * Which is exactly why it does **not** autoplay. Starting the video the moment
- * the window opens would set those cookies immediately and make the choice of
- * host cosmetic. One more click is the price of the thing being real.
- *
- * Being precise about what that does and does not buy: it is still Google's
- * server, and loading this page still tells Google an IP address asked for this
- * video. What it avoids is the persistent identifier that would tie that
- * request to the rest of somebody's browsing. Burrow's Settings tab says
- * exactly this rather than implying the embed is invisible.
- *
- * `rel=0` keeps the end-screen suggestions to the same channel; `modestbranding`
- * drops the YouTube wordmark from the control bar.
+ * `videoUrl` is null for a plugin whose video has no encoded copy. The modal
+ * never opens for those — the row offers YouTube in the browser instead, which
+ * is honest about being a different thing rather than showing a player that
+ * cannot play.
  */
 export function VideoModal({
-  videoId,
-  title,
-  watchUrl,
+  plugin,
   onClose,
   onOpenExternal,
 }: {
-  videoId: string
-  title: string
-  watchUrl: string
+  plugin: PluginView
   onClose: () => void
   onOpenExternal: (url: string) => void
 }) {
   const closeRef = useRef<HTMLButtonElement>(null)
-  const [src, setSrc] = useState<string | null>(null)
-  const [failed, setFailed] = useState<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
-    let live = true
-    api
-      .videoUrl(videoId)
-      .then(url => live && setSrc(url))
-      .catch(e => live && setFailed(String(e)))
-    return () => {
-      live = false
-    }
-  }, [videoId])
-
-  useEffect(() => {
-    // Escape closes it, which is what anyone will try first.
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     closeRef.current?.focus()
-    return () => window.removeEventListener('keydown', onKey)
+    const video = videoRef.current
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      // Stop the download as well as the playback. Closing a modal should not
+      // leave eleven megabytes still arriving in the background.
+      if (video) {
+        video.pause()
+        video.removeAttribute('src')
+        video.load()
+      }
+    }
   }, [onClose])
 
   return (
@@ -89,45 +70,44 @@ export function VideoModal({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={`${title} video`}
+      aria-label={`${plugin.name} video`}
     >
-      {/* Clicks inside the panel must not fall through to the backdrop's
-          close handler — otherwise using the player's own controls dismisses
-          the thing you are trying to use. */}
+      {/* Clicks inside the panel must not fall through to the backdrop's close
+          handler — otherwise using the player's own controls dismisses the
+          thing you are trying to use. */}
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
-          <strong>{title}</strong>
+          <strong>{plugin.name}</strong>
           <span className="spacer" />
-          <button className="btn quiet" onClick={() => onOpenExternal(watchUrl)}>
-            Open on YouTube
-          </button>
+          {plugin.youtube && (
+            <button
+              className="btn quiet"
+              onClick={() =>
+                onOpenExternal(`https://www.youtube.com/watch?v=${plugin.youtube}`)
+              }
+            >
+              Open on YouTube
+            </button>
+          )}
           <button className="btn quiet" ref={closeRef} onClick={onClose} aria-label="Close">
             Close
           </button>
         </div>
         <div className="modal-video">
-          {src && (
-            <iframe
-              src={src}
-              title={`${title} — video`}
-              allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          )}
-          {failed && (
-            <div className="modal-failed">
-              The video player could not start ({failed}).
-              <button className="btn" onClick={() => onOpenExternal(watchUrl)}>
-                Open on YouTube instead
-              </button>
-            </div>
-          )}
+          <video
+            ref={videoRef}
+            src={plugin.videoUrl ?? undefined}
+            // The bundled still, so the frame is filled before a byte arrives.
+            poster={`./video/${plugin.slug}.png`}
+            controls
+            autoPlay
+            playsInline
+            preload="metadata"
+          />
         </div>
         <div className="modal-note">
-          Played from youtube-nocookie.com, which sets no tracking cookies until
-          you press play — which is why it does not start on its own. It is still
-          Google&rsquo;s server, and nothing is loaded from it until you open a
-          video.
+          Streamed from this project&rsquo;s own GitHub release — the same place
+          its plugins come from. No third party, no cookies, no ads.
         </div>
       </div>
     </div>

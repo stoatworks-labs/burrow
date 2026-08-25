@@ -21,6 +21,11 @@
 //! - It serves a CSP of its own that permits no outbound connection at all,
 //!   which is what makes "the demos never phone home" a property of the server
 //!   rather than a hope about the content.
+//!
+//! It briefly also served a page whose only job was to give a YouTube embed an
+//! http origin, because YouTube refuses to play from `tauri://`. That is gone:
+//! Burrow streams its own copy of each video from a GitHub release, so there is
+//! no embed to host and nothing here reaches the internet.
 
 use std::io::Cursor;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
@@ -40,23 +45,6 @@ impl DemoServer {
         format!("http://127.0.0.1:{}/{}/{}/", self.port, self.token, slug)
     }
 
-    /// The URL of a page that plays one YouTube video.
-    ///
-    /// ## Why this is not just an iframe in the app
-    ///
-    /// YouTube refuses to play in a frame whose page origin is not http(s).
-    /// A Tauri window is `tauri://localhost`, so embedding the player directly
-    /// gets **error 153, "Video player configuration error"** — and it gets it
-    /// only in the packaged app, because the browser preview runs on
-    /// `http://localhost` and plays perfectly.
-    ///
-    /// This server already exists and already speaks http on loopback, which is
-    /// an origin YouTube accepts. So the app frames a one-line page from here,
-    /// and that page frames the video.
-    pub fn player_url(&self, video_id: &str) -> Option<String> {
-        safe_video_id(video_id)
-            .map(|id| format!("http://127.0.0.1:{}/{}/__player/{id}", self.port, self.token))
-    }
 
     pub fn has(&self, slug: &str) -> bool {
         safe_slug(slug).is_some_and(|s| self.root.join(s).join("index.html").is_file())
@@ -91,22 +79,6 @@ fn random_token() -> String {
         bytes[..16].copy_from_slice(&n.to_le_bytes()[..16.min(16)]);
     }
     hex::encode(bytes)
-}
-
-/// A YouTube video id: the character set YouTube actually uses, and nothing
-/// else.
-///
-/// This value comes out of the catalogue and is interpolated into both a URL
-/// and a page, so it is checked rather than trusted. A catalogue is a file
-/// fetched over the network, and "our own server sent it" is not the same as
-/// "it cannot contain a quote".
-fn safe_video_id(id: &str) -> Option<&str> {
-    let ok = !id.is_empty()
-        && id.len() <= 24
-        && id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    ok.then_some(id)
 }
 
 /// A single path segment that is a plain name.
@@ -266,47 +238,6 @@ fn header(name: &str, value: &str) -> tiny_http::Header {
         .expect("static header is well formed")
 }
 
-/// A page whose only job is to hold the video.
-///
-/// Its CSP is deliberately narrower than the app's: it may frame
-/// youtube-nocookie and do nothing else. No scripts of its own, no styles from
-/// anywhere, nothing to connect to.
-///
-/// **Deliberately not autoplaying.** youtube-nocookie holds its tracking
-/// cookies back *until playback starts* — so autoplay would set them the
-/// instant the window opened and make choosing the nocookie host pointless.
-/// The cost is one more click; the thing it buys is the entire reason that
-/// host was chosen.
-fn player_response(video_id: &str) -> tiny_http::Response<Cursor<Vec<u8>>> {
-    let body = format!(
-        "<!doctype html><meta charset=\"utf-8\">\
-         <title>video</title>\
-         <style>html,body{{margin:0;height:100%;background:#000;overflow:hidden}}\
-         iframe{{border:0;width:100%;height:100%;display:block}}</style>\
-         <iframe src=\"https://www.youtube-nocookie.com/embed/{video_id}\
-?rel=0&amp;modestbranding=1\" \
-         allow=\"accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture\" \
-         allowfullscreen></iframe>"
-    );
-    let len = body.len();
-    tiny_http::Response::new(
-        tiny_http::StatusCode(200),
-        vec![
-            header("Content-Type", "text/html; charset=utf-8"),
-            header("X-Content-Type-Options", "nosniff"),
-            header(
-                "Content-Security-Policy",
-                "default-src 'none'; style-src 'unsafe-inline'; \
-                 frame-src https://www.youtube-nocookie.com",
-            ),
-            header("Cache-Control", "no-store"),
-        ],
-        Cursor::new(body.into_bytes()),
-        Some(len),
-        None,
-    )
-}
-
 fn serve(request: tiny_http::Request, root: &Path, token: &str) {
     if request.method() != &tiny_http::Method::Get {
         let _ = request.respond(tiny_http::Response::empty(405));
@@ -315,16 +246,6 @@ fn serve(request: tiny_http::Request, root: &Path, token: &str) {
 
     let url = request.url().split('?').next().unwrap_or("").to_string();
 
-    // The player page, which exists only so the video has an http origin to
-    // load under. Handled before the file lookup because it is generated
-    // rather than read from disk.
-    if let Some(id) = url
-        .strip_prefix(&format!("/{token}/__player/"))
-        .and_then(safe_video_id)
-    {
-        let _ = request.respond(player_response(id));
-        return;
-    }
 
     let resolved = resolve(root, token, &url);
 
@@ -504,47 +425,6 @@ mod tests {
         // A plugin with no demo must not be reachable by a crafted slug either.
         assert!(!srv.has("../../etc"));
         assert_eq!(srv.slugs(), vec!["tinsel".to_string()]);
-    }
-
-    #[test]
-    fn the_player_page_frames_youtube_and_nothing_else() {
-        let t = demo_tree();
-        let srv = start(t.path().to_path_buf()).unwrap();
-        let (status, head, body) = get(srv.port, &format!("/{}/__player/dQw4w9WgXcQ", srv.token));
-        assert_eq!(status, 200);
-        assert!(head.contains("text/html"));
-        assert!(body.contains("youtube-nocookie.com/embed/dQw4w9WgXcQ"), "got: {body}");
-        // No autoplay: nocookie withholds its tracking cookies only until
-        // playback begins, so starting automatically would defeat the point of
-        // using that host at all.
-        assert!(!body.contains("autoplay=1"), "the player must not autoplay: {body}");
-        // Its own CSP, narrower than the app's: it may frame the video and do
-        // nothing else at all.
-        assert!(head.contains("default-src 'none'"), "got: {head}");
-        assert!(head.contains("frame-src https://www.youtube-nocookie.com"), "got: {head}");
-    }
-
-    #[test]
-    fn the_player_refuses_a_video_id_that_is_not_one() {
-        // The id comes out of a catalogue fetched over the network and is
-        // interpolated into both a URL and a page, so it is checked rather
-        // than trusted.
-        let t = demo_tree();
-        let srv = start(t.path().to_path_buf()).unwrap();
-        for bad in ["../../etc/passwd", "a\"onerror=\"x", "a b", ""] {
-            assert!(safe_video_id(bad).is_none(), "{bad:?} should be refused");
-        }
-        assert_eq!(safe_video_id("-TGCxAFDMYw"), Some("-TGCxAFDMYw"));
-        // And the route does not serve one either.
-        let (status, _, _) = get(srv.port, &format!("/{}/__player/a b", srv.token));
-        assert_ne!(status, 200);
-    }
-
-    #[test]
-    fn the_player_needs_the_token_too() {
-        let t = demo_tree();
-        let srv = start(t.path().to_path_buf()).unwrap();
-        assert_eq!(get(srv.port, "/wrongtoken/__player/dQw4w9WgXcQ").0, 404);
     }
 
     #[test]

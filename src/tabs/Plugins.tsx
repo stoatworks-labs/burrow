@@ -220,7 +220,7 @@ function Row({
 
   return (
     <div className="row">
-      <PluginArt plugin={plugin} onPlay={onPlay} />
+      <PluginArt plugin={plugin} onPlay={onPlay} onOpen={onOpen} />
       <div className="body">
         <div className="title">
           <h3>{plugin.name}</h3>

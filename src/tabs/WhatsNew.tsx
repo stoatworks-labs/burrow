@@ -93,6 +93,7 @@ export function WhatsNew({
               onRun={onRun}
               onDemo={onDemo}
               onPlay={onPlay}
+              onOpen={onOpen}
               onDismiss={() => dismiss(p)}
             />
           ))}
@@ -132,7 +133,7 @@ function UpdateCard({
   return (
     <div className="card">
       <div className="card-head">
-        <PluginArt plugin={plugin} onPlay={onPlay} />
+        <PluginArt plugin={plugin} onPlay={onPlay} onOpen={onOpen} />
         <div style={{ flex: 1 }}>
           <h3>{plugin.name}</h3>
           <div className="when">
@@ -187,6 +188,7 @@ function NewCard({
   onRun,
   onDemo,
   onPlay,
+  onOpen,
   onDismiss,
 }: {
   plugin: PluginView
@@ -194,6 +196,7 @@ function NewCard({
   onRun: (r: OpRequest[]) => void
   onDemo: (slug: string) => void
   onPlay: (plugin: PluginView) => void
+  onOpen: (url: string) => void
   onDismiss: () => void
 }) {
   const wanted = plugin.slots.filter(
@@ -202,7 +205,7 @@ function NewCard({
   return (
     <div className="card">
       <div className="card-head">
-        <PluginArt plugin={plugin} onPlay={onPlay} />
+        <PluginArt plugin={plugin} onPlay={onPlay} onOpen={onOpen} />
         <div style={{ flex: 1 }}>
           <h3>{plugin.name}</h3>
           <div className="when">

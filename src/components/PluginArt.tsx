@@ -20,18 +20,25 @@ import type { PluginView } from '../api/types'
  * So the stills ship inside the app (`scripts/sync-assets.sh` gathers them from
  * the same public copy YouTube itself fetched at upload time, so it is the frame
  * that is actually on the video). They work offline, and nothing is requested
- * until the user deliberately clicks one — at which point `VideoModal` loads the
- * embed, for that one video, from youtube-nocookie.com.
+ * until the user deliberately clicks one — at which point `VideoModal` streams
+ * that one video from the project's own GitHub release.
+ *
+ * A plugin with a YouTube id but no encoded copy opens the browser instead. The
+ * badge is the same either way; the tooltip says which it will do.
  */
 export function PluginArt({
   plugin,
   onPlay,
+  onOpen,
 }: {
   plugin: PluginView
   /** Play the video inside the window. */
   onPlay: (plugin: PluginView) => void
+  /** Open a URL in the user's browser, for a video with no streamable copy. */
+  onOpen: (url: string) => void
 }) {
   const hasVideo = Boolean(plugin.youtube)
+  const canStream = Boolean(plugin.videoUrl)
 
   const image = hasVideo ? (
     <img
@@ -65,9 +72,21 @@ export function PluginArt({
   return (
     <button
       className="art art-play"
-      onClick={() => onPlay(plugin)}
-      title={`Watch the ${plugin.name} video`}
-      aria-label={`Watch the ${plugin.name} video`}
+      onClick={() =>
+        canStream
+          ? onPlay(plugin)
+          : onOpen(`https://www.youtube.com/watch?v=${plugin.youtube}`)
+      }
+      title={
+        canStream
+          ? `Watch the ${plugin.name} video`
+          : `Watch the ${plugin.name} video on YouTube — opens in your browser`
+      }
+      aria-label={
+        canStream
+          ? `Watch the ${plugin.name} video`
+          : `Watch the ${plugin.name} video on YouTube — opens in your browser`
+      }
     >
       {image}
       <span className="art-badge" aria-hidden="true">

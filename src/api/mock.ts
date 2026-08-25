@@ -53,6 +53,7 @@ type CatalogEntry = {
   demo: string | null
   guide: string | null
   youtube: string | null
+  videoUrl: string | null
   releaseUrl: string | null
   releasesUrl: string | null
   builds: Record<string, Record<string, { url: string; size?: number; entries?: string[]; extras?: string[] }>>
@@ -250,6 +251,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           demo: e.demo,
           guide: e.guide,
           youtube: e.youtube,
+          videoUrl: e.videoUrl ?? null,
           releaseUrl: e.releaseUrl,
           releasesUrl: e.releasesUrl,
           slots,
@@ -345,10 +347,6 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case 'demo_url':
       return `about:blank#${(args as any).slug}` as T
 
-    // In a browser the page origin is already http, so YouTube plays from a
-    // direct embed and there is no loopback server to route through.
-    case 'video_url':
-      return `https://www.youtube-nocookie.com/embed/${(args as any).videoId}?rel=0&modestbranding=1` as T
 
     case 'open_demo':
       // eslint-disable-next-line no-console

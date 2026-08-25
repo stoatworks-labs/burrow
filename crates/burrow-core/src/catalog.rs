@@ -73,6 +73,17 @@ pub struct Entry {
     /// Google which plugins somebody is looking at.
     #[serde(default)]
     pub youtube: Option<String>,
+    /// A copy of the video Burrow can stream itself, on a GitHub release.
+    ///
+    /// Playing our own copy rather than embedding YouTube is what lets the app
+    /// say it talks to nothing beyond the plugin list and GitHub, without a
+    /// paragraph of caveats. GitHub is already in the trust set: every plugin
+    /// comes from there.
+    ///
+    /// None where no encoded copy exists — the app then offers YouTube in the
+    /// browser rather than showing a player that cannot play.
+    #[serde(default)]
+    pub video_url: Option<String>,
     #[serde(default)]
     pub builds: BTreeMap<Format, BTreeMap<Platform, Asset>>,
     #[serde(default)]

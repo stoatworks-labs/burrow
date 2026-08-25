@@ -324,11 +324,9 @@ export function App() {
         />
       )}
 
-      {playing?.youtube && (
+      {playing?.videoUrl && (
         <VideoModal
-          videoId={playing.youtube}
-          title={playing.name}
-          watchUrl={`https://www.youtube.com/watch?v=${playing.youtube}`}
+          plugin={playing}
           onClose={() => setPlaying(null)}
           onOpenExternal={api.openExternal}
         />

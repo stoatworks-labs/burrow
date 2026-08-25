@@ -41,7 +41,6 @@ pub fn run() {
             state::rescan,
             state::list_plugins,
             state::demo_url,
-            state::video_url,
             state::open_demo,
             state::open_external,
             state::reveal_path,

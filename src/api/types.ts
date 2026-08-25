@@ -92,6 +92,8 @@ export interface PluginView {
   guide: string | null
   /** Bare YouTube video id, or null. Never a URL. */
   youtube: string | null
+  /** A copy Burrow can stream itself. Null means offer YouTube instead. */
+  videoUrl: string | null
   releaseUrl: string | null
   releasesUrl: string | null
   slots: Slot[]

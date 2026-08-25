@@ -161,6 +161,49 @@ Removed. It costs one more click and it is the entire reason the host was
 chosen. There is a test asserting the player page does not contain `autoplay=1`,
 because this is the kind of thing that gets added back for the convenience.
 
+## 2026-08-25 — the videos are ours now, and the caveats went away
+
+Burrow streams its own copy of each project video from a GitHub release rather
+than embedding YouTube.
+
+The masters are 1080p at ~4.6 Mbps — 961 MB across twenty, far too much to
+bundle. But they are screen recordings, which compress far better than that:
+720p CRF 25 lands at about 26% of source, measured on tinsel (28.1 MB → 7.3 MB)
+with no visible loss at the size the app plays them. Twenty come to 221 MB,
+mean 11 MB. The noisy ones are the outliers — nesolume 34 MB, old-cathode 28 MB
+— because analogue grain and dense character grids do not compress.
+
+Two things checked before committing to it, both by measurement rather than
+assumption:
+
+- GitHub release assets answer a Range request with **206 and
+  `accept-ranges: bytes`**, so seeking works.
+- They are served as **`application/octet-stream`**, not `video/mp4`. A
+  `<video>` plays them anyway — verified by serving a file that way locally and
+  watching it play and seek.
+
+`-movflags +faststart` is what makes an 11 MB file feel instant: the moov atom
+moves to the front so playback starts on the first range request.
+
+**The whole point is that the caveats disappear.** GitHub is already in the
+trust set — every plugin is downloaded from there — so there is no third party,
+no cookies, no ads, no suggested videos, and no paragraph in the Settings tab
+explaining what nocookie does and does not buy. Autoplay is fine again, because
+nothing is being withheld until playback starts.
+
+The loopback `__player` route is gone with it. It existed only because YouTube
+refuses to play from a `tauri://` origin, and with no embed there is nothing to
+host.
+
+⚠️ **`ffmpeg` reads stdin**, and inside a `while read` loop it eats the list
+being iterated over. The symptom is not an error: half the plugins silently
+became "ciify", "npour", "orthole" and were reported as having no master.
+`-nostdin` on every ffmpeg call in a loop.
+
+The videos live under a **versioned tag** (`videos-v1`) rather than one that
+gets reused, because nothing removes a superseded asset when a release is re-cut
+under the same tag.
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects

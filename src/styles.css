@@ -384,12 +384,17 @@ a { color: var(--accent); }
 /* 16:9, held by the padding trick so the iframe cannot letterbox itself
    differently at different window widths. */
 .modal-video { position: relative; width: 100%; padding-top: 56.25%; background: #000; }
+.modal-video video,
 .modal-video iframe {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   border: 0;
+  /* The encodes are 16:9, but `contain` means an odd one out letterboxes
+     rather than being cropped. */
+  object-fit: contain;
+  background: #000;
 }
 .modal-note {
   padding: 9px 12px;

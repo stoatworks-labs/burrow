@@ -79,15 +79,15 @@ The still images are part of the app rather than fetched from YouTube, so the
 list works offline and browsing plugins tells Google nothing. Only pressing play
 loads anything, and only for that one video.
 
-Playback comes from `youtube-nocookie.com`, which sets no tracking cookies until
-the video actually starts — which is why it does not start on its own. Autoplay
-would set them the moment the window opened and make choosing that host
-pointless, so you press play yourself.
+It plays from the project's own GitHub release — the same place its plugins come
+from — rather than being a YouTube embed. So there are no cookies, no ads, no
+suggested videos afterwards, and nobody outside this app and GitHub knows you
+watched it. There is an **Open on YouTube** button if you would rather watch it
+there.
 
-Being precise about what it does buy: it is still Google's server, so it will see
-that an address asked for that video. What it does not get is an identifier tying
-that request to the rest of your browsing. There is an **Open on YouTube** button
-if you would rather watch it there.
+The videos are about 11 MB each and start playing while they download. A couple
+of plugins have no copy in the app yet; clicking those opens YouTube in your
+browser instead.
 
 ## Formats, and which ones you want
 
@@ -197,12 +197,10 @@ but it will tell you exactly which files it is going to delete first.
 There is no account, and no sign-in, because there is nothing to sign in to.
 
 Burrow fetches one file — the plugin list from `stoatworks-labs.com` — and
-downloads plugin archives from GitHub. That is all it does by itself. It sends no
-identifier, no list of what you have installed, and no usage data. The demos run
-from inside the app and are blocked from making any network request at all.
-
-The one thing that reaches elsewhere is a plugin video, and only when you press
-play — see above.
+downloads plugin archives and project videos from GitHub. That is all. It sends
+no identifier, no list of what you have installed, and no usage data, and there
+is no third party involved anywhere. The demos run from inside the app and are
+blocked from making any network request at all.
 
 The **Send feedback** button at the bottom of the window is the exception, and only
 when you press it: it sends what you type, plus the version of Burrow.
