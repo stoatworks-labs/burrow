@@ -280,6 +280,17 @@ fn header(name: &str, value: &str) -> tiny_http::Header {
 /// upstream and the resulting `Content-Range` back, and answers with
 /// `video/mp4`. Seeking and progressive playback both survive, and nothing is
 /// buffered to disk.
+/// The number of bytes a `Content-Range: bytes 0-99999/7706211` describes.
+///
+/// Only the range itself — the total after the slash is the size of the whole
+/// file, which is not what is about to be sent.
+fn range_length(content_range: &str) -> Option<u64> {
+    let span = content_range.trim().strip_prefix("bytes ")?.split('/').next()?;
+    let (first, last) = span.split_once('-')?;
+    let (first, last): (u64, u64) = (first.trim().parse().ok()?, last.trim().parse().ok()?);
+    (last >= first).then(|| last - first + 1)
+}
+
 fn proxy_video(request: tiny_http::Request, url: &str) {
     let range = request
         .headers()
@@ -317,7 +328,25 @@ fn proxy_video(request: tiny_http::Request, url: &str) {
         .get(reqwest::header::CONTENT_RANGE)
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
-    let len = upstream.content_length();
+
+    // How many bytes are coming. tiny_http falls back to chunked transfer
+    // encoding when it is not told, and a chunked 206 is a strange enough
+    // animal that it is not worth handing to a media element — the length is
+    // knowable here, so say it.
+    //
+    // `content_length()` is not enough on its own: reqwest reports None
+    // whenever it has decompressed the body, so the value is read from the
+    // headers as well, and from the Content-Range as a last resort.
+    let len = upstream
+        .content_length()
+        .or_else(|| {
+            upstream
+                .headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.parse().ok())
+        })
+        .or_else(|| content_range.as_deref().and_then(range_length));
 
     let mut headers = vec![
         header("Content-Type", "video/mp4"),
@@ -335,7 +364,13 @@ fn proxy_video(request: tiny_http::Request, url: &str) {
         reader,
         len.map(|n| n as usize),
         None,
-    );
+    )
+    // Stating the length above is not enough on its own: tiny_http switches to
+    // chunked transfer for any body over its 32 KB threshold whether or not it
+    // knows the length, and every video is over that. A chunked 206 is a
+    // strange enough animal not to hand to a media element when the length is
+    // knowable, so the threshold is raised out of the way.
+    .with_chunked_threshold(usize::MAX);
     let _ = request.respond(response);
 }
 
@@ -563,6 +598,112 @@ mod tests {
         // And the route refuses an unknown slug rather than fetching anything.
         assert_eq!(get(srv.port, &format!("/{}/__video/orrery", srv.token)).0, 404);
         assert_eq!(get(srv.port, "/wrongtoken/__video/tinsel").0, 404);
+    }
+
+    #[test]
+    fn a_content_range_states_how_many_bytes_follow() {
+        // Inclusive at both ends, which is the off-by-one this exists to pin.
+        assert_eq!(range_length("bytes 0-99999/7706211"), Some(100_000));
+        assert_eq!(range_length("bytes 0-0/7706211"), Some(1));
+        assert_eq!(range_length("bytes 100-199/7706211"), Some(100));
+        assert_eq!(range_length("bytes 0-99999/*"), Some(100_000));
+        assert_eq!(range_length("bytes */7706211"), None, "unsatisfied");
+        assert_eq!(range_length("7706211"), None, "no unit");
+        assert_eq!(range_length("bytes 200-100/7706211"), None, "backwards");
+    }
+
+    /// The one test that proves the thing the app actually does.
+    ///
+    /// ⚠️ Read the reason this exists before deleting it as slow. The bug it
+    /// guards was shipped *because* a local stand-in stood in too well: a
+    /// hand-rolled server reproduced GitHub's content type and its range
+    /// support, the video played, and the header that actually broke playback
+    /// — `content-disposition: attachment` — was the one thing the stand-in
+    /// did not reproduce. Two of the three things that mattered, and a green
+    /// light for the wrong reason.
+    ///
+    /// So this fetches the real published asset through the real proxy and
+    /// asserts on what comes out. Ignored by default because it needs the
+    /// network; run it before shipping a change to the video path:
+    ///
+    ///     cargo test -p burrow --lib -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs the network; run before shipping a change to the video path"]
+    fn the_real_asset_comes_back_playable() {
+        const ASSET: &str = "https://github.com/stoatworks-labs/burrow/releases/download/videos-v1/tinsel.mp4";
+
+        // First, establish that the premise still holds — that GitHub really
+        // does mark this as a download. If GitHub ever stops, this proxy is
+        // dead weight and should be removed rather than left unexplained.
+        let direct = reqwest::blocking::Client::builder()
+            .user_agent(crate::net::user_agent())
+            .build()
+            .unwrap()
+            .get(ASSET)
+            .send()
+            .unwrap();
+        let disposition = direct
+            .headers()
+            .get("content-disposition")
+            .map(|v| v.to_str().unwrap_or_default().to_string());
+        assert!(
+            disposition.as_deref().unwrap_or_default().contains("attachment"),
+            "GitHub no longer sends content-disposition: attachment ({disposition:?}) — \
+             if that is permanent, the proxy has no reason to exist any more"
+        );
+        drop(direct);
+
+        let t = demo_tree();
+        let srv = start(t.path().to_path_buf()).unwrap();
+        srv.set_videos([("tinsel".to_string(), ASSET.to_string())].into_iter().collect());
+
+        // A ranged request, which is what a <video> actually issues: it asks
+        // for the first slice, reads the moov atom out of it, and only then
+        // decides it can play. If ranges do not survive the hop, seeking is
+        // gone and long videos never start.
+        let mut sock = std::net::TcpStream::connect(("127.0.0.1", srv.port)).unwrap();
+        use std::io::Write as _;
+        write!(
+            sock,
+            "GET /{}/__video/tinsel HTTP/1.1\r\nHost: 127.0.0.1\r\nRange: bytes=0-99999\r\nConnection: close\r\n\r\n",
+            srv.token
+        )
+        .unwrap();
+        let mut raw = Vec::new();
+        std::io::Read::read_to_end(&mut sock, &mut raw).unwrap();
+
+        let split = raw.windows(4).position(|w| w == b"\r\n\r\n").expect("headers end");
+        let head = String::from_utf8_lossy(&raw[..split]).to_lowercase();
+        let body = &raw[split + 4..];
+
+        assert!(head.starts_with("http/1.1 206"), "not a partial response:\n{head}");
+        assert!(head.contains("content-type: video/mp4"), "mislabelled:\n{head}");
+        assert!(head.contains("accept-ranges: bytes"), "seeking would be gone:\n{head}");
+        assert!(head.contains("content-range: bytes 0-99999/"), "range not forwarded:\n{head}");
+        assert!(
+            !head.contains("content-disposition"),
+            "the download marking survived the hop — this is the whole bug:\n{head}"
+        );
+        // Chunked would very likely still play, but a chunked 206 is an odd
+        // enough animal to be worth not handing to a media element when the
+        // length is knowable. It is knowable.
+        assert!(head.contains("content-length: 100000"), "length not stated:\n{head}");
+        assert!(!head.contains("transfer-encoding"), "fell back to chunking:\n{head}");
+
+        // And it is a real MP4 whose moov atom is at the front, because
+        // -movflags +faststart put it there. Without that the browser has to
+        // fetch the whole file before the first frame, and a proxy that
+        // streams correctly still feels broken.
+        assert_eq!(body.len(), 100_000, "short read");
+        assert_eq!(&body[4..8], b"ftyp", "not an MP4 at all");
+        let head_of_file = &body[..body.len().min(65536)];
+        let moov = head_of_file.windows(4).position(|w| w == b"moov");
+        assert!(moov.is_some(), "moov atom is not in the first 64 KB — faststart was lost");
+        println!(
+            "  proxied {} bytes, ftyp at 4, moov at {}",
+            body.len(),
+            moov.unwrap()
+        );
     }
 
     #[test]
