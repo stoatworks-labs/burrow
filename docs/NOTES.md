@@ -111,6 +111,28 @@ job should build OFX alone.
 
 Add the Linux target here the same week the first plugin ships one, not before.
 
+## 2026-08-25 — YouTube error 153, and why the player takes a detour
+
+Embedding a YouTube iframe straight into the app gives **error 153, "Video
+player configuration error"**. YouTube refuses any embed whose *page* origin is
+not http(s), and a Tauri window is `tauri://localhost`.
+
+The unpleasant part is where it shows up. The browser preview runs on
+`http://localhost` and plays perfectly, so this passes every check short of
+running the packaged app and pressing play.
+
+The fix reuses the loopback server the demos already needed: the app frames a
+one-line page from `http://127.0.0.1:<port>/<token>/__player/<id>`, and that
+page frames the video. Verified by serving the same page shape on 127.0.0.1 and
+loading it — plays, no error.
+
+That page gets its own CSP, narrower than the app's: `default-src 'none'` plus
+`frame-src https://www.youtube-nocookie.com`. It may show the video and do
+nothing else.
+
+The video id is validated rather than trusted — it arrives in a catalogue
+fetched over the network and is interpolated into both a URL and a page.
+
 ## Still open
 
 - Nothing has been installed into a running Resolume, Resolve or After Effects

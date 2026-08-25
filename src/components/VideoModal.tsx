@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { api } from '../api/backend'
 
 /**
  * A plugin's video, playing inside the window.
@@ -12,6 +13,18 @@ import { useEffect, useRef } from 'react'
  *
  * That is the difference between "this app talks to YouTube" and "this app
  * opens a video when you ask it to", and it is worth the extra component.
+ *
+ * ## The extra hop, and why it is not optional
+ *
+ * The app does not frame YouTube directly. It frames a one-line page served by
+ * Burrow's own loopback server, and *that* page frames the video.
+ *
+ * YouTube refuses to play in a frame whose page origin is not http(s), and a
+ * Tauri window is `tauri://localhost`. Embedding it directly gives **error 153,
+ * "Video player configuration error"** — and only in the packaged app, because
+ * a browser preview runs on `http://localhost` and plays perfectly. That is a
+ * particularly unhelpful shape of bug, so the hop stays even though it looks
+ * redundant from here.
  *
  * ## youtube-nocookie.com
  *
@@ -42,6 +55,19 @@ export function VideoModal({
   onOpenExternal: (url: string) => void
 }) {
   const closeRef = useRef<HTMLButtonElement>(null)
+  const [src, setSrc] = useState<string | null>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    api
+      .videoUrl(videoId)
+      .then(url => live && setSrc(url))
+      .catch(e => live && setFailed(String(e)))
+    return () => {
+      live = false
+    }
+  }, [videoId])
 
   useEffect(() => {
     // Escape closes it, which is what anyone will try first.
@@ -76,13 +102,22 @@ export function VideoModal({
           </button>
         </div>
         <div className="modal-video">
-          <iframe
-            src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
-            title={`${title} — video`}
-            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
+          {src && (
+            <iframe
+              src={src}
+              title={`${title} — video`}
+              allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          )}
+          {failed && (
+            <div className="modal-failed">
+              The video player could not start ({failed}).
+              <button className="btn" onClick={() => onOpenExternal(watchUrl)}>
+                Open on YouTube instead
+              </button>
+            </div>
+          )}
         </div>
         <div className="modal-note">
           Played from youtube-nocookie.com, which does not set tracking cookies

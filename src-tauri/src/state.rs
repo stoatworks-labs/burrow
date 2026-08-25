@@ -534,6 +534,22 @@ pub fn demo_url(state: State<'_, AppState>, slug: String) -> Result<Option<Strin
     Ok(server.has(&slug).then(|| server.url_for(&slug)))
 }
 
+/// The address of a page that plays one video, served from this app's own
+/// loopback server.
+///
+/// The app cannot frame YouTube directly: a Tauri window's origin is
+/// `tauri://localhost`, and YouTube refuses any embed whose page origin is not
+/// http(s) — error 153. The loopback server is an http origin it accepts.
+#[tauri::command]
+pub fn video_url(state: State<'_, AppState>, video_id: String) -> Result<String, String> {
+    ensure_demos(&state)?;
+    let slot = state.demos.lock().map_err(|_| "state is poisoned")?;
+    let server = slot.as_ref().ok_or("the video player is not running")?;
+    server
+        .player_url(&video_id)
+        .ok_or_else(|| "that does not look like a video".to_string())
+}
+
 /// Open a demo in its own window.
 ///
 /// A separate `WebviewWindow` rather than an iframe: the demos set

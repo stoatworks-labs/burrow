@@ -345,6 +345,11 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case 'demo_url':
       return `about:blank#${(args as any).slug}` as T
 
+    // In a browser the page origin is already http, so YouTube plays from a
+    // direct embed and there is no loopback server to route through.
+    case 'video_url':
+      return `https://www.youtube-nocookie.com/embed/${(args as any).videoId}?autoplay=1&rel=0&modestbranding=1` as T
+
     case 'open_demo':
       // eslint-disable-next-line no-console
       console.info('[mock] would open the demo for', (args as any).slug)
