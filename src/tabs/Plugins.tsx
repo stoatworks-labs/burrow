@@ -9,6 +9,7 @@ import type {
   Slot,
 } from '../api/types'
 import { CATEGORY_LABEL, FORMAT_LABEL } from '../api/types'
+import { SectionHead, ops, rowSlots } from '../components/SectionHead'
 import { FormatChips } from '../components/FormatChips'
 import { PluginArt } from '../components/PluginArt'
 import { humanSize } from '../api/backend'
@@ -119,23 +120,6 @@ export function Plugins({
 
   const updates = mine.filter(p => p.bucket === 'update-available')
 
-  function updateAll() {
-    const reqs: OpRequest[] = []
-    for (const p of updates) {
-      for (const s of p.slots) {
-        if (s.state.state === 'update-available') {
-          reqs.push({
-            slug: p.slug,
-            format: s.format,
-            destinationId: s.destinationId,
-            action: 'update',
-          })
-        }
-      }
-    }
-    onRun(reqs)
-  }
-
   return (
     <>
       <div className="search">
@@ -150,11 +134,6 @@ export function Plugins({
           {filtered.length} of {top.length}
           {updates.length > 0 && ` · ${updates.length} with updates`}
         </span>
-        {updates.length > 1 && (
-          <button className="btn primary" disabled={busy} onClick={updateAll}>
-            Update all
-          </button>
-        )}
       </div>
 
       {mine.length === 0 && (
@@ -180,10 +159,7 @@ export function Plugins({
         if (query && rows.length === 0) return null
         return (
           <section key={bucket}>
-            <div className="section-head">
-              <h2>{label}</h2>
-              <span className="n">{rows.length}</span>
-            </div>
+            <SectionHead label={label} rows={rows} busy={busy} onRun={onRun} />
             {rows.length === 0 ? (
               <div className="section-empty">{emptyText}</div>
             ) : (
@@ -242,25 +218,13 @@ function Row({
   const [showFormats, setShowFormats] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
 
-  const behind = plugin.slots.filter(s => s.state.state === 'update-available')
-  const installed = plugin.slots.filter(
-    s => s.state.state === 'up-to-date' || s.state.state === 'version-unknown',
-  )
-  const offered = plugin.slots.filter(s => s.state.state === 'not-installed' && !s.foreign)
-  const wanted = offered.filter(s => plugin.wantedFormats.includes(s.format))
+  const { behind, current, present, wanted } = rowSlots(plugin)
 
   const live = plugin.slots
     .map(s => progress[`${plugin.slug}:${s.format}`])
     .find(Boolean)
 
-  function req(slots: Slot[], action: OpRequest['action']): OpRequest[] {
-    return slots.map(s => ({
-      slug: plugin.slug,
-      format: s.format,
-      destinationId: s.destinationId,
-      action,
-    }))
-  }
+  const req = (slots: Slot[], action: OpRequest['action']) => ops(plugin, slots, action)
 
   const installLabel =
     wanted.length > 0
@@ -316,14 +280,16 @@ function Row({
               Update {behind.length > 1 ? `${behind.length} formats` : FORMAT_LABEL[behind[0].format]}
             </button>
           )}
-          {installed.length === 0 && wanted.length > 0 && (
+          {current.length === 0 && wanted.length > 0 && (
             <button className="btn primary" disabled={busy} onClick={() => onRun(req(wanted, 'install'))}>
               {installLabel}
             </button>
           )}
-          {installed.length > 0 && (
-            <button className="btn" disabled={busy} onClick={() => onRun(req(installed, 'uninstall'))}>
-              Uninstall
+          {/* Everything on disk, including a format that is behind — that row
+              had an Update button and no way to get rid of it. */}
+          {present.length > 0 && (
+            <button className="btn" disabled={busy} onClick={() => onRun(req(present, 'uninstall'))}>
+              Uninstall{present.length > 1 ? ` ${present.length} formats` : ''}
             </button>
           )}
 
@@ -452,6 +418,9 @@ function CompanionModule({
   const installed = slots.filter(
     s => s.state.state === 'up-to-date' || s.state.state === 'version-unknown',
   )
+  // As on the row above it: a module that is behind is still installed, and
+  // Remove has to reach it.
+  const present = [...installed, ...behind]
   const offered = slots.filter(s => s.state.state === 'not-installed' && !s.foreign)
   const live = slots.map(s => progress[`${module.slug}:${s.format}`]).find(Boolean)
 
@@ -490,8 +459,8 @@ function CompanionModule({
           Install
         </button>
       )}
-      {installed.length > 0 && (
-        <button className="btn quiet" disabled={busy} onClick={() => onRun(req(installed, 'uninstall'))}>
+      {present.length > 0 && (
+        <button className="btn quiet" disabled={busy} onClick={() => onRun(req(present, 'uninstall'))}>
           Remove
         </button>
       )}

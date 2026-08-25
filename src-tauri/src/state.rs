@@ -692,19 +692,19 @@ pub fn open_external(app: AppHandle, url: String) -> Result<(), String> {
 ///
 /// **Downloads and a reveal, rather than a save dialog.** A dialog would mean
 /// adding `tauri-plugin-dialog` and a capability for it, and this app's
-/// permission list is short on purpose. Downloads is where a browser would put
-/// it, the app already knows how to reveal a path in Finder, and the button
-/// says exactly what it will do.
+/// permission list is short on purpose — `opener` and the updater, nothing
+/// else. Downloads is where a browser would put it, the app already knows how
+/// to reveal a path in Finder, and the button says exactly what it will do.
 ///
-/// The name carries the slug: `docker-compose.flock.yml` stays recognisable in
-/// a folder full of other people's downloads, where a bare
-/// `docker-compose.yml` would not.
+/// The name is the slug's, not the catalogue's: `docker-compose.flock.yml`
+/// stays recognisable in a folder full of other people's downloads, where a
+/// bare `docker-compose.yml` would not.
 #[tauri::command]
 pub fn save_compose(app: AppHandle, slug: String, text: String) -> Result<String, String> {
-    // The slug reaches this from the catalogue, which comes off the network,
-    // and it is about to become a filename. Anything but the shape a slug
-    // actually takes is refused rather than sanitised — quietly rewriting a
-    // hostile name into a harmless one hides that it was sent at all.
+    // The slug reaches this from the catalogue, which comes off the network, and
+    // it is about to become a filename. Anything but the shape a slug actually
+    // takes is refused rather than sanitised — quietly rewriting a hostile name
+    // into a harmless one hides that it was sent at all.
     if slug.is_empty()
         || slug.len() > 64
         || !slug.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')

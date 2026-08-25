@@ -3,6 +3,7 @@ import type { Note, OpRequest, PluginView, Settings } from '../api/types'
 import { FORMAT_LABEL } from '../api/types'
 import { humanDate } from '../api/backend'
 import { PluginArt } from '../components/PluginArt'
+import { SectionHead } from '../components/SectionHead'
 
 /**
  * What has changed since the user last looked.
@@ -69,10 +70,10 @@ export function WhatsNew({
     <>
       {updates.length > 0 && (
         <section>
-          <div className="section-head">
-            <h2>Updates</h2>
-            <span className="n">{updates.length}</span>
-          </div>
+          {/* The same headings the category tabs get, with the same rules —
+              these are the same plugins seen from a different angle, and a
+              digest that could not act on what it lists would be a poor one. */}
+          <SectionHead label="Updates" rows={updates} busy={busy} onRun={onRun} />
           {updates.map(p => (
             <UpdateCard key={p.slug} plugin={p} busy={busy} onRun={onRun} onOpen={onOpen} onPlay={onPlay} />
           ))}
@@ -81,10 +82,7 @@ export function WhatsNew({
 
       {fresh.length > 0 && (
         <section>
-          <div className="section-head">
-            <h2>New to you</h2>
-            <span className="n">{fresh.length}</span>
-          </div>
+          <SectionHead label="New to you" rows={fresh} busy={busy} onRun={onRun} />
           {fresh.map(p => (
             <NewCard
               key={p.slug}
