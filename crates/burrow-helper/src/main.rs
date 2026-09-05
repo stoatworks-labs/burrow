@@ -104,13 +104,24 @@ fn result_path_for(plan: &Path) -> PathBuf {
 
 /// Who is this actually running on behalf of?
 ///
-/// Under `sudo` or `osascript ... with administrator privileges` the real uid
-/// is root, and `SUDO_UID` names the person who authorised it. That is the
-/// account whose cache directory the plan must live in and whose files it may
-/// read — not root's.
+/// Under `sudo` the real uid is root and `SUDO_UID` names the person who
+/// authorised it. **`osascript ... with administrator privileges` sets no such
+/// variable** — it elevates through the Security framework rather than sudo,
+/// so the environment carries nothing and `getuid()` is simply 0. That is how
+/// this shipped: the app's own plan, owned by the user, was refused as "owned
+/// by uid 501 but submitted on behalf of uid 0", because root was taken as the
+/// actor and every provenance check ran against the wrong account.
+///
+/// So the app states the actor explicitly in `BURROW_ACTOR_UID`, and that is
+/// preferred here. It is not a trust anchor on its own — anyone who can set it
+/// is already running this helper as root. The guarantees come from what the
+/// caller then has to satisfy for that uid: the plan must be *owned* by it,
+/// live inside *its* cache root, name it in `actor_uid`, and not be group- or
+/// world-writable. A lie about the uid does not survive that conjunction.
 #[cfg(unix)]
 fn invoking_uid() -> u32 {
-    std::env::var("SUDO_UID")
+    std::env::var("BURROW_ACTOR_UID")
+        .or_else(|_| std::env::var("SUDO_UID"))
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| {
@@ -227,6 +238,17 @@ fn cache_root_for(_uid: u32) -> Result<PathBuf, String> {
 
 fn run(plan_path: &Path) -> Result<Outcome, String> {
     let uid = invoking_uid();
+    // Root as the actor means the checks below would be asking whether root
+    // owns root's own plan, which proves nothing. It also only happens when
+    // the caller failed to say who authorised this, so refuse rather than
+    // degrade to a weaker set of guarantees.
+    if uid == 0 {
+        return Err(
+            "no authorising user: the helper was run without BURROW_ACTOR_UID or SUDO_UID, \
+             so there is no account to check the plan against"
+                .into(),
+        );
+    }
     let body = read_plan_securely(plan_path, uid)?;
     let plan: Plan = serde_json::from_str(&body)
         .map_err(|e| format!("the plan is not readable: {e}"))?;

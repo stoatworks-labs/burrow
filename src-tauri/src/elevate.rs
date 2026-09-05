@@ -87,20 +87,42 @@ fn current_uid() -> u32 {
     0
 }
 
+/// The exact AppleScript `run_elevated` would run, split out so a test can
+/// read it without showing anybody an authorisation prompt.
+#[cfg(target_os = "macos")]
+fn elevated_script(helper: &Path, plan_path: &Path, reason: &str) -> String {
+    // BURROW_ACTOR_UID names the person who authorised this.
+    //
+    // `with administrator privileges` runs the command as root through the
+    // Security framework, NOT through sudo, so it sets no SUDO_UID and the
+    // helper's getuid() is 0. Without this the helper takes root as the actor
+    // and every provenance check is made against the wrong account: the plan
+    // is owned by 501, so it refuses its own app with "the plan is owned by
+    // uid 501 but was submitted on behalf of uid 0".
+    //
+    // The variable is not itself a trust anchor — anyone able to set it is
+    // already running the root helper. What makes it safe is what the helper
+    // then insists on for that uid: the plan must really be owned by it, sit
+    // inside its cache root, name it in actor_uid, and not be group- or
+    // world-writable.
+    format!(
+        "do shell script {} with administrator privileges with prompt {}",
+        applescript_quote(&format!(
+            "BURROW_ACTOR_UID={} {} {}",
+            current_uid(),
+            shell_quote(&helper.to_string_lossy()),
+            shell_quote(&plan_path.to_string_lossy())
+        )),
+        applescript_quote(reason)
+    )
+}
+
 /// Run the helper under the platform's authorisation prompt.
 #[cfg(target_os = "macos")]
 pub fn run_elevated(helper: &Path, plan_path: &Path, reason: &str) -> Elevation {
     use std::process::Command;
 
-    let script = format!(
-        "do shell script {} with administrator privileges with prompt {}",
-        applescript_quote(&format!(
-            "{} {}",
-            shell_quote(&helper.to_string_lossy()),
-            shell_quote(&plan_path.to_string_lossy())
-        )),
-        applescript_quote(reason)
-    );
+    let script = elevated_script(helper, plan_path, reason);
 
     let out = match Command::new("/usr/bin/osascript").arg("-e").arg(&script).output() {
         Ok(o) => o,
@@ -221,6 +243,26 @@ mod tests {
         // Every embedded double quote is escaped, so the literal cannot end early.
         let unescaped = outer.matches('"').count() - outer.matches(r#"\""#).count();
         assert_eq!(unescaped, 2, "only the opening and closing quotes may be bare: {outer}");
+    }
+
+    /// The regression that made the app refuse its own plan.
+    ///
+    /// `with administrator privileges` is not sudo: it sets no SUDO_UID, so a
+    /// helper falling back to getuid() sees root and checks the plan against
+    /// the wrong account. The command must name the actor itself.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn the_elevated_command_names_the_authorising_user() {
+        let script = elevated_script(
+            Path::new("/Applications/Burrow.app/helper"),
+            Path::new("/Users/x/Library/Caches/burrow/plan.json"),
+            "install a plugin",
+        );
+        assert!(
+            script.contains(&format!("BURROW_ACTOR_UID={}", current_uid())),
+            "the elevated command must state who authorised it: {script}"
+        );
+        assert!(script.contains("with administrator privileges"), "{script}");
     }
 
     #[test]
