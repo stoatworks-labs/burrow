@@ -43,11 +43,42 @@ use std::path::Path;
 pub const OWNED_PREFIXES: &[&str] =
     &["com.stoatworks.", "com.stoatworkslabs.", "com.allansargeant."];
 
+/// Whether a plist version string is a packager's "nobody set one" default.
+///
+/// PyInstaller stamps `CFBundleShortVersionString = 0.0.0` when the build hands
+/// it no version, and Tauri and Electron default to the same string. Nothing in
+/// this fleet has ever released an all-zero version — they start at 0.1.0 — so
+/// reading one is evidence that the packaging forgot, not that the payload
+/// really is release 0.0.0.
+///
+/// ⚠️ **This is a version claim being refused, not a version being guessed.**
+/// It matters because the plist outranks the ledger in [`crate::ledger`]'s
+/// `reconcile_one`, on the grounds that it is the truth about what is on disk —
+/// and a truthful read of a plist the packaging never filled in is still wrong.
+///
+/// Resolve Configurator shipped exactly that for five releases: the DMG around
+/// it was named from the tag and correct, and only the bundle inside said
+/// 0.0.0. The row read "0.0.0, update available" against the very v0.1.5 the
+/// ledger recorded installing, and reinstalling could not clear it — the
+/// replacement bundle said 0.0.0 too, so the one control offered was the one
+/// thing guaranteed not to work.
+///
+/// Treating it as absent falls through to the ledger, which is exact whenever
+/// Burrow did the install, and to `VersionUnknown` when it did not: an honest
+/// "cannot tell from here" instead of a confident wrong number.
+pub fn is_unset_version(version: &str) -> bool {
+    let v = version.trim().trim_start_matches('v');
+    !v.is_empty() && v.split('.').all(|part| !part.is_empty() && part.bytes().all(|b| b == b'0'))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BundleIdentity {
     pub identifier: Option<String>,
     /// `CFBundleVersion`, which the plugins' CMake sets from `PROJECT_VERSION`
     /// — so a released bundle's plist carries the release version.
+    ///
+    /// None both for a bundle that carries no version key and for one whose
+    /// version is a packager's all-zero default; see [`is_unset_version`].
     pub version: Option<String>,
     pub name: Option<String>,
 }
@@ -79,12 +110,15 @@ pub fn read_bundle(path: &Path) -> Option<BundleIdentity> {
     let value = plist::Value::from_file(&plist_path).ok()?;
     let dict = value.as_dictionary()?;
     let s = |k: &str| dict.get(k).and_then(|v| v.as_string()).map(str::to_string);
+    // Per key rather than to the result: a bundle whose CFBundleVersion is an
+    // all-zero default but whose short string is real should yield the real one.
+    let version = |k: &str| s(k).filter(|v| !is_unset_version(v));
     Some(BundleIdentity {
         identifier: s("CFBundleIdentifier"),
         // CFBundleVersion is what the fleet's CMake stamps with PROJECT_VERSION.
         // CFBundleShortVersionString is the fallback for anything that sets
         // only the marketing version.
-        version: s("CFBundleVersion").or_else(|| s("CFBundleShortVersionString")),
+        version: version("CFBundleVersion").or_else(|| version("CFBundleShortVersionString")),
         name: s("CFBundleName"),
     })
 }
@@ -193,6 +227,60 @@ mod tests {
         fs::create_dir_all(ofx.join("Contents").join("Win64")).unwrap();
         fs::write(ofx.join("Contents").join("Win64").join("Tinsel.ofx"), b"MZ").unwrap();
         assert_eq!(payload_version(&ofx), None);
+    }
+
+    #[test]
+    fn an_all_zero_version_reads_as_no_version_rather_than_release_zero() {
+        // Byte for byte the plist Resolve Configurator v0.1.5 shipped:
+        // PyInstaller's default short string, and no CFBundleVersion at all.
+        let t = TempDir::new().unwrap();
+        let b = t.path().join("resolve-configurator-gui.app");
+        fs::create_dir_all(b.join("Contents")).unwrap();
+        fs::write(
+            b.join("Contents").join("Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>resolve-configurator-gui</string>
+<key>CFBundleShortVersionString</key><string>0.0.0</string>
+</dict></plist>"#,
+        )
+        .unwrap();
+        assert_eq!(payload_version(&b), None, "0.0.0 is a default, not a release");
+        // The rest of the identity is still read — this refuses one claim, it
+        // does not discard the bundle.
+        assert_eq!(
+            read_bundle(&b).unwrap().identifier.as_deref(),
+            Some("resolve-configurator-gui")
+        );
+    }
+
+    #[test]
+    fn a_zero_long_version_does_not_hide_a_real_short_one() {
+        let t = TempDir::new().unwrap();
+        let b = t.path().join("Thing.app");
+        fs::create_dir_all(b.join("Contents")).unwrap();
+        fs::write(
+            b.join("Contents").join("Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleVersion</key><string>0.0.0</string>
+<key>CFBundleShortVersionString</key><string>1.4.2</string>
+</dict></plist>"#,
+        )
+        .unwrap();
+        assert_eq!(payload_version(&b).as_deref(), Some("1.4.2"));
+    }
+
+    #[test]
+    fn only_an_all_zero_version_counts_as_unset() {
+        for unset in ["0.0.0", "0.0", "0", "0.0.0.0", "v0.0.0", " 0.0.0 "] {
+            assert!(is_unset_version(unset), "{unset}");
+        }
+        // Everything a real release looks like, including the smallest one any
+        // project in the fleet has actually cut.
+        for real in ["0.0.1", "0.1.0", "1.0.0", "v0.1.5", "0.0.0-beta", "", "unknown"] {
+            assert!(!is_unset_version(real), "{real}");
+        }
     }
 
     #[test]

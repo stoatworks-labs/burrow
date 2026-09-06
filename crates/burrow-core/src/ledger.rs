@@ -414,6 +414,94 @@ mod tests {
         assert!(!matches!(r2.state, InstallState::UpToDate { .. }));
     }
 
+    /// The whole point of refusing an all-zero plist version: the ledger is
+    /// right and the plist is wrong, and the plist outranks it.
+    ///
+    /// Resolve Configurator's bundle carried PyInstaller's default 0.0.0 for
+    /// five releases while the DMG around it was named from the tag. Burrow
+    /// installed v0.1.5, recorded v0.1.5, read 0.0.0 back off the disk and
+    /// reported "0.0.0, update available" — and the update it offered
+    /// installed another bundle saying 0.0.0, so the row could never clear.
+    #[test]
+    fn a_bundle_with_a_default_version_falls_through_to_the_ledger() {
+        use super::*;
+        let t = tempfile::TempDir::new().unwrap();
+        let name = "resolve-configurator-gui.app";
+        let c = t.path().join(name).join("Contents");
+        std::fs::create_dir_all(&c).unwrap();
+        std::fs::write(
+            c.join("Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>resolve-configurator-gui</string>
+<key>CFBundleShortVersionString</key><string>0.0.0</string>
+</dict></plist>"#,
+        )
+        .unwrap();
+        let names = vec![name.to_string()];
+        let ids = vec!["resolve-configurator-gui".to_string()];
+
+        let mut l = Ledger::default();
+        l.upsert(LedgerEntry {
+            slug: "resolve-configurator".into(),
+            format: Format::App,
+            destination_id: "applications".into(),
+            destination: t.path().to_path_buf(),
+            entries: names.clone(),
+            version: "v0.1.5".into(),
+            installed_at: "now".into(),
+            payload_sha256: crate::hashing::hash_entries(t.path(), &names).unwrap(),
+            claimed: false,
+        });
+
+        let r = reconcile_one(
+            &l, "resolve-configurator", Format::App, "applications", t.path(), &names,
+            &ids, true, Some("v0.1.5"),
+        );
+        assert!(!r.foreign);
+        match r.state {
+            InstallState::UpToDate { ref version, source } => {
+                assert_eq!(version, "v0.1.5");
+                assert_eq!(source, VersionSource::Ledger, "the plist claim was refused");
+            }
+            ref other => panic!("expected up to date from the ledger, got {other:?}"),
+        }
+    }
+
+    /// And where Burrow did not do the install there is nothing to fall back
+    /// to, so the answer is "cannot tell" — not a confident 0.0.0 that makes
+    /// the row offer an update it can never finish.
+    #[test]
+    fn a_default_version_with_no_ledger_record_is_unknown_not_zero() {
+        use super::*;
+        let t = tempfile::TempDir::new().unwrap();
+        let name = "resolve-configurator-gui.app";
+        let c = t.path().join(name).join("Contents");
+        std::fs::create_dir_all(&c).unwrap();
+        std::fs::write(
+            c.join("Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>resolve-configurator-gui</string>
+<key>CFBundleShortVersionString</key><string>0.0.0</string>
+</dict></plist>"#,
+        )
+        .unwrap();
+        let names = vec![name.to_string()];
+        let ids = vec!["resolve-configurator-gui".to_string()];
+
+        let r = reconcile_one(
+            &Ledger::default(), "resolve-configurator", Format::App, "applications",
+            t.path(), &names, &ids, true, Some("v0.1.5"),
+        );
+        assert!(!r.foreign, "the identifier still says it is ours");
+        assert!(
+            matches!(r.state, InstallState::VersionUnknown { .. }),
+            "{:?}",
+            r.state
+        );
+    }
+
     use super::*;
     use std::fs;
     use tempfile::TempDir;
