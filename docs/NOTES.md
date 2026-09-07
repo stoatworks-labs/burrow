@@ -161,6 +161,71 @@ Removed. It costs one more click and it is the entire reason the host was
 chosen. There is a test asserting the player page does not contain `autoplay=1`,
 because this is the kind of thing that gets added back for the convenience.
 
+## 2026-09-07 — every browser tool can now be run, and what "install" would mean for one
+
+**State of the Self-hosted tab, as of today.** Twenty `kind: "web"` entries.
+Nineteen of them ship a `docker-compose.yml`, an image on GHCR and a
+Community Applications template in stoatworks-unraid — five of those
+(aquilon-pitch, negative-space, quickdaw, wallslide, patchferret) were added
+today, having sat in the tab with Open and Source but no *Run your own*. Each
+README now carries a generated *Run your own copy* section naming the image,
+the host port and the template. The twentieth, birddog-play-patcher, has a
+Cloudflare Worker behind the page (a CORS proxy for `pkgs.tailscale.com`) and
+is deliberately not packaged until a small server exists to stand in for it.
+Burrow needs no change for any of this: the catalogue route emits `compose`
+for whatever the website has synced, and the row already offers it.
+
+**What a self-hosted *install* would be, and why Burrow does not do it yet.**
+The ask is that a browser tool be installable from Burrow the way an
+application is: a standalone tray app that serves the tool on the LAN, for
+the venue with no internet. The fleet has the shell for exactly this —
+[av-launcher](https://github.com/stoatworks-labs/av-launcher), the menu-bar
+launcher that srt-router, flock and RFutils each ship as their own `.app`,
+with the server embedded. But av-launcher only knows how to *supervise a
+child process* (`configfile` / `env` / `args` injection), and a static site
+has no process: it needs something to serve `dist/`. Three ways to get one,
+and only the third is right:
+
+1. **A child static-server binary** bundled beside the site. That is precisely
+   the shape av-launcher's own AGENTS §5 warns about: an unsigned helper
+   inside a `.app` is SIGKILLed on a clean Mac with no visible error, and every
+   one of these twenty tools would carry the same helper.
+2. **Burrow's own demo server.** It already serves bundled pages offline — but
+   on `127.0.0.1` only, on an ephemeral port, at a tokenised path, with
+   `connect-src 'none'`. Each of those is a deliberate property (`demos.rs`,
+   and §6 of AGENTS lists removing them as a change to what the app *is*). A
+   LAN-facing server on a fixed port is a different program with a different
+   security statement, and it should not be grown out of this one.
+3. **A `static` mode in av-launcher**, serving a bundled directory
+   *in-process* from the Rust side: no child, no helper to be quarantined, the
+   same Start/Stop/interface/port panel as every other launcher, and the
+   `_headers` CSP applied as response headers so the offline copy is no more
+   permissive than the hosted one. One implementation, twenty consumers.
+
+Once (3) exists, each tool's repo gets a `launcher/` — generated from
+stoatworks-unraid's `fleet.json` the way the Dockerfile is, since the
+generator already knows the served directory and the headers file — and a
+release workflow producing the `.dmg` / `-setup.exe`. Then the catalogue
+carries those as `assets` on the same `web` entry, and **Burrow's only change
+is to let a `web` entry with assets show the Formats menu** — the
+`kind !== 'web'` gate in `Plugins.tsx` and the `assets.length > 0 ||
+kind === 'web'` filter in the catalogue route. The install path is the
+existing application path: a `.app` out of a disk image, placed in
+`/Applications` or `~/Applications`, claimed by bundle identifier. Nothing
+new runs as root, nothing new is fetched, and the "one file, downloads from
+GitHub" claim in Settings stays true.
+
+⚠️ **Do not add a `web` asset kind before the launcher exists.** A catalogue
+entry advertising an install that 404s is the "User guide button opening a
+404" mistake from the plugin releases, twenty times over, and v0.2.x clients
+would render it. The catalogue is the last thing to change, not the first.
+
+**Where the work is, in order:** av-launcher `static` mode (Rust, testable
+with `cargo test` like `demos.rs`); a `gen-launcher.mjs` in stoatworks-unraid
+emitting `launcher/` from `fleet.json`; one tool released end to end and
+opened on a clean Mac (AGENTS §5 again — a downloaded, quarantined copy is the
+only real test); then the catalogue route, then the Formats gate here.
+
 ## 2026-08-25 — the videos are ours now, and the caveats went away
 
 Burrow streams its own copy of each project video from a GitHub release rather

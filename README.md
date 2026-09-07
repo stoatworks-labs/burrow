@@ -18,14 +18,21 @@ Natron, and an After Effects build — and installing one by hand means finding 
 project page, working out which of six archives you want, unzipping it, and
 dragging a bundle into a folder whose location differs per format and per platform.
 
-It now covers the rest of the fleet on the same terms, under four tabs:
+It now covers the rest of the fleet on the same terms, under five tabs:
 
 | | |
 |---|---|
 | **Video** | The Resolume, Resolve and After Effects plugins, and the video tools around them. |
 | **Audio** | VST3 and Audio Unit plugins, and the audio tools that run on their own. |
 | **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running. |
+| **Self-hosted** | The things you run rather than install: the services that ship as containers, and the browser tools. |
 | **Device firmware** | Coming soon. |
+
+A browser tool has nothing to install, so its row offers **Open** — the copy
+on the website — **Source**, and **Run your own**, which shows the project's
+`docker-compose.yml` with Copy and Save buttons. Every one of them also has an
+Unraid Community Applications template, in
+[stoatworks-unraid](https://github.com/stoatworks-labs/stoatworks-unraid).
 
 Applications are placed from their disk image, and every tool that has a
 [Bitfocus Companion](https://bitfocus.io/companion) module offers it on the same

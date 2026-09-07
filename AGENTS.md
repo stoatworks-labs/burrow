@@ -15,10 +15,16 @@ archives per video plugin and knowing three different destination directories, t
 of which need an administrator password — and then something different again for an
 audio plugin, an application and a Companion module.
 
-**Four tabs, three of them populated.** Video, Audio, Networking & Infrastructure,
-and a Device firmware tab that says "coming soon" and means it. The category is a
-field on each catalogue entry, chosen by the website from the fleet's own
-`category` data — see §4.
+**Six tabs, five of them populated.** Video plugins, Video tools, Audio,
+Networking & Infrastructure, Self-hosted, and a Device firmware tab that says
+"coming soon" and means it. The tab is a field on each catalogue entry, chosen
+by the website from the fleet's own `category` data — see §4. **Self-hosted cuts
+across the others**: anything that ships a `docker-compose.yml`, and every
+browser tool, sits there whatever it is for, because how you run a thing decides
+what its row can offer. A `kind: "web"` entry installs nothing — its row is
+Open, Source and Run your own — and it is the one kind with no assets, which
+three gates in the catalogue route once dropped silently (docs/NOTES.md,
+2026-08-25).
 
 **It is a client, not a service.** There is no account, no telemetry and no
 backend. One HTTPS GET for the plugin list, and downloads straight from GitHub.
