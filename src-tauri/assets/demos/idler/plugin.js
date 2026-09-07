@@ -1354,8 +1354,16 @@ class GrowingSaver {
     const t = Math.max(0, s.time);
     const exactTick = t * rate;
 
-    const wantedTick = Math.trunc(Math.min(exactTick, GrowingSaver.kMaxReplaySteps));
-    const alpha = exactTick - Math.floor(exactTick);
+    // The cap applies to the alpha as well as to the tick. Capping only the
+    // tick freezes the STATE while leaving the interpolation inside it running,
+    // so the maze camera slides forward one cell, snaps back and slides again,
+    // for ever, with the heading swinging round each time — which reads as a
+    // walk stuck in one corridor rather than as the stopped picture it is. Past
+    // the cap the picture stops; it should look stopped.
+    const cappedTick = Math.min(exactTick, GrowingSaver.kMaxReplaySteps);
+
+    const wantedTick = Math.trunc(cappedTick);
+    const alpha = cappedTick - Math.floor(cappedTick);
 
     const key = this.growthKey(s);
 
@@ -2955,11 +2963,40 @@ class Pipes extends GrowingSaver {
  * 3D Maze.
  *
  * A first-person walk down brick corridors, taking whatever turning comes up,
- * forever.
+ * forever — and the maze is genuinely endless: it is built in chunks around the
+ * camera as it goes, and the ones it has left behind are dropped. There is no
+ * edge to reach and no far corner to have seen.
+ *
+ * WHY IT HAD TO BE ENDLESS. It used to be one square grid, six to sixteen cells
+ * a side, generated once and walked for the rest of the clip — a hundred cells,
+ * which is about a minute, and then every corridor is one the camera has already
+ * been down. Worse, a perfect maze is a TREE: between any two cells there is
+ * exactly one route, so every dead end costs a full retrace back up the corridor
+ * you came down, and one tick in fifteen was a 180-degree turn on the spot. Net
+ * displacement after a minute of walking was under three cells. It was pacing.
+ *
+ * HOW IT IS ENDLESS. Space is divided into chunks of `chunk` × `chunk` cells,
+ * and a chunk's walls are a pure function of its chunk coordinates and the seed,
+ * so building one twice gives the same maze. Two things join them up: DOORWAYS,
+ * two per shared edge, at positions drawn from a stream keyed on the edge itself
+ * so both sides agree without consulting each other; and BRAIDING, which goes
+ * back over the dead ends and opens one more wall on all but one in six of them.
+ * That is what turns the tree into a graph with loops in it — with somewhere
+ * else to go the walk is not forced back down its own approach, and the
+ * 180-degree turn drops from one tick in fifteen to about one in a hundred and
+ * fifty. The ones left in are worth keeping: walking up to a wall is part of
+ * what this saver is, and with loops around it a dead end costs one cell rather
+ * than a retrace of twenty.
+ *
+ * Only the chunks near the camera are kept. The pass counts go with them, so a
+ * chunk revisited after a long absence is unexplored again — deliberate, and
+ * deterministic, because what gets dropped depends only on where the walk has
+ * been.
  *
  * WHY THIS ONE NEEDS REPLAY. Which corridor the camera is in depends on every
  * junction it has already taken. Like Pipes, it is made a pure function of time
- * by GrowingSaver.
+ * by GrowingSaver. Generating a chunk draws from ITS OWN stream, never from the
+ * walk's, so the walk replays the same whatever the drawing happened to build.
  *
  * A tick is one cell of travel, and the alpha inside it slides the camera from
  * one cell to the next — and swings the heading round a corner. That turn is the
@@ -2967,11 +3004,14 @@ class Pipes extends GrowingSaver {
  * linear, because a linear heading interpolation whips round the corner at a
  * constant rate and reads as a camera on rails rather than as walking.
  *
- * Complexity = the maze, 6..16 cells a side. Density = how often the walk prefers
- * a turn. Size = corridor width against wall height. Fog = how far you can see,
- * and it is the control that matters most: a corridor ending in a hard-edged wall
- * at the far clip reads as a bug, and the original faded to black too. Variation
- * = wall colour spread, which stands in for the brick texture.
+ * Complexity = the chunk, 6..16 cells a side — the scale of the maze's structure
+ * rather than its size, since it has no size. Density = how often the walk
+ * prefers a turn. Size = corridor width against wall height. Fog = how far you
+ * can see, and it is the control that matters most: a corridor ending in a
+ * hard-edged wall at the far clip reads as a bug, and the original faded to black
+ * too. It also sets how far the maze is built, since there is no point building
+ * what the fog hides. Variation = wall colour spread, which stands in for the
+ * brick texture.
  *
  * THE BRICKS ARE GEOMETRY, NOT A TEXTURE. A maze walk spends a lot of its time
  * facing a wall — you travel up to a junction and the thing in front of you is a
@@ -2984,6 +3024,22 @@ class Pipes extends GrowingSaver {
 /// original's was famously unhurried.
 const kMazeTickRate = 1.6;
 
+/// How far out, in cells, built maze is kept around the camera. Comfortably
+/// beyond any draw radius, so a chunk being looked at is never dropped out from
+/// under the drawing.
+const kMazeKeepRadius = 20;
+
+/// The furthest the maze is ever drawn, in cells. Reached only with the fog off,
+/// where the far clip plane used to be what stopped you seeing forever.
+const kMazeMaxDrawRadius = 14;
+
+/// Doorways per shared chunk edge. One would connect them; two keeps the seam
+/// from being a bottleneck the walk has to funnel back through.
+const kMazeDoorsPerEdge = 2;
+
+/// One dead end in this many survives the braid.
+const kMazeDeadEndsKept = 6;
+
 /// Wall bits per cell.
 const kNorth = 1; // -Z
 const kSouth = 2; // +Z
@@ -2995,42 +3051,49 @@ const kHeadingDX = [0, 1, 0, -1];
 const kHeadingDZ = [-1, 0, 1, 0];
 const kHeadingWall = [kNorth, kEast, kSouth, kWest];
 
+/// Division and remainder that keep going the same way below zero. The maze runs
+/// in every direction from the origin, and truncating toward zero would make the
+/// chunk two cells wide at the origin and mirror the maze about it.
+function mazeFloorDiv(a, b) { return Math.floor(a / b); }
+function mazeFloorMod(a, b) { return ((a % b) + b) % b; }
+
 class Maze extends GrowingSaver {
   constructor() {
     super();
-    this.cells = new Uint8Array(0);
-    // How many times the walk has left each cell along each heading, indexed
-    // index(cx, cz) * 4 + heading. Part of the walk's state, so it replays with
-    // it. See chooseHeading().
-    this.passes = new Uint32Array(0);
-    this.grid = 10;
+    // The built maze near the camera, and nothing else: each entry is
+    // { cx, cz, cells, passes }, where passes counts how often the walk has left
+    // each cell along each heading, indexed indexIn(cx, cz) * 4 + heading.
+    this.chunks = [];
+    this.chunkSize = 10;
+    this.seed = 1;
     this.x = 0; this.z = 0;
     this.previousX = 0; this.previousZ = 0;
     // The corridor being travelled along, and the one that will be taken out of
     // the cell being arrived at. See the note on step().
     this.headingIn = 0;
     this.headingOut = 0;
-    // Drives the per-cell wall shade. Drawn from the stream at generation time
-    // so it belongs to the maze rather than to the frame.
+    // Drives the per-cell wall shade. Drawn from the walk's stream at reset so
+    // it belongs to the maze rather than to the frame.
     this.seedForWalls = 0;
   }
 
   tickRate() { return kMazeTickRate; }
 
   growthKey(s) {
-    return [s.seed, Maze.gridSize(s), Math.trunc(s.density * 255)].join(':');
+    return [s.seed, Maze.chunkSizeOf(s), Math.trunc(s.density * 255)].join(':');
   }
 
   resetState(s, rng) {
-    this.grid = Maze.gridSize(s);
-    this.generate(rng);
+    this.chunkSize = Maze.chunkSizeOf(s);
+    this.seed = s.seed >>> 0;
+    this.chunks = [];
 
-    // One counter per way out of every cell. Cleared here rather than in
-    // generate() because it belongs to the WALK, not to the maze.
-    this.passes = new Uint32Array(this.grid * this.grid * 4);
+    this.seedForWalls = rng.next();
 
-    this.x = rng.below(this.grid);
-    this.z = rng.below(this.grid);
+    // The origin, because an endless maze has no middle to start in and no
+    // corner to start from. The seed decides what is there.
+    this.x = 0;
+    this.z = 0;
 
     // The first heading has to be one there is actually a corridor along, or the
     // walk opens by driving into a wall.
@@ -3059,14 +3122,16 @@ class Maze extends GrowingSaver {
     this.headingIn = this.headingOut;
 
     // Mark the way out before taking it. This is the whole of what stops the
-    // walk retracing itself for ever — see chooseHeading().
-    this.passes[this.index(this.x, this.z) * 4 + this.headingIn] += 1;
+    // walk circling one loop for ever — see chooseHeading().
+    this.markPass(this.x, this.z, this.headingIn);
 
     this.x += kHeadingDX[this.headingIn];
     this.z += kHeadingDZ[this.headingIn];
 
     const turnBias = 0.1 + s.density * 0.6;
     this.headingOut = this.chooseHeading(this.x, this.z, this.headingIn, turnBias, rng);
+
+    this.forget();
   }
 
   draw(s, alpha, scene) {
@@ -3111,21 +3176,59 @@ class Maze extends GrowingSaver {
       scene.fogEnd = scene.fogStart + cell * (1.5 + (1 - s.fog) * 10);
     }
 
+    // The maze itself: the cells within sight of the camera, built on demand.
     const thickness = cell * 0.06;
     const half = cell * 0.5;
 
-    for (let cz = 0; cz < this.grid; cz += 1) {
-      for (let cx = 0; cx < this.grid; cx += 1) {
-        const walls = this.cells[this.index(cx, cz)];
+    const radius = Maze.drawRadius(s, scene, cell);
+
+    // The disc is measured in whole cells rather than in world units, so what
+    // gets drawn is decided by integer arithmetic — this file is a hand port
+    // checked against the plugin's triangle count, and a float comparison
+    // deciding whether a cell is in or out is a difference between float32
+    // there and double here waiting to happen.
+    const reach = (radius + 1) * (radius + 1);
+
+    // A cell's geometry reaches 0.75 of a cell from its centre — half a cell
+    // each way, plus the wall thickness, corner to corner — and no perspective
+    // projection sees behind its own eye. So a centre further back than that
+    // cannot contribute a visible triangle, whatever the field of view is.
+    const behind = -0.8 * cell;
+
+    // One row further out than the disc, because only the north and west walls
+    // of a cell are drawn: the far side of the last row of floor is the next
+    // row's north wall. Every other south or east wall is some other cell's
+    // north or west, and drawing both leaves two coplanar faces fighting for the
+    // same depth.
+    for (let dz = -radius; dz <= radius + 1; dz += 1) {
+      for (let dx = -radius; dx <= radius + 1; dx += 1) {
+        if (dx * dx + dz * dz > reach) continue;
+
+        const cx = this.x + dx;
+        const cz = this.z + dz;
+
         const centre = this.cellCentre(cx, cz, cell);
+        const offsetX = centre.x - eye.x;
+        const offsetZ = centre.z - eye.z;
+
+        if (offsetX * forward.x + offsetZ * forward.z < behind) continue;
+
+        const walls = this.walls(cx, cz);
 
         // Each face takes its shade from the cell hash.
         const shade = 0.72 + unit(hash3(cx >>> 0, cz >>> 0, this.seedForWalls))
           * 0.28 * (0.2 + s.variation);
 
+        // The colour fan wraps every chunk. There is no total to spread a hue
+        // across when the maze has no end, and a fan that wrapped on nothing in
+        // particular would drift as the camera walked.
+        const fanIndex = mazeFloorMod(cx, this.chunkSize)
+          + mazeFloorMod(cz, this.chunkSize) * this.chunkSize;
+        const fanCount = this.chunkSize * this.chunkSize;
+
         // The classic maze was red brick with a grey floor.
         const brick = v3(0.78 * shade, 0.30 * shade, 0.22 * shade);
-        const wallColour = settingsColour(s, brick, cx + cz * this.grid, this.grid * this.grid);
+        const wallColour = settingsColour(s, brick, fanIndex, fanCount);
 
         const mid = { x: centre.x, y: height * 0.5, z: centre.z };
         const cellKey = (hash2(cx >>> 0, cz >>> 0) ^ this.seedForWalls) >>> 0;
@@ -3139,70 +3242,154 @@ class Maze extends GrowingSaver {
             false, wallColour, (cellKey ^ 0x22) >>> 0, s.variation);
         }
 
-        // South and east only on the far edge of the grid: every other one is
-        // some other cell's north or west, and drawing both leaves two coplanar
-        // faces fighting for the same depth.
-        if ((walls & kSouth) && cz === this.grid - 1) {
-          Maze.addBrickWall(scene.mesh, v3(mid.x, mid.y, mid.z + half), v3(half, height * 0.5, thickness),
-            true, wallColour, (cellKey ^ 0x33) >>> 0, s.variation);
-        }
-        if ((walls & kEast) && cx === this.grid - 1) {
-          Maze.addBrickWall(scene.mesh, v3(mid.x + half, mid.y, mid.z), v3(thickness, height * 0.5, half),
-            false, wallColour, (cellKey ^ 0x44) >>> 0, s.variation);
-        }
+        // The extra row carries walls only; it has no floor of its own and
+        // drawing one would put a lip beyond the fog.
+        if (dx > radius || dz > radius) continue;
 
         const floorGrey = v3(0.28 * shade, 0.28 * shade, 0.30 * shade);
-        const floorColour = settingsColour(s, floorGrey, cx + cz * this.grid, this.grid * this.grid);
+        const floorColour = settingsColour(s, floorGrey, fanIndex, fanCount);
         scene.mesh.addBox(v3(centre.x, -thickness, centre.z), v3(half, thickness, half), floorColour);
 
         const ceilingGrey = v3(0.16 * shade, 0.16 * shade, 0.19 * shade);
-        const ceilingColour = settingsColour(s, ceilingGrey, cx + cz * this.grid, this.grid * this.grid);
+        const ceilingColour = settingsColour(s, ceilingGrey, fanIndex, fanCount);
         scene.mesh.addBox(v3(centre.x, height + thickness, centre.z), v3(half, thickness, half), ceilingColour);
       }
     }
   }
 
-  static gridSize(s) { return 6 + Math.trunc(s.complexity * 10 + 0.5); }
+  static chunkSizeOf(s) { return 6 + Math.trunc(s.complexity * 10 + 0.5); }
 
-  index(cx, cz) { return cz * this.grid + cx; }
+  /**
+   * How far out to build and draw, in cells. There is nothing to be gained by
+   * drawing what the fog has already taken to black, so this follows it; with
+   * the fog off it is the flat ceiling, which is what stops an endless maze
+   * being an endless amount of geometry.
+   */
+  static drawRadius(s, scene, cell) {
+    const sight = s.fog > 0.001 ? scene.fogEnd : kMazeMaxDrawRadius * cell;
+    const wanted = Math.trunc(sight / cell) + 2;
+    return Math.min(kMazeMaxDrawRadius, Math.max(4, wanted));
+  }
 
   cellCentre(cx, cz, cell) {
-    const offset = this.grid * cell * 0.5;
-    return v3((cx + 0.5) * cell - offset, 0, (cz + 0.5) * cell - offset);
+    return v3((cx + 0.5) * cell, 0, (cz + 0.5) * cell);
+  }
+
+  //-------------------------------------------------------------------------
+  // The chunks.
+  //-------------------------------------------------------------------------
+
+  /** The chunk holding `(cx, cz)`, built if it is not there. */
+  chunkFor(cx, cz) {
+    const wantX = mazeFloorDiv(cx, this.chunkSize);
+    const wantZ = mazeFloorDiv(cz, this.chunkSize);
+
+    for (let i = 0; i < this.chunks.length; i += 1) {
+      if (this.chunks[i].cx === wantX && this.chunks[i].cz === wantZ) return this.chunks[i];
+    }
+
+    const built = this.generate(wantX, wantZ);
+    this.chunks.push(built);
+    return built;
+  }
+
+  indexIn(cx, cz) {
+    return mazeFloorMod(cz, this.chunkSize) * this.chunkSize + mazeFloorMod(cx, this.chunkSize);
+  }
+
+  walls(cx, cz) { return this.chunkFor(cx, cz).cells[this.indexIn(cx, cz)]; }
+
+  /** How many times the walk has left `(cx, cz)` along `heading`. */
+  passes(cx, cz, heading) {
+    return this.chunkFor(cx, cz).passes[this.indexIn(cx, cz) * 4 + heading];
+  }
+
+  markPass(cx, cz, heading) {
+    this.chunkFor(cx, cz).passes[this.indexIn(cx, cz) * 4 + heading] += 1;
   }
 
   /**
-   * A perfect maze by depth-first backtracking, with an explicit stack.
+   * Drop the chunks the walk has left behind.
    *
-   * Recursion would be the obvious way to write it and would blow the stack on a
-   * large grid — the corridor this carves is a single path that can reach every
-   * cell, so the recursion depth is the cell count.
+   * What goes depends only on where the camera is, so a replay drops exactly
+   * what a live run dropped. It has to: the pass counts go with the chunk, and
+   * they are what the walk steers by.
    */
-  generate(rng) {
-    const total = this.grid * this.grid;
-    this.cells = new Uint8Array(total).fill(kNorth | kSouth | kWest | kEast);
+  forget() {
+    for (let i = this.chunks.length - 1; i >= 0; i -= 1) {
+      const lowX = this.chunks[i].cx * this.chunkSize;
+      const lowZ = this.chunks[i].cz * this.chunkSize;
+      const highX = lowX + this.chunkSize - 1;
+      const highZ = lowZ + this.chunkSize - 1;
+
+      if (highX < this.x - kMazeKeepRadius || lowX > this.x + kMazeKeepRadius
+        || highZ < this.z - kMazeKeepRadius || lowZ > this.z + kMazeKeepRadius) {
+        this.chunks[i] = this.chunks[this.chunks.length - 1];
+        this.chunks.pop();
+      }
+    }
+  }
+
+  /**
+   * The doorways through one shared edge.
+   *
+   * Keyed on the EDGE rather than on either chunk, so the two sides agree
+   * without consulting each other: the edge on `(cx, cz)`'s west side is the
+   * edge on `(cx - 1, cz)`'s east side, and both name it `(cx, cz)`. Get this
+   * wrong in either direction and the maze grows a wall with a door on one face
+   * and none on the other, which shows up as the camera walking through a wall
+   * it can still see.
+   */
+  edgeDoors(cx, cz, vertical) {
+    const salt = (this.seed ^ (vertical ? 0x5EED1A17 : 0x5EED2B26)) >>> 0;
+    const rng = new Random(hash3(cx >>> 0, cz >>> 0, salt));
+    const doors = [];
+    for (let i = 0; i < kMazeDoorsPerEdge; i += 1) doors.push(rng.below(this.chunkSize));
+    return doors;
+  }
+
+  /**
+   * One chunk of maze: a perfect maze by depth-first backtracking, the doorways
+   * to its four neighbours, then the braid.
+   *
+   * ITS OWN RANDOM STREAM. Nothing here draws from the walk's, because the walk
+   * has to replay identically however many chunks the drawing happened to build
+   * first — and how many that is depends on the fog, which is not part of the
+   * growth key and must never be.
+   */
+  generate(chunkX, chunkZ) {
+    const side = this.chunkSize;
+    const total = side * side;
+
+    const chunk = {
+      cx: chunkX,
+      cz: chunkZ,
+      cells: new Uint8Array(total).fill(kNorth | kSouth | kWest | kEast),
+      passes: new Uint32Array(total * 4),
+    };
+
+    const rng = new Random(hash3(chunkX >>> 0, chunkZ >>> 0, this.seed));
+    const at = (ax, az) => az * side + ax;
 
     const visited = new Uint8Array(total);
     const stack = [];
 
-    this.seedForWalls = rng.next();
-
-    let cx = rng.below(this.grid);
-    let cz = rng.below(this.grid);
-    visited[this.index(cx, cz)] = 1;
-    stack.push(this.index(cx, cz));
+    let cx = rng.below(side);
+    let cz = rng.below(side);
+    visited[at(cx, cz)] = 1;
+    stack.push(at(cx, cz));
 
     while (stack.length > 0) {
       const here = stack[stack.length - 1];
-      cx = here % this.grid;
-      cz = Math.trunc(here / this.grid);
+      cx = here % side;
+      cz = Math.trunc(here / side);
 
       const options = [];
       for (let h = 0; h < 4; h += 1) {
         const nx = cx + kHeadingDX[h];
         const nz = cz + kHeadingDZ[h];
-        if (nx < 0 || nz < 0 || nx >= this.grid || nz >= this.grid) continue;
-        if (visited[this.index(nx, nz)]) continue;
+        if (nx < 0 || nz < 0 || nx >= side || nz >= side) continue;
+        if (visited[at(nx, nz)]) continue;
         options.push(h);
       }
 
@@ -3219,12 +3406,66 @@ class Maze extends GrowingSaver {
       // you can walk into and not out of, and the walk tests the cell it is
       // standing in — so a one-sided wall shows up as the camera walking through
       // a wall it can still see.
-      this.cells[this.index(cx, cz)] &= ~kHeadingWall[h];
-      this.cells[this.index(nx, nz)] &= ~kHeadingWall[(h + 2) % 4];
+      chunk.cells[at(cx, cz)] &= ~kHeadingWall[h];
+      chunk.cells[at(nx, nz)] &= ~kHeadingWall[(h + 2) % 4];
 
-      visited[this.index(nx, nz)] = 1;
-      stack.push(this.index(nx, nz));
+      visited[at(nx, nz)] = 1;
+      stack.push(at(nx, nz));
     }
+
+    // The doorways, which is what makes the chunks one maze rather than a tiling
+    // of separate ones. Each edge is opened from this side only — the chunk on
+    // the other side opens its own half from the same numbers.
+    let doors = this.edgeDoors(chunkX, chunkZ, true);
+    for (let i = 0; i < doors.length; i += 1) chunk.cells[at(0, doors[i])] &= ~kWest;
+
+    doors = this.edgeDoors(chunkX + 1, chunkZ, true);
+    for (let i = 0; i < doors.length; i += 1) chunk.cells[at(side - 1, doors[i])] &= ~kEast;
+
+    doors = this.edgeDoors(chunkX, chunkZ, false);
+    for (let i = 0; i < doors.length; i += 1) chunk.cells[at(doors[i], 0)] &= ~kNorth;
+
+    doors = this.edgeDoors(chunkX, chunkZ + 1, false);
+    for (let i = 0; i < doors.length; i += 1) chunk.cells[at(doors[i], side - 1)] &= ~kSouth;
+
+    // The braid: open one more wall on most dead ends, which is what turns the
+    // tree into something with loops in it.
+    //
+    // Only interior walls, because opening one on the boundary would need the
+    // agreement of a chunk that may not exist yet. A dead end always has an
+    // interior wall to give: a corner cell has two interior directions and can
+    // only be a dead end if at least one of them is still shut.
+    for (let bz = 0; bz < side; bz += 1) {
+      for (let bx = 0; bx < side; bx += 1) {
+        let open = 0;
+        for (let h = 0; h < 4; h += 1) {
+          if ((chunk.cells[at(bx, bz)] & kHeadingWall[h]) === 0) open += 1;
+        }
+        if (open !== 1) continue;
+
+        if (rng.below(kMazeDeadEndsKept) === 0) continue;
+
+        const options = [];
+        for (let h = 0; h < 4; h += 1) {
+          const nx = bx + kHeadingDX[h];
+          const nz = bz + kHeadingDZ[h];
+          if (nx < 0 || nz < 0 || nx >= side || nz >= side) continue;
+          if ((chunk.cells[at(bx, bz)] & kHeadingWall[h]) === 0) continue;
+          options.push(h);
+        }
+
+        if (options.length === 0) continue;
+
+        const h = options[rng.below(options.length)];
+        const nx = bx + kHeadingDX[h];
+        const nz = bz + kHeadingDZ[h];
+
+        chunk.cells[at(bx, bz)] &= ~kHeadingWall[h];
+        chunk.cells[at(nx, nz)] &= ~kHeadingWall[(h + 2) % 4];
+      }
+    }
+
+    return chunk;
   }
 
   /**
@@ -3316,9 +3557,11 @@ class Maze extends GrowingSaver {
 
   /** The first heading out of a cell that has a corridor along it. */
   firstOpenHeading(cx, cz, rng) {
+    const walls = this.walls(cx, cz);
+
     const options = [];
     for (let h = 0; h < 4; h += 1) {
-      if ((this.cells[this.index(cx, cz)] & kHeadingWall[h]) === 0) options.push(h);
+      if ((walls & kHeadingWall[h]) === 0) options.push(h);
     }
 
     // A perfect maze has no fully walled cell, so this is never empty — but the
@@ -3332,28 +3575,28 @@ class Maze extends GrowingSaver {
    * Reversing is a last resort, which is what makes the walk read as exploring
    * rather than as pacing up and down one corridor.
    *
-   * The choice is made among the exits this walk has used LEAST, and that is
-   * what stops it falling into a short loop and staying there. A perfect maze
-   * is a tree, so what it has instead of cycles is dead ends: the walk turns
-   * round at one, and carrying straight on at each junction on the way back is
-   * exactly the corridor it arrived down — so it retraced its approach, hit the
-   * dead end at the far end, and did it again, for minutes. Counting exits
-   * fixes it, because the retrace is by definition the exit just used.
+   * The choice is made among the exits this walk has used LEAST. With the maze
+   * braided (see generate()) most junctions offer a way round rather than a way
+   * back, and this is what stops the walk taking the same way round for ever: a
+   * loop it has been round once is no longer the least walked thing on offer, so
+   * the next junction sends it somewhere new.
    *
    * Counting EXITS rather than CELLS is load bearing: with cell counts the walk
    * can sit between two dead ends bouncing off each in turn and never spend the
    * visit that would make the third way out the least visited.
    */
   chooseHeading(cx, cz, arrived, turnBias, rng) {
+    const walls = this.walls(cx, cz);
+
     let options = [];
     const reverse = (arrived + 2) % 4;
     let fewest = Infinity;
 
     for (let h = 0; h < 4; h += 1) {
       if (h === reverse) continue;
-      if ((this.cells[this.index(cx, cz)] & kHeadingWall[h]) !== 0) continue;
+      if ((walls & kHeadingWall[h]) !== 0) continue;
 
-      const used = this.passes[this.index(cx, cz) * 4 + h];
+      const used = this.passes(cx, cz, h);
       if (used < fewest) {
         fewest = used;
         options = [];
@@ -3362,11 +3605,11 @@ class Maze extends GrowingSaver {
     }
 
     if (options.length === 0) {
-      // A dead end. Turn round — and draw a number anyway, so the number of
-      // draws does not depend on the branch taken. A replay that consumed a
-      // different count here would diverge from a live run at the first dead
-      // end, which is the sort of bug that shows up as "the maze is different
-      // after you scrub".
+      // One of the dead ends the braid left in. Turn round — and draw a number
+      // anyway, so the number of draws does not depend on the branch taken. A
+      // replay that consumed a different count here would diverge from a live
+      // run at the first dead end, which is the sort of bug that shows up as
+      // "the maze is different after you scrub".
       rng.next();
       return reverse;
     }
