@@ -45,13 +45,20 @@ const files = walk(dir)
 /**
  * The three artefacts an update can be, and the platform key Tauri asks for.
  *
- * macOS is per-architecture because Burrow ships two separate builds rather
- * than one universal binary — the updater picks by the key, so a machine can
- * only ever be offered its own.
+ * macOS ships ONE universal build, and all three macOS keys point at it.
+ *
+ * ⚠️ The two per-architecture keys are NOT vestigial — dropping them would
+ * strand every copy already installed. The updater asks for the key matching
+ * the build it is, so a v0.2.5 arm64 install asks for `darwin-aarch64`; with
+ * only `darwin-universal` published it would find no entry, conclude there is
+ * no update, and go on thinking so for ever. Emitting all three from the same
+ * tarball migrates those installs onto the universal build on their next check
+ * and costs nothing, since the file and its signature are shared.
  */
 const wanted = [
-  { key: 'darwin-aarch64', match: /-macos-aarch64\.app\.tar\.gz$/ },
-  { key: 'darwin-x86_64', match: /-macos-x86_64\.app\.tar\.gz$/ },
+  { key: 'darwin-universal', match: /-macos-universal\.app\.tar\.gz$/ },
+  { key: 'darwin-aarch64', match: /-macos-universal\.app\.tar\.gz$/ },
+  { key: 'darwin-x86_64', match: /-macos-universal\.app\.tar\.gz$/ },
   { key: 'windows-x86_64', match: /-setup\.exe$/ },
 ]
 

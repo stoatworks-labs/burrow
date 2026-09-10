@@ -31,8 +31,11 @@ jobs:
         include:
           # Rust cross-compiles between the two macOS architectures unaided, so
           # both build on the same runner — and the Intel runners are retired.
-          - { name: macos-aarch64,  os: macos-14,       target: aarch64-apple-darwin,   bundles: app }
-          - { name: macos-x86_64,   os: macos-14,       target: x86_64-apple-darwin,    bundles: app }
+          # ONE macOS build for both architectures. rust_targets is what
+          # rustup installs -- universal-apple-darwin is a Tauri bundling
+          # target and `rustup target add` on it fails -- while `target` stays
+          # what tauri build is given and what names the output directory.
+          - { name: macos-universal, os: macos-14,      target: universal-apple-darwin, rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin', bundles: app }
           - { name: windows-x86_64, os: windows-latest, target: x86_64-pc-windows-msvc, bundles: nsis }
     steps:
       - uses: actions/checkout@v7
@@ -43,7 +46,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust_targets || matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -107,10 +110,43 @@ jobs:
         run: |
           set -euo pipefail
           triple="$(rustc -vV | awk '/^host:/ {print $2}')"
-          cargo build --release -p burrow-helper --target ${{ matrix.target }}
           ext=""; [ "${{ runner.os }}" = "Windows" ] && ext=".exe"
-          cp "target/${{ matrix.target }}/release/burrow-helper$ext" \
-             "src-tauri/bin/burrow-helper-${{ matrix.target }}$ext"
+          # A universal build needs ALL THREE sidecar spellings, because the
+          # two phases resolve it differently and each fails on the other's:
+          #
+          #   compile: builds each slice as its REAL triple and looks for
+          #            bin/burrow-helper-<real triple>
+          #   bundle:  assembles the merged app and looks for
+          #            bin/burrow-helper-universal-apple-darwin
+          #
+          # The universal one is also the copy that ends up inside the app, so
+          # it is the lipo of the other two -- a thin helper there would fail
+          # at the first privileged operation on the arch it lacks, which is
+          # worse than failing to launch.
+          if [ "${{ matrix.target }}" = "universal-apple-darwin" ]; then
+            for t in aarch64-apple-darwin x86_64-apple-darwin; do
+              cargo build --release -p burrow-helper --target "$t"
+              cp "target/$t/release/burrow-helper" "src-tauri/bin/burrow-helper-$t"
+            done
+            lipo -create \
+              "src-tauri/bin/burrow-helper-aarch64-apple-darwin" \
+              "src-tauri/bin/burrow-helper-x86_64-apple-darwin" \
+              -output "src-tauri/bin/burrow-helper-universal-apple-darwin"
+            __archs="$( lipo -archs "src-tauri/bin/burrow-helper-universal-apple-darwin" )"
+            echo "burrow-helper: $__archs"
+            case "$__archs" in
+              *arm64*) ;;
+              *) echo "helper has no arm64 slice: $__archs" >&2; exit 1 ;;
+            esac
+            case "$__archs" in
+              *x86_64*) ;;
+              *) echo "helper has no x86_64 slice: $__archs" >&2; exit 1 ;;
+            esac
+          else
+            cargo build --release -p burrow-helper --target ${{ matrix.target }}
+            cp "target/${{ matrix.target }}/release/burrow-helper$ext" \
+               "src-tauri/bin/burrow-helper-${{ matrix.target }}$ext"
+          fi
 
       - name: Test
         shell: bash
@@ -130,9 +166,52 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          target="src-tauri/target/${{ matrix.target }}/release"
-          rm -rf "$target/build" "$target/deps" "$target/incremental" "$target/.fingerprint"
+          # A universal build compiles under the two REAL triples and lipos
+          # the result into target/universal-apple-darwin, so the intermediates
+          # worth deleting are the per-arch ones -- twice as much as before, on
+          # a build shape where hdiutil has already run out of space once.
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            d="src-tauri/target/$t/release"
+            rm -rf "$d/build" "$d/deps" "$d/incremental" "$d/.fingerprint"
+          done
           df -h / | tail -1
+
+      # EVERY Mach-O in the bundle, not just Contents/MacOS/<exe>: this app
+      # ships a privileged helper sidecar, and a fat wrapper around a thin
+      # helper fails on the architecture it lacks -- at the first privileged
+      # operation, not at launch, which is worse.
+      #
+      # Captured and matched with `case`, never piped into grep: steps run as
+      # `bash -eo pipefail`, so grep exiting at its first match SIGPIPEs lipo
+      # and fails the step BECAUSE the match was found.
+      - name: Verify the macOS bundle is universal
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          appdir="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          app="Stoatworks Burrow.app"
+          [ -d "$appdir/$app" ] || { echo "no .app produced" >&2; exit 1; }
+          found=0
+          while IFS= read -r f; do
+            __archs="$( lipo -archs "$f" 2>/dev/null )" || continue
+            [ -n "$__archs" ] || continue
+            found=$((found+1))
+            echo "${f#$appdir/$app/}: $__archs"
+            case "$__archs" in
+              *arm64*) ;;
+              *) echo "expected an arm64 slice in $f, got: $__archs" >&2; exit 1 ;;
+            esac
+            case "$__archs" in
+              *x86_64*) ;;
+              *) echo "expected an x86_64 slice in $f, got: $__archs" >&2; exit 1 ;;
+            esac
+          done < <(find "$appdir/$app" -type f -perm -u+x)
+          # A find that matched nothing would pass every check above in silence.
+          # Expect at least the app binary and the helper sidecar.
+          if [ "$found" -lt 2 ]; then
+            echo "expected the app binary and the helper, found $found" >&2
+            exit 1
+          fi
 
       - name: Installers (macOS)
         if: runner.os == 'macOS'
