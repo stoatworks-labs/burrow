@@ -166,7 +166,7 @@ prompt, the plugins that did not need it are already installed.
 
 ## Status
 
-**Not released.** What has been verified, on macOS:
+**Beta, at v0.2.5.** What has been verified, on macOS:
 
 - The catalogue builds from the live fleet data and serves correctly — 65 entries
   across the three categories, including the two plugins that publish no `latest`
