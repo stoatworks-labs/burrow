@@ -35,6 +35,10 @@ Download it from [the project page](https://stoatworks-labs.com/software/burrow/
 open the disk image and drag Burrow to your Applications folder. On Windows, run
 the installer.
 
+![The plugin list, grouped into update available, up to date and not installed, with the per-format state on every row](screenshots/plugins.png)
+
+*The plugin list: update available, up to date and not installed, with the per-format state on every row.*
+
 Burrow is not required for anything. Every plugin can still be downloaded and
 installed by hand, exactly as before — Burrow only saves you doing it.
 
