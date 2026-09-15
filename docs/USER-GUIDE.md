@@ -62,10 +62,10 @@ A number beside a tab is how many things in it need updating.
 Burrow reads your plugin folders and shows you what you already have. It does not
 change anything until you tell it to.
 
-Three headings:
+Three headings, in the order they need your attention:
 
-- **Up to date** — you have it, and it's current.
 - **Update available** — you have it, and there's a newer version.
+- **Up to date** — you have it, and it's current.
 - **Not installed** — available, and you don't have it.
 
 Each row shows which **formats** that plugin offers and what you have of each:

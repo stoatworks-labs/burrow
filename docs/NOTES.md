@@ -804,3 +804,13 @@ not reach `src-tauri`, which is a standalone workspace — so the settings
 migrations and the demo server's refusals have been unrun since they were
 written, and the updater's would have joined them. The `tauri` CI job now runs
 `cargo test` as well as `cargo check`.
+
+## 2026-09-15 — the list leads with what needs doing
+
+The three headings now run *Update available*, *Up to date*, *Not installed*;
+they used to open with *Up to date*. The heading answers "does this need my
+attention", and the one whose answer is yes was sitting below every row that was
+fine. The rule that files a plugin under a heading (`bucket_for`, in Rust) is
+untouched — only the order the UI draws them in moved, together with the guide,
+the README and the screenshots that show it. *Runs in a browser* still comes
+first on the tab that has it; that heading was not part of the decision.

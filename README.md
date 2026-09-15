@@ -44,7 +44,7 @@ Burrow is one searchable list instead of all that.
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/plugins.png" width="380" alt="The video plugin list, grouped into up to date, update available and not installed, with per-format state on each row"><br><sub>Video</sub></td>
+    <td align="center"><img src="docs/screenshots/plugins.png" width="380" alt="The video plugin list, grouped into update available, up to date and not installed, with per-format state on each row"><br><sub>Video</sub></td>
     <td align="center"><img src="docs/screenshots/audio.png" width="380" alt="The audio tab: Zero EQ installed as VST3 and Audio Unit, SimpleCue with an update and its Companion module nested underneath"><br><sub>Audio &mdash; with a Companion module on its tool&rsquo;s row</sub></td>
   </tr>
   <tr>
@@ -65,7 +65,7 @@ awkward to produce on demand, and one of them is a cancelled password prompt.*
 - **What's new** — release notes for updates you could take, and plugins you
   haven't seen.
 - **Video · Audio · Networking & Infrastructure** — everything in that part of the
-  fleet, under *Up to date*, *Update available* and *Not installed*, with per-format
+  fleet, under *Update available*, *Up to date* and *Not installed*, with per-format
   state on each row, and how far along each project is — *Field proven*, *Field
   testing*, *Released*, *In development* — in the same words the website uses.
 - **Settings** — what to install by default, overridable per item, and where each

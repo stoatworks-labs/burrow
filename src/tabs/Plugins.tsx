@@ -117,9 +117,14 @@ export function Plugins({
   const web = filtered.filter(p => p.kind === 'web')
   const installable = filtered.filter(p => p.kind !== 'web')
 
+  /*
+   * In the order they need attention: what is behind first, then what is
+   * installed and current, then what is not installed at all. The heading
+   * with something to do sits at the top, not below every row that is fine.
+   */
   const groups: Array<[string, PluginView['bucket'], string]> = [
-    ['Up to date', 'up-to-date', 'Nothing installed yet.'],
     ['Update available', 'update-available', 'Everything you have is current.'],
+    ['Up to date', 'up-to-date', 'Nothing installed yet.'],
     [
       'Not installed',
       'not-installed',
