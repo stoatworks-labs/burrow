@@ -166,7 +166,14 @@ prompt, the plugins that did not need it are already installed.
 
 ## Status
 
-**Beta, at v0.2.5.** What has been verified, on macOS:
+**Beta, at v0.3.0.** Since v0.2.5: the catalogue's fifth tab carries every
+browser tool's compose file, each list leads with *Update available*, then *Up
+to date*, then *Not installed*, the privileged helper is told which user
+authorised a plan (it used to check the plan against root), an all-zero
+`CFBundleShortVersionString` is refused rather than believed, and the macOS
+build is one universal image with the sidecar and updater inside it.
+
+What has been verified, on macOS:
 
 - The catalogue builds from the live fleet data and serves correctly — 65 entries
   across the three categories, including the two plugins that publish no `latest`
@@ -189,8 +196,6 @@ What has **not**:
   through the app, and no audio plugin into a running DAW.
 - No application has been installed into a real `/Applications`, and no Companion
   module into a real Companion.
-- The audio and application entries carry no release notes yet: the script that
-  collects them is still plugins-only, so "What's new" is quiet about them.
 - The macOS authorisation prompt has never been driven end to end.
 - The quarantine clearing cannot be proven from a local build — it needs a
   downloaded, Gatekeeper-quarantined copy of the app itself.
