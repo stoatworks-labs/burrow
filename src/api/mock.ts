@@ -339,13 +339,16 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
             size: assetFor(d.format)?.size ?? null,
           }
         })
+        // Mirrors `bucket_for` in src-tauri/src/state.rs, including its
+        // precedence: a known update beats an unreadable version, which beats
+        // a version we read and found current.
         const bucket = slots.some(s => s.state.state === 'update-available')
           ? 'update-available'
-          : slots.some(
-                s => s.state.state === 'up-to-date' || s.state.state === 'version-unknown',
-              )
-            ? 'up-to-date'
-            : 'not-installed'
+          : slots.some(s => s.state.state === 'version-unknown')
+            ? 'version-unknown'
+            : slots.some(s => s.state.state === 'up-to-date')
+              ? 'up-to-date'
+              : 'not-installed'
         return {
           slug: e.slug,
           name: e.name,

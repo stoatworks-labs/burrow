@@ -37,8 +37,12 @@ export type CategoryId =
   | 'firmware'
   | 'unknown'
 
-/** Which of the three headings a plugin sits under. */
-export type Bucket = 'update-available' | 'up-to-date' | 'not-installed'
+/** Which of the install headings a plugin sits under. */
+export type Bucket =
+  | 'update-available'
+  | 'version-unknown'
+  | 'up-to-date'
+  | 'not-installed'
 
 export type CatalogSource = 'network' | 'cache' | 'baked'
 

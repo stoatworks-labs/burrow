@@ -459,6 +459,7 @@ pub struct Slot {
 #[serde(rename_all = "kebab-case")]
 pub enum Bucket {
     UpdateAvailable,
+    VersionUnknown,
     UpToDate,
     NotInstalled,
 }
@@ -590,18 +591,27 @@ fn title_case(s: &str) -> String {
 /// "Update available" would give someone who only uses Resolume a permanent
 /// list of OpenFX builds they will never want, and the heading would stop
 /// meaning anything within a week.
+///
+/// A version we cannot read is its own answer, and not "up to date". Grouping
+/// it with the current ones put the heading's own copy — *everything you have
+/// is current* — over a list of plugins whose versions nothing had checked, so
+/// a Windows user with hand-installed plugins was told they were current when
+/// every one of them might be years behind. It is a weaker claim than either
+/// neighbour, so it loses to a known update and wins over a known-current one.
 fn bucket_for(slots: &[Slot]) -> Bucket {
-    let mut any_installed = false;
+    let mut any_current = false;
+    let mut any_unknown = false;
     for s in slots {
         match s.state {
             InstallState::UpdateAvailable { .. } => return Bucket::UpdateAvailable,
-            InstallState::UpToDate { .. } | InstallState::VersionUnknown { .. } => {
-                any_installed = true
-            }
+            InstallState::VersionUnknown { .. } => any_unknown = true,
+            InstallState::UpToDate { .. } => any_current = true,
             _ => {}
         }
     }
-    if any_installed {
+    if any_unknown {
+        Bucket::VersionUnknown
+    } else if any_current {
         Bucket::UpToDate
     } else {
         Bucket::NotInstalled
@@ -794,4 +804,111 @@ pub fn film_beat(state: State<'_, AppState>, label: String, at: f64) -> Result<(
 /// Everything the UI needs to describe one destination.
 pub fn destination_by_id<'a>(env: &'a Environment, id: &str) -> Option<&'a Destination> {
     env.destinations.iter().find(|d| d.id == id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burrow_core::model::VersionSource;
+
+    fn slot(state: InstallState) -> Slot {
+        Slot {
+            format: Format::Ffgl,
+            destination_id: "d".into(),
+            destination_label: "Resolume".into(),
+            state,
+            needs_elevation: false,
+            missing: Vec::new(),
+            foreign: false,
+            size: None,
+        }
+    }
+
+    fn current() -> InstallState {
+        InstallState::UpToDate {
+            version: "v0.1.7".into(),
+            source: VersionSource::Ledger,
+        }
+    }
+
+    fn behind() -> InstallState {
+        InstallState::UpdateAvailable {
+            installed: "v0.1.3".into(),
+            latest: "v0.1.7".into(),
+            source: VersionSource::Ledger,
+        }
+    }
+
+    fn unknown() -> InstallState {
+        InstallState::VersionUnknown {
+            entries: vec!["Abomerration.dll".into()],
+        }
+    }
+
+    #[test]
+    fn nothing_installed_is_not_installed() {
+        assert_eq!(bucket_for(&[]), Bucket::NotInstalled);
+        assert_eq!(
+            bucket_for(&[slot(InstallState::NotInstalled)]),
+            Bucket::NotInstalled
+        );
+    }
+
+    #[test]
+    fn everything_readable_and_current_is_up_to_date() {
+        assert_eq!(bucket_for(&[slot(current())]), Bucket::UpToDate);
+    }
+
+    #[test]
+    fn a_known_update_wins() {
+        assert_eq!(bucket_for(&[slot(behind())]), Bucket::UpdateAvailable);
+        // Over both of its neighbours, in either order.
+        assert_eq!(
+            bucket_for(&[slot(current()), slot(behind())]),
+            Bucket::UpdateAvailable
+        );
+        assert_eq!(
+            bucket_for(&[slot(behind()), slot(unknown())]),
+            Bucket::UpdateAvailable
+        );
+        assert_eq!(
+            bucket_for(&[slot(unknown()), slot(behind())]),
+            Bucket::UpdateAvailable
+        );
+    }
+
+    /// The bug from burrow#1: a hand-installed Windows plugin carries no
+    /// readable version, and filing it with the current ones put "everything
+    /// you have is current" over a list nothing had actually checked.
+    #[test]
+    fn an_unreadable_version_is_not_up_to_date() {
+        assert_eq!(bucket_for(&[slot(unknown())]), Bucket::VersionUnknown);
+    }
+
+    #[test]
+    fn one_unreadable_format_speaks_for_the_row() {
+        // Reading one format does not vouch for the one we could not read.
+        assert_eq!(
+            bucket_for(&[slot(current()), slot(unknown())]),
+            Bucket::VersionUnknown
+        );
+        assert_eq!(
+            bucket_for(&[slot(unknown()), slot(current())]),
+            Bucket::VersionUnknown
+        );
+    }
+
+    #[test]
+    fn a_format_with_no_build_is_not_an_install() {
+        // The rule the doc comment defends: a format the user never chose is
+        // not a pending update, and must not drag the row out of its heading.
+        assert_eq!(
+            bucket_for(&[slot(current()), slot(InstallState::NoBuild)]),
+            Bucket::UpToDate
+        );
+        assert_eq!(
+            bucket_for(&[slot(InstallState::NoBuild)]),
+            Bucket::NotInstalled
+        );
+    }
 }

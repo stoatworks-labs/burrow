@@ -24,15 +24,25 @@ import { humanSize } from '../api/backend'
  * it used to get an Update button and no way to remove it. Nothing foreign is
  * ever in here: a bundle sharing a name that Burrow did not put there is
  * reported as not-installed for exactly this reason.
+ *
+ * `unknown` is a subset of `current`, not a fourth kind beside it. It has to
+ * count as installed — Remove must reach it, and a row with something on disk
+ * is not offered a blanket Install — while still being the one set that can
+ * be offered its own button. Without it a hand-installed Windows plugin had
+ * no button but Uninstall: not behind, so no Update, and not absent, so no
+ * Install. That is the other half of burrow#1 — being told the truth is no
+ * use without a way to act on it.
  */
 export function rowSlots(plugin: PluginView) {
   const behind = plugin.slots.filter(s => s.state.state === 'update-available')
+  const unknown = plugin.slots.filter(s => s.state.state === 'version-unknown')
   const current = plugin.slots.filter(
     s => s.state.state === 'up-to-date' || s.state.state === 'version-unknown',
   )
   const offered = plugin.slots.filter(s => s.state.state === 'not-installed' && !s.foreign)
   return {
     behind,
+    unknown,
     current,
     present: [...current, ...behind],
     offered,
@@ -49,20 +59,25 @@ export function ops(plugin: PluginView, slots: Slot[], action: OpRequest['action
   }))
 }
 
-/** Exactly what each of a row's three buttons would run. */
+/** Exactly what each of a row's buttons would run. */
 export function rowOps(plugin: PluginView) {
-  const { behind, current, present, wanted } = rowSlots(plugin)
+  const { behind, unknown, current, present, wanted } = rowSlots(plugin)
   return {
     // Matched to the row: a plugin with something already installed is not
     // offered a blanket Install, because adding one more format is the
     // format chips' job and says which format it is.
     install: current.length === 0 ? ops(plugin, wanted, 'install') : [],
     update: ops(plugin, behind, 'update'),
+    // The same op as Update, under the name the state can actually justify.
+    // "Update" claims we know it is behind; for these we know only that we
+    // cannot tell, and writing the current release over them is the one move
+    // that ends the doubt.
+    reinstall: ops(plugin, unknown, 'update'),
     uninstall: ops(plugin, present, 'uninstall'),
   }
 }
 
-type BulkKind = 'install' | 'update' | 'uninstall'
+type BulkKind = 'install' | 'update' | 'reinstall' | 'uninstall'
 
 /**
  * A section heading, and the bulk buttons for the rows under it.
@@ -75,9 +90,10 @@ type BulkKind = 'install' | 'update' | 'uninstall'
  * Only shown for more than one row. With a single row its own button is a
  * centimetre below, and two ways to press the same thing is not a convenience.
  *
- * Install and Remove ask first; Update does not. Update keeps what the user
- * already chose to have current, and it was one click before this existed. The
- * other two change what is on the machine, and at this scale a misclick is
+ * Install, Reinstall and Remove ask first; Update does not. Update keeps what
+ * the user already chose to have current, and it was one click before this
+ * existed. The others change what is on the machine — Reinstall overwrites
+ * files the user may have put there by hand — and at this scale a misclick is
  * twenty plugins rather than one.
  */
 export function SectionHead({
@@ -108,6 +124,7 @@ export function SectionHead({
     return {
       install: pick('install', s => s.wanted),
       update: pick('update', s => s.behind),
+      reinstall: pick('reinstall', s => s.unknown),
       uninstall: pick('uninstall', s => s.present),
     }
   }, [rows])
@@ -135,11 +152,22 @@ export function SectionHead({
             Update all {bulk.update.n}
           </button>
         )}
+        {bulk.reinstall.n > 1 && (
+          <button
+            // Primary in its own section, where it is the only thing to do,
+            // and never over a real update.
+            className={bulk.update.n > 1 ? 'btn' : 'btn primary'}
+            disabled={busy}
+            onClick={() => setConfirming(c => (c === 'reinstall' ? null : 'reinstall'))}
+          >
+            Reinstall all {bulk.reinstall.n}
+          </button>
+        )}
         {bulk.install.n > 1 && (
           <button
             // Primary unless an Update sits beside it: in "Not installed" this
             // is the section's whole point, but it never outranks an update.
-            className={bulk.update.n > 1 ? 'btn' : 'btn primary'}
+            className={bulk.update.n > 1 || bulk.reinstall.n > 1 ? 'btn' : 'btn primary'}
             disabled={busy}
             onClick={() => setConfirming(c => (c === 'install' ? null : 'install'))}
           >
@@ -168,6 +196,26 @@ export function SectionHead({
           <span className="spacer" />
           <button className="btn primary" disabled={busy} onClick={() => run('install')}>
             Install {bulk.install.n}
+          </button>
+          <button className="btn quiet" onClick={() => setConfirming(null)}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {confirming === 'reinstall' && (
+        <div className="section-confirm">
+          <span>
+            Write the current release over {bulk.reinstall.n} items
+            {bulk.reinstall.bytes > 0 && ` — ${humanSize(bulk.reinstall.bytes)} to download`}.
+            Burrow cannot tell which version these are, so this is the only way to
+            be sure. Anything you changed inside them is replaced.
+            {bulk.reinstall.elevated &&
+              ' Some of them go in a folder that asks for your password.'}
+          </span>
+          <span className="spacer" />
+          <button className="btn primary" disabled={busy} onClick={() => run('reinstall')}>
+            Reinstall {bulk.reinstall.n}
           </button>
           <button className="btn quiet" onClick={() => setConfirming(null)}>
             Cancel

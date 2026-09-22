@@ -15,7 +15,7 @@ import { PluginArt } from '../components/PluginArt'
 import { humanSize } from '../api/backend'
 
 /**
- * One category's list, with a search bar, under three headings.
+ * One category's list, with a search bar, under four headings.
  *
  * The heading a plugin sits under is computed in Rust (`bucket_for`), so the
  * ordering rule lives with the reconciliation that decides it rather than
@@ -23,6 +23,8 @@ import { humanSize } from '../api/backend'
  * formats and not others is **up to date** so long as what is installed is
  * current — the heading answers "does this need my attention for what I
  * actually have", and a format the user never chose is not a pending update.
+ * A version Burrow could not read gets its own heading rather than joining
+ * the current ones, because "I could not check this" is not "this is fine".
  *
  * The same component serves every category. Which one it is showing changes
  * the list and one line of copy, and nothing else: an audio plugin and a video
@@ -110,7 +112,7 @@ export function Plugins({
 
   /*
    * A browser tool has nothing to install, so it belongs under none of the
-   * three install headings — filed by bucket it lands in "Not installed",
+   * install headings — filed by bucket it lands in "Not installed",
    * which reads as something you have failed to do. It gets its own heading
    * instead, and is taken out of the others.
    */
@@ -122,8 +124,25 @@ export function Plugins({
    * installed and current, then what is not installed at all. The heading
    * with something to do sits at the top, not below every row that is fine.
    */
+  const unchecked = mine.filter(p => p.bucket === 'version-unknown')
+
   const groups: Array<[string, PluginView['bucket'], string]> = [
-    ['Update available', 'update-available', 'Everything you have is current.'],
+    [
+      'Update available',
+      'update-available',
+      // Only the unqualified claim when it is actually true. With plugins
+      // whose versions could not be read, "everything you have is current"
+      // is the sentence that made burrow#1 a bug rather than a quirk: it sat
+      // over a list nothing had checked.
+      unchecked.length > 0
+        ? 'Nothing Burrow could check is behind.'
+        : 'Everything you have is current.',
+    ],
+    [
+      'Version unknown',
+      'version-unknown',
+      'Burrow could read the version of everything you have installed.',
+    ],
     ['Up to date', 'up-to-date', 'Nothing installed yet.'],
     [
       'Not installed',
@@ -147,6 +166,7 @@ export function Plugins({
         <span className="n">
           {filtered.length} of {top.length}
           {updates.length > 0 && ` · ${updates.length} with updates`}
+          {unchecked.length > 0 && ` · ${unchecked.length} unchecked`}
         </span>
       </div>
 
@@ -259,7 +279,7 @@ function Row({
   const [showFormats, setShowFormats] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
 
-  const { behind, current, present, wanted } = rowSlots(plugin)
+  const { behind, unknown, current, present, wanted } = rowSlots(plugin)
 
   const live = plugin.slots
     .map(s => progress[`${plugin.slug}:${s.format}`])
@@ -319,6 +339,19 @@ function Row({
           {behind.length > 0 && (
             <button className="btn primary" disabled={busy} onClick={() => onRun(req(behind, 'update'))}>
               Update {behind.length > 1 ? `${behind.length} formats` : FORMAT_LABEL[behind[0].format]}
+            </button>
+          )}
+          {/* The row's only move when nothing on disk says which version it
+              is: not behind, so no Update, and not absent, so no Install.
+              Before this it had Uninstall and nothing else. */}
+          {behind.length === 0 && unknown.length > 0 && (
+            <button
+              className="btn primary"
+              disabled={busy}
+              onClick={() => onRun(req(unknown, 'update'))}
+              title="Burrow cannot tell which version is installed. This writes the current release over it."
+            >
+              Reinstall{unknown.length > 1 ? ` ${unknown.length} formats` : ''}
             </button>
           )}
           {current.length === 0 && wanted.length > 0 && (
@@ -477,6 +510,7 @@ function CompanionModule({
 }) {
   const slots = module.slots.filter(s => s.state.state !== 'no-build')
   const behind = slots.filter(s => s.state.state === 'update-available')
+  const unknown = slots.filter(s => s.state.state === 'version-unknown')
   const installed = slots.filter(
     s => s.state.state === 'up-to-date' || s.state.state === 'version-unknown',
   )
@@ -501,7 +535,8 @@ function CompanionModule({
         {module.version && <span className="ver">{module.version}</span>}
       </span>
       <span className="module-state">
-        {installed.length > 0 && behind.length === 0 && 'installed'}
+        {installed.length > 0 && behind.length === 0 && unknown.length === 0 && 'installed'}
+        {behind.length === 0 && unknown.length > 0 && 'version unknown'}
         {behind.length > 0 && 'update available'}
         {installed.length === 0 && offered.length > 0 && slots[0]?.destinationLabel}
         {slots.length === 0 && 'no build for this machine'}
@@ -510,6 +545,16 @@ function CompanionModule({
       {behind.length > 0 && (
         <button className="btn primary" disabled={busy} onClick={() => onRun(req(behind, 'update'))}>
           Update
+        </button>
+      )}
+      {behind.length === 0 && unknown.length > 0 && (
+        <button
+          className="btn primary"
+          disabled={busy}
+          onClick={() => onRun(req(unknown, 'update'))}
+          title="Burrow cannot tell which version is installed. This writes the current release over it."
+        >
+          Reinstall
         </button>
       )}
       {installed.length === 0 && offered.length > 0 && (

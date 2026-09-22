@@ -67,9 +67,9 @@ export function FormatChips({
             <span
               key={slot.destinationId}
               className="chip unknown"
-              title={`Installed (${s.entries.join(', ')}), but nothing on disk says which version. Normal on Windows, where plugins carry no version.`}
+              title={`Installed (${s.entries.join(', ')}), but nothing on disk says which version. Normal on Windows, where plugins carry no version. Reinstall to be sure it is current.`}
             >
-              {label} ✓ version unknown
+              {label} ? version unknown
             </span>
           )
         }
