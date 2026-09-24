@@ -1,12 +1,10 @@
 # Attributions
 
-Stoatworks Burrow is built on other people's work. This file lists what that work is,
-who did it, and what it is doing here.
+Stoatworks Burrow is built on other people's work. This file lists what that work is, who did
+it, and what it is doing here.
 
-The component descriptions come from the master lists in the `stoatworks-backend` repo
-(`attributions/components.json`). Burrow is not yet wired into
-`scripts/sync-attributions.py`, so this copy is maintained by hand until it is —
-add it there rather than editing the prose here.
+It is generated — the master lists live in the `stoatworks-backend` repo and are
+pushed out by `scripts/sync-attributions.py`. Edit it there, not here.
 
 ## Third-party code this project uses
 
@@ -18,9 +16,9 @@ Libraries, SDKs and frameworks the project is built on or bundles.
 Licence: MIT or Apache-2.0  
 Copyright: The Tauri Programme within The Commons Conservancy
 
-A Cargo and npm dependency.
+A Cargo and npm dependency — of the app itself under src-tauri/, or of the desktop launcher under launcher/src-tauri/.
 
-Puts a web front end on a native Rust core using the platform's own webview, so the binary stays small and the DSP stays in Rust.
+Wraps a web front end in a native desktop app using the platform's own webview rather than a bundled browser, so the binary stays small.
 
 ### React
 
@@ -52,27 +50,10 @@ npm dependencies, resolved and pinned in the lockfile.
 
 Build tooling, test runners and the libraries the front ends are assembled from. The exact set and versions for any build are in that repo's lockfile, which is the authoritative list.
 
-## Work this project reads from, but does not include
-
-### The OpenFX plug-in search path
-
-<https://github.com/AcademySoftwareFoundation/openfx>  
-Licence: BSD-3-Clause  
-Copyright: OpenFX and contributors to the OpenFX project
-
-Burrow vendors no OpenFX code. It does rely on the directories the reference host
-implementation searches — `/Library/OFX/Plugins` on macOS and
-`Common Files\OFX\Plugins` on Windows — which is why installing an OpenFX plugin
-needs an administrator password. That behaviour was read out of
-`HostSupport/src/ofxhPluginCache.cpp` rather than assumed.
-
-### The plugins themselves
-
-Burrow installs the Stoatworks video plugins and ships each one's browser demo, but
-contains none of their code. Each plugin carries its own licence and its own
-attributions in its own repository.
+The full transitive dependency set for any build is pinned in this repo's lockfile,
+which is the authoritative list. What is named above is the layers a reader would
+want to know about, not every package that has ever been resolved.
 
 ## Getting this wrong
 
-If something here is miscredited, mislicensed or missing, that is a bug — please
-[open an issue](https://github.com/stoatworks-labs/burrow/issues) and it will be fixed.
+If your work is here and the description is inaccurate, the licence is wrong, or you would rather not be listed — open an issue and it will be fixed.
