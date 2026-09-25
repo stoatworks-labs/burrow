@@ -166,12 +166,14 @@ prompt, the plugins that did not need it are already installed.
 
 ## Status
 
-**Beta, at v0.3.0.** Since v0.2.5: the catalogue's fifth tab carries every
-browser tool's compose file, each list leads with *Update available*, then *Up
-to date*, then *Not installed*, the privileged helper is told which user
-authorised a plan (it used to check the plan against root), an all-zero
-`CFBundleShortVersionString` is refused rather than believed, and the macOS
-build is one universal image with the sidecar and updater inside it.
+**Beta, at v0.3.1.** Since v0.3.0: a plugin whose version Burrow cannot read —
+a bare FFGL `.dll`, or an OpenFX bundle with no `Info.plist`, which is every
+hand-installed plugin on Windows — goes under its own *Version unknown* heading
+instead of being counted as *Up to date*, and gets a *Reinstall* button (per row
+and in bulk) to put the current release in place. v0.3.0 brought the browser
+tools' compose files into the catalogue's fifth tab, the *Update available*-first
+ordering, the helper checking a plan against the user who authorised it, and one
+universal macOS build with the sidecar and updater inside it.
 
 What has been verified, on macOS:
 

@@ -4,7 +4,7 @@
 modules.** One list, one click each, and it knows where every format goes on your
 machine.
 
-> **Status at v0.3.0 — read this first.**
+> **Status at v0.3.1 — read this first.**
 >
 > Burrow has been tested thoroughly against real plugin downloads, but **no plugin
 > has yet been installed into a running Resolume, Resolve or After Effects through
