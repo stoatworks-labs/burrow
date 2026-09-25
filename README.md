@@ -208,19 +208,15 @@ What has **not**:
 
 ## Download
 
-**[v0.2.5](https://github.com/stoatworks-labs/burrow/releases/tag/v0.2.5)** — prebuilt for macOS and Windows. Pick your platform:
+**[v0.3.1](https://github.com/stoatworks-labs/burrow/releases/tag/v0.3.1)** — prebuilt for macOS and Windows. Pick your platform:
 
 <details>
-<summary><b>macOS</b> — Apple Silicon, Intel</summary>
+<summary><b>macOS</b> — Universal (Apple Silicon + Intel)</summary>
 
 | Build | Download | Size |
 | --- | --- | --- |
-| Apple Silicon · .dmg disk image | [`burrow-0.2.5-macos-aarch64.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.5/burrow-0.2.5-macos-aarch64.dmg) | 12 MB |
-| Intel · .dmg disk image | [`burrow-0.2.5-macos-x86_64.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.5/burrow-0.2.5-macos-x86_64.dmg) | 12 MB |
-| Apple Silicon · .pkg installer | [`burrow-0.2.5-macos-aarch64.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.5/burrow-0.2.5-macos-aarch64.pkg) | 12 MB |
-| Intel · .pkg installer | [`burrow-0.2.5-macos-x86_64.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.5/burrow-0.2.5-macos-x86_64.pkg) | 12 MB |
-| Apple Silicon · .tar.gz archive (app) | [`burrow-0.2.5-macos-aarch64.app.tar.gz`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.5/burrow-0.2.5-macos-aarch64.app.tar.gz) | 12 MB |
-| Intel · .tar.gz archive (app) | [`burrow-0.2.5-macos-x86_64.app.tar.gz`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.5/burrow-0.2.5-macos-x86_64.app.tar.gz) | 12 MB |
+| Universal (Apple Silicon + Intel) · .dmg disk image | [`burrow-0.3.1-macos-universal.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.3.1/burrow-0.3.1-macos-universal.dmg) | 26 MB |
+| Universal (Apple Silicon + Intel) · .pkg installer | [`burrow-0.3.1-macos-universal.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.3.1/burrow-0.3.1-macos-universal.pkg) | 26 MB |
 
 </details>
 
@@ -229,9 +225,13 @@ What has **not**:
 
 | Build | Download | Size |
 | --- | --- | --- |
-| x64 · .exe installer | [`Stoatworks.Burrow_0.2.5_x64-setup.exe`](https://github.com/stoatworks-labs/burrow/releases/download/v0.2.5/Stoatworks.Burrow_0.2.5_x64-setup.exe) | 10 MB |
+| x64 · .exe installer | [`Stoatworks.Burrow_0.3.1_x64-setup.exe`](https://github.com/stoatworks-labs/burrow/releases/download/v0.3.1/Stoatworks.Burrow_0.3.1_x64-setup.exe) | 12 MB |
 
 </details>
+
+Also in this release:
+
+- [`burrow-0.3.1-macos-universal.app.tar.gz`](https://github.com/stoatworks-labs/burrow/releases/download/v0.3.1/burrow-0.3.1-macos-universal.app.tar.gz) — macOS app bundle (updater archive; the .dmg is the install), 26 MB
 
 All builds, checksums and release notes: [github.com/stoatworks-labs/burrow/releases](https://github.com/stoatworks-labs/burrow/releases).
 
