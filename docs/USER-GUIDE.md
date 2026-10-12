@@ -11,17 +11,16 @@ every format goes on your machine.
 > it yet**. If you're about to use it before a show, don't. Try it on a machine where
 > a broken plugin folder wouldn't cost you anything.
 >
-> **Updating Burrow itself is new in this version**, and no copy has updated
-> itself in the field yet. v0.2.3 is the first release that publishes an update for
-> the next one to find. The download is signature-checked and refused if it doesn't
-> match, and the .dmg and .pkg on this page are always there as the route that
-> doesn't depend on any of it.
+> **Updating Burrow itself arrived in v0.2.3**, the first release that publishes an
+> update for the next one to find, and no copy has updated itself in the field yet.
+> The download is signature-checked and refused if it doesn't match, and the .dmg and
+> .pkg on this page are always there as the route that doesn't depend on any of it.
 >
 > On Windows it can install FFGL plugins for Resolume, but not OpenFX or After
 > Effects plugins. That part isn't written yet, and it says so rather than
 > half-working.
 >
-> Applications and Companion modules are newer still, and **no application has been
+> Applications and Companion modules arrived in v0.2.0, and **no application has been
 > installed into a real Applications folder through it yet**, nor a module into a
 > real Companion.
 >
