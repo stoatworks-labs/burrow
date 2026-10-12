@@ -67,8 +67,8 @@ start:
 | Field | What it does |
 |---|---|
 | `slug` | The identity of the thing, everywhere: settings keys, the ledger, the demo folder, the thumbnail filename. Do not change one after release. |
-| `kind` | `plugin`, `app` or `companion`. A kind this build does not manage is kept and never offered. |
-| `category` | Which tab it appears under. Absent means `video`, for historical reasons — say it explicitly. |
+| `kind` | `plugin`, `app`, `companion` or `web` (a browser tool, which gets **Open** and **Source** rather than an install). A kind this build does not manage is kept and never offered. |
+| `category` | The coarse grouping. Absent means `video`, for historical reasons — say it explicitly. The tab an entry appears under is `tab` where the catalogue sends one (`video` splits into `video-plugins` and `video-tools`, and `selfhosted` cuts across the rest), and `category` where it doesn't. |
 | `parent` | Set on a thing that only exists to serve another (Companion modules). The UI nests it under that slug instead of listing it as a peer. |
 | `status` | An id into the catalogue's own `statuses` map. Yours can say whatever you like. |
 | `entries` | **The names the archive unpacks to that a host actually loads.** This is what lets Burrow recognise a copy somebody installed by hand and remove exactly the right files later. |

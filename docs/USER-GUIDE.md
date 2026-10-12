@@ -65,9 +65,11 @@ A number beside a tab is how many things in it need updating.
 Burrow reads your plugin folders and shows you what you've already got. It doesn't
 change anything until you tell it to.
 
-There are three headings, in the order they need your attention:
+There are four headings, in the order they need your attention:
 
 - **Update available:** you have it, and there's a newer version.
+- **Version unknown:** you have it, but nothing on disk says which version, so Burrow
+  can't tell whether it's current.
 - **Up to date:** you have it, and it's current.
 - **Not installed:** it's available, and you don't have it.
 
@@ -79,7 +81,7 @@ Each row shows which **formats** that plugin comes in and what you have of each:
 | `FFGL 1.0.1 → 1.0.2` | Installed, and there's an update |
 | `OpenFX +` | Available, not installed. Click it to install just that one |
 | `OpenFX + · admin` | Same, but it will ask for your password |
-| `FFGL ✓ version unknown` | It's installed, but nothing on disk says which version |
+| `FFGL ? version unknown` | It's installed, but nothing on disk says which version |
 | `Adobe —` | No build of this plugin for that host |
 
 Beside the version, each row says **how far along that project is**, using the same
@@ -91,6 +93,7 @@ status the website gives it, in the same words:
 | **Field testing** | Out of the lab and being used in real conditions — not yet trusted blind |
 | **Stable** | Tagged 1.0 builds: the feature set and the controls have settled |
 | **Released** | Tagged builds you can download and run |
+| **Beta** | Tagged builds you can download and run, but early: the controls may still move, and it has met few hosts |
 | **In development** | Working, moving, not yet tagged |
 
 Hover over it to see the same sentence. It's worth reading before a show: *Field
@@ -98,10 +101,10 @@ testing* and *In development* mean what they say.
 
 ### Doing a whole heading at once
 
-Each heading has buttons for the plugins underneath it (**Update all**, **Install all**,
-**Remove all**), and each one does what the button on every row under it would do, for
-all of them at once. They only appear when there's more than one row to act on. With a
-single row, its own buttons are right there.
+Each heading has buttons for the plugins underneath it (**Update all**, **Reinstall all**,
+**Install all**, **Remove all**), and each one does what the button on every row under it
+would do, for all of them at once. They only appear when there's more than one row to act
+on. With a single row, its own buttons are right there.
 
 They act on what you can see. If you've typed in the search box, the count on the
 button is the number that survived the search, and those are the only ones that'll

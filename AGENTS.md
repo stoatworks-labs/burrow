@@ -170,9 +170,9 @@ build time (`src/pages/catalog.json.ts`) from `projects.json` + `downloads.json`
 the same arrangement as `releases.xml.ts` and `llms.txt.ts` there. It therefore
 cannot advertise a version the download tables disagree with.
 
-**Three kinds and three categories, decided there and not here.** `kind` is
-`plugin`, `app` or `companion`; `category` is `video`, `audio` or `netinfra`, folded
-from the fleet's eight categories by a priority list in that route. When something
+**Four kinds and three categories, decided there and not here.** `kind` is
+`plugin`, `app`, `companion` or `web`; `category` is `video`, `audio` or `netinfra`,
+folded from the fleet's eight categories by a priority list in that route. When something
 looks filed oddly in the app, the fix is usually its `category` in `projects.json` —
 which the website itself reads too — rather than a special case in Burrow.
 
@@ -268,7 +268,7 @@ The UI runs in an ordinary browser against a mock backend, which is how the
 awkward states get looked at:
 
 ```
-?tab=whatsnew|video|audio|netinfra|firmware|settings   (`plugins` = video)
+?tab=whatsnew|video-plugins|video-tools|audio|netinfra|selfhosted|firmware|settings   (`plugins`, `video` = video-plugins)
 ?installed=tinsel:ffgl@0.2.0,idler:ffgl@?     behind / current / unknown version
 ?ofx=missing|empty|readonly|ok                the OpenFX destination's condition
 ?state=ok|offline|error                       what the last refresh did
