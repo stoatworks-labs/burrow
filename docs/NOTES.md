@@ -512,7 +512,6 @@ Not installed section of the video tab is 1.2 of them, and it was reading
 - Nothing has been installed into a running Resolume, Resolve or After Effects
   through the finished app. The install path is verified against temporary
   directories and against real release archives, but the last step is untested.
-- The macOS authorisation prompt has never been driven end to end.
 - Quarantine clearing cannot be proven from a local build — it needs a downloaded,
   Gatekeeper-quarantined copy of Burrow itself. That is precisely why the clearing
   is unconditional.
@@ -528,9 +527,9 @@ Not installed section of the video tab is 1.2 of them, and it was reading
 - Nothing has probed an application, audio plugin or Companion module archive for
   its payload names, so Burrow cannot recognise a hand-installed copy of one until
   it has installed it once itself.
-- No application has been installed into a real `/Applications`, and no Companion
-  module into a real Companion. The disk image path is proven against a temporary
-  directory only.
+- No Companion module has been loaded by a real Companion. (Applications have now
+  gone into a real `/Applications`: LivePremier Plus, BlackMatrix and WebLinked, in the
+  same real update, all passing Gatekeeper afterwards.)
 - Windows applications are placed as a program folder with **no Start-menu
   shortcut**. Burrow says so in the batch notes rather than writing outside the
   folder it was given.
@@ -876,6 +875,13 @@ Allan's Mac need root to remove; Burrow deliberately doesn't sweep a root folder
 
 Also fixed: a failure under the prompt was shown with osascript's wrapping round
 it (`0:482: execution error: … (1)`). `osascript_error` keeps the middle.
+
+**And a real update, the same evening.** Allan updated his own Mac through v0.4.0 just
+before this run. Rebate's FFGL and OpenFX builds went to v0.3.1, the OpenFX one through
+the password prompt, so the prompt has now been driven end to end. LivePremier Plus,
+BlackMatrix and WebLinked went into the real `/Applications` and pass Gatekeeper, the
+openRCS module was updated, and five new FFGL plugins were installed. It is also where
+the leftover Rebate copy above came from. Nobody recorded the strip during it.
 
 Still open, and each one is a decision rather than a bug:
 

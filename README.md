@@ -215,16 +215,24 @@ What I've verified, on macOS:
   live catalogue: all 32 entries filed there are listed, the 24 browser tools under
   *Runs in a browser* and the eight applications with their install and *View compose*
   buttons. Every one of the catalogue's 173 entries lands on a tab the window shows.
+- A real update of my own Mac, through v0.4.0 on 19 October. Rebate's FFGL and OpenFX
+  builds went to v0.3.1, the OpenFX one through the password prompt into
+  `/Library/OFX/Plugins`, where it still verifies and is stapled. LivePremier Plus,
+  BlackMatrix and WebLinked were updated in `/Applications` and all three pass
+  Gatekeeper afterwards. The openRCS Companion module was updated in its folder, and
+  five new FFGL plugins went into Extra Effects. The Rebate binary that landed is
+  byte-identical to the release's. The update also left the previous OpenFX Rebate
+  behind under a `.burrow-old-` name, which is fixed on main and waiting for a release.
 
 What I **haven't**:
 
-- No plugin has been installed into a running Resolume, Resolve or After Effects
-  through the app, and no audio plugin into a running DAW.
-- No application has been installed into a real `/Applications`, and no Companion
-  module into a real Companion.
-- The macOS authorisation prompt has never been driven end to end.
+- Nobody has watched a plugin Burrow installed load in Resolume, Resolve or After
+  Effects, or an audio plugin in a DAW. They land in the right folders; the host
+  picking them up is the untested part.
+- No Companion module Burrow placed has been loaded by a real Companion.
 - The quarantine clearing can't be proven from a local build. It needs a
-  downloaded, Gatekeeper-quarantined copy of the app itself.
+  downloaded, Gatekeeper-quarantined copy of the app itself. The copy that did the
+  real update wasn't quarantined, so that run doesn't settle it either.
 - Windows has no privileged helper, so OpenFX and Adobe installs are refused there
   with an explanation. FFGL isn't affected.
 
