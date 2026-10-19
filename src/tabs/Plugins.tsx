@@ -191,9 +191,13 @@ export function Plugins({
 
       {web.length > 0 && (
         <section key="web">
-          <div className="sec">
-            <span className="sec-label">Runs in a browser</span>
-            <span className="sec-count">{web.length}</span>
+          {/* The same head as every other section's (SectionHead), less the
+              bulk buttons. It had classes of its own that no stylesheet ever
+              defined, which nobody saw while this tab showed nothing:
+              "Runs in a browser24". */}
+          <div className="section-head">
+            <h2>Runs in a browser</h2>
+            <span className="n">{web.length}</span>
           </div>
           {/* No bulk buttons: there is nothing to install for any of them, so
               a header acting on all of them would act on nothing. */}

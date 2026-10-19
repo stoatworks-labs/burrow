@@ -189,7 +189,16 @@ pub enum Category {
     ///
     /// It cuts across the others — a container that talks to an ATEM is still
     /// video — because *how you run it* is the thing that decides what you do
-    /// with the row. Nothing here has an installer.
+    /// with the row. Most of it has no installer, but an application that also
+    /// ships a compose file (LivePremier Plus, BlackMatrix, flock...) is filed
+    /// here too, and its desktop build installs and updates like any other row.
+    ///
+    /// ⚠️ Spelt `selfhosted`, one word, as the catalogue, [`Category::id`] and
+    /// the window all spell it. Under `rename_all = "kebab-case"` it would be
+    /// `self-hosted`, and from v0.2.4 to v0.4.0 it was: every entry the
+    /// catalogue filed here parsed as [`Category::Unknown`] and appeared on no
+    /// tab at all, 32 of them, eight of them installed applications.
+    #[serde(rename = "selfhosted")]
     SelfHosted,
     /// Device firmware. Nothing carries this yet — the tab says so — but the
     /// value is representable so that the day the catalogue starts emitting it,
@@ -496,5 +505,27 @@ mod tests {
         let f: Format = serde_json::from_str("\"something-new\"").unwrap();
         assert_eq!(f, Format::Unknown);
         assert!(!f.is_shipping());
+    }
+
+    #[test]
+    fn every_category_reads_and_writes_as_its_own_id() {
+        // Three spellings have to agree: what the catalogue sends, what serde
+        // reads and writes, and `id()`, which is what the window's tabs match
+        // on. They didn't for SelfHosted (`self-hosted` against `selfhosted`),
+        // so its whole tab came up empty. Every category, both directions.
+        for c in [
+            Category::Video,
+            Category::VideoPlugins,
+            Category::VideoTools,
+            Category::Audio,
+            Category::Netinfra,
+            Category::SelfHosted,
+            Category::Firmware,
+        ] {
+            let quoted = format!("\"{}\"", c.id());
+            assert_eq!(serde_json::to_string(&c).unwrap(), quoted, "{c:?} writes as its id");
+            let back: Category = serde_json::from_str(&quoted).unwrap();
+            assert_eq!(back, c, "{c:?} reads back from its id");
+        }
     }
 }

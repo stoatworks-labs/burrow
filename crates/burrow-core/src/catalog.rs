@@ -524,6 +524,21 @@ mod tests {
     }
 
     #[test]
+    fn the_catalogues_selfhosted_tab_is_the_self_hosted_tab() {
+        // The catalogue spells it as one word. Up to v0.4.0 this parsed as
+        // Unknown and the 32 entries filed there showed on no tab, LivePremier
+        // Plus and BlackMatrix among them, installed and behind.
+        let body = MINIMAL.replace(
+            "\"kind\": \"plugin\",",
+            "\"kind\": \"app\", \"category\": \"video\", \"tab\": \"selfhosted\",",
+        );
+        let e = &parse(&body).unwrap().entries[0];
+        assert_eq!(e.category, Category::Video);
+        assert_eq!(e.tab(), Category::SelfHosted);
+        assert!(Category::SHOWN.contains(&e.tab()));
+    }
+
+    #[test]
     fn a_tab_this_build_has_never_heard_of_does_not_fail_the_parse() {
         let body = MINIMAL.replace(
             "\"kind\": \"plugin\",",
