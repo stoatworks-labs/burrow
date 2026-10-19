@@ -355,11 +355,11 @@ jobs:
             ---
 
             **What has not been tested:** nothing has yet been installed into a
-            running Resolume, Resolve, After Effects or DAW *through the app*, no
-            application into a real Applications folder, and no module into a real
-            Companion. The install path is verified against real downloads and
-            against temporary folders — including a real disk image, mounted,
-            installed and removed again — but the last step is not. Try it
+            running Resolume, Resolve, After Effects or DAW *through the app*, and no
+            module into a real Companion. The install path is verified against real
+            downloads, against a real update of plugins and applications on my own
+            Mac, and against temporary folders — including a real disk image,
+            mounted, installed and removed again — but the last step is not. Try it
             somewhere a broken plugin folder would cost you nothing, and please
             [report anything that
             misbehaves](https://github.com/stoatworks-labs/burrow/issues).

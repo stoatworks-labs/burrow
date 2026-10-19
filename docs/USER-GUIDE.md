@@ -4,7 +4,7 @@ Burrow is a desktop app that installs, updates and removes the Stoatworks plugin
 and Companion modules. It's one list with one click for each thing, and it knows where
 every format goes on your machine.
 
-> **Status at v0.4.1. Read this first.**
+> **Status at v0.4.2. Read this first.**
 >
 > I've tested Burrow thoroughly against real plugin downloads, but **no plugin
 > has been installed into a running Resolume, Resolve or After Effects through
@@ -20,9 +20,9 @@ every format goes on your machine.
 > Effects plugins. That part isn't written yet, and it says so rather than
 > half-working.
 >
-> Applications and Companion modules arrived in v0.2.0, and **no application has been
-> installed into a real Applications folder through it yet**, nor a module into a
-> real Companion.
+> Applications and Companion modules arrived in v0.2.0. Applications have since gone
+> into a real Applications folder through it, but **no module has been loaded by a real
+> Companion yet**.
 >
 > This is an AI-assisted project, directed and reviewed by a human author.
 
@@ -322,6 +322,18 @@ a file it moved aside itself seconds earlier.
 **If you change your mind at the password prompt, nothing is lost.** Anything in
 that batch that didn't need a password is already installed, and the rest is
 reported as cancelled, not as an error.
+
+**Before v0.4.2, an update through the prompt left the old copy behind.** The helper
+moves the previous version aside before putting the new one in, so it can put things
+back if the update fails, and until v0.4.2 nothing then deleted it. If you updated an
+OpenFX or After Effects plugin with an earlier Burrow, that folder may hold a
+`Name.ofx.bundle.burrow-old-…` copy or two. Burrow tidies up after itself now, but it
+won't go looking for old ones in a folder that belongs to the system. Delete them in
+Finder, which will ask for your password, or with:
+
+```
+sudo rm -rf /Library/OFX/Plugins/*.burrow-old-*
+```
 
 ## `/Library/OFX/Plugins` is empty, and that's normal
 

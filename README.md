@@ -161,7 +161,13 @@ prompt, the plugins that didn't need it are already installed.
 
 ## Status
 
-**Beta, at v0.4.1.** v0.4.1 fixes the *Self-hosted* tab, which had been empty since it
+**Beta, at v0.4.2.** v0.4.2 stops an OpenFX or After Effects update through the password
+prompt leaving the previous version behind in the system plugin folder under a
+`.burrow-old-` name. It tidies up after itself now, though it can't reach the copies earlier
+versions left there without your password
+(`sudo rm -rf /Library/OFX/Plugins/*.burrow-old-*` clears them). A failure at that step
+also reads as a sentence instead of an AppleScript error. v0.4.1 fixed the *Self-hosted*
+tab, which had been empty since it
 arrived in v0.2.4: Burrow misread the tab's name in the catalogue, so all 32 entries filed
 there showed on no tab at all, and eight installed applications (LivePremier Plus,
 BlackMatrix, flock, SRT Router, ATEM Overseer, atem-scopes, Aquilon VPU Map and RFutils)
@@ -222,7 +228,7 @@ What I've verified, on macOS:
   Gatekeeper afterwards. The openRCS Companion module was updated in its folder, and
   five new FFGL plugins went into Extra Effects. The Rebate binary that landed is
   byte-identical to the release's. The update also left the previous OpenFX Rebate
-  behind under a `.burrow-old-` name, which is fixed on main and waiting for a release.
+  behind under a `.burrow-old-` name, which is what v0.4.2 fixes.
 
 What I **haven't**:
 
