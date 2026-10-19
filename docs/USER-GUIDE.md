@@ -4,7 +4,7 @@ Burrow is a desktop app that installs, updates and removes the Stoatworks plugin
 and Companion modules. It's one list with one click for each thing, and it knows where
 every format goes on your machine.
 
-> **Status at v0.4.0. Read this first.**
+> **Status at v0.4.1. Read this first.**
 >
 > I've tested Burrow thoroughly against real plugin downloads, but **no plugin
 > has been installed into a running Resolume, Resolve or After Effects through
@@ -164,6 +164,16 @@ A browser tool has nothing to install, so its row offers **Open** (the copy runn
 on the website) and **Source**. Where it ships a compose file there's also **Run your
 own**, which shows you the file with Copy and Save buttons, so you can host it
 yourself instead of using mine.
+
+Eight of the container tools are also desktop applications: LivePremier Plus,
+BlackMatrix, flock, SRT Router, ATEM Overseer, atem-scopes, Aquilon VPU Map and
+RFutils. Their rows install and update the app like any other row, with **View
+compose** beside it for when you'd rather run it in a container.
+
+**Before v0.4.1 this tab was always empty.** Burrow misread the tab's name in the
+catalogue, so everything filed here showed on no tab at all, and those eight apps
+were only reachable from *What's new*. If you've had one installed since then,
+this is the first time Burrow has shown it to you.
 
 ## Software you installed yourself
 

@@ -161,7 +161,11 @@ prompt, the plugins that didn't need it are already installed.
 
 ## Status
 
-**Beta, at v0.4.0.** New in v0.4.0: a strip across the top of the window says what an
+**Beta, at v0.4.1.** v0.4.1 fixes the *Self-hosted* tab, which had been empty since it
+arrived in v0.2.4: Burrow misread the tab's name in the catalogue, so all 32 entries filed
+there showed on no tab at all, and eight installed applications (LivePremier Plus,
+BlackMatrix, flock, SRT Router, ATEM Overseer, atem-scopes, Aquilon VPU Map and RFutils)
+could only be updated from *What's new*. New in v0.4.0: a strip across the top of the window says what an
 install, update or removal is doing, step by step and byte by byte, with a *Cancel* button
 while it's still downloading. The slow work (reading every plugin folder, unpacking,
 hashing an installed application) has moved off the window's own thread, so the window no
@@ -197,6 +201,10 @@ What I've verified, on macOS:
   every phase in order, *Cancel* stopped it after the two plugins already downloaded,
   and a single OpenFX install showed the password step and the final re-read. The
   strip has not yet watched a real download.
+- The *Self-hosted* tab, in a release build run with a scratch home folder against the
+  live catalogue: all 32 entries filed there are listed, the 24 browser tools under
+  *Runs in a browser* and the eight applications with their install and *View compose*
+  buttons. Every one of the catalogue's 173 entries lands on a tab the window shows.
 
 What I **haven't**:
 
