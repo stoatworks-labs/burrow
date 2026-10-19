@@ -139,8 +139,32 @@ pub fn run_elevated(helper: &Path, plan_path: &Path, reason: &str) -> Elevation 
     if stderr.contains("-128") || stderr.contains("User canceled") {
         Elevation::Cancelled
     } else {
-        Elevation::Failed(stderr.trim().to_string())
+        Elevation::Failed(osascript_error(&stderr))
     }
+}
+
+/// What went wrong, without osascript's wrapping round it.
+///
+/// A command that fails under `do shell script` comes back on stderr as
+/// `0:482: execution error: <the command's own message> (1)`: a character range
+/// in the script, the words "execution error", the message, and the exit status
+/// in brackets. Only the middle is meant for a person, and the window used to
+/// show all of it — "porthole (openfx): 0:482: execution error: op 0: the plan
+/// is not inside … — refusing it (1)". Anything not in that shape is left as it
+/// is.
+#[cfg(target_os = "macos")]
+fn osascript_error(stderr: &str) -> String {
+    const MARK: &str = ": execution error: ";
+    let s = stderr.trim();
+    let s = match s.find(MARK) {
+        Some(i) if s[..i].chars().all(|c| c.is_ascii_digit() || c == ':') => &s[i + MARK.len()..],
+        _ => s,
+    };
+    let s = match s.strip_suffix(')').and_then(|t| t.rsplit_once(" (")) {
+        Some((message, code)) if code.parse::<i32>().is_ok() && !message.trim().is_empty() => message,
+        _ => s,
+    };
+    s.trim().to_string()
 }
 
 #[cfg(target_os = "windows")]
@@ -263,6 +287,25 @@ mod tests {
             "the elevated command must state who authorised it: {script}"
         );
         assert!(script.contains("with administrator privileges"), "{script}");
+    }
+
+    /// Read off the window on 2026-10-19, when the helper refused a plan.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn a_helper_failure_reads_without_osascripts_wrapping() {
+        assert_eq!(
+            osascript_error(
+                "0:482: execution error: op 0: the plan is not inside /Users/x/Library/Caches — refusing it (1)\n"
+            ),
+            "op 0: the plan is not inside /Users/x/Library/Caches — refusing it"
+        );
+        // A bracket that is part of the message, not an exit status, stays.
+        assert_eq!(
+            osascript_error("0:10: execution error: copying /a (the source): denied (13)"),
+            "copying /a (the source): denied"
+        );
+        assert_eq!(osascript_error("something else entirely (see log)"), "something else entirely (see log)");
+        assert_eq!(osascript_error("  plain  "), "plain");
     }
 
     #[test]
