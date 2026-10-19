@@ -161,8 +161,13 @@ prompt, the plugins that didn't need it are already installed.
 
 ## Status
 
-**Beta, at v0.3.2.** v0.3.2 changes nothing you can see: it moves rustls, the TLS library
-behind every download and the updater, to 0.23.46 for a medium-severity advisory
+**Beta, at v0.4.0.** New in v0.4.0: a strip across the top of the window says what an
+install, update or removal is doing, step by step and byte by byte, with a *Cancel* button
+while it's still downloading. The slow work (reading every plugin folder, unpacking,
+hashing an installed application) has moved off the window's own thread, so the window no
+longer stops answering while it runs, which is what made a working install look like a
+hang. v0.3.2 moved rustls, the TLS library behind every download and the updater, to
+0.23.46 for a medium-severity advisory
 ([GHSA-2mjx-qc3c-rqvc](https://github.com/advisories/GHSA-2mjx-qc3c-rqvc)). New at v0.3.1:
 a plugin whose version Burrow can't read (a bare
 FFGL `.dll`, or an OpenFX bundle with no `Info.plist`, which is every hand-installed plugin
@@ -188,6 +193,10 @@ What I've verified, on macOS:
   invisible, as it should.
 - The privileged helper refuses every hostile plan I gave it: traversal, a path
   outside the whitelist, a forged deletion nonce, a wrong owner, a loose file mode.
+- The progress strip, driven through the UI's mock backend: a 34-plugin batch reported
+  every phase in order, *Cancel* stopped it after the two plugins already downloaded,
+  and a single OpenFX install showed the password step and the final re-read. The
+  strip has not yet watched a real download.
 
 What I **haven't**:
 

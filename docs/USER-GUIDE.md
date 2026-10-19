@@ -4,7 +4,7 @@ Burrow is a desktop app that installs, updates and removes the Stoatworks plugin
 and Companion modules. It's one list with one click for each thing, and it knows where
 every format goes on your machine.
 
-> **Status at v0.3.2. Read this first.**
+> **Status at v0.4.0. Read this first.**
 >
 > I've tested Burrow thoroughly against real plugin downloads, but **no plugin
 > has been installed into a running Resolume, Resolve or After Effects through
@@ -113,6 +113,22 @@ be touched.
 **Install all** and **Remove all** ask first, and tell you how much there is to
 download or what's about to be deleted. **Update all** doesn't ask, because it only
 brings what you already chose up to date.
+
+### While it's working
+
+A strip across the top of the window says what Burrow is doing for as long as it's doing
+it, whichever tab you're on: which plugin, how far through the batch and how far through
+that step (*Installing 3 of 12 · Abomerration (FFGL) · Downloading · 12.3 MB of 40.1 MB*),
+then *Waiting for your password* if anything needs it. Afterwards it says *Checking what
+is installed* while Burrow re-reads your plugin folders, which for an application means
+hashing it and takes a moment. The window keeps answering throughout. Before v0.4.0 it
+could stop answering during that last part, which looked exactly like a crash.
+
+**Cancel** is there while Burrow is still downloading. It downloads everything first and
+installs it second, so pressing Cancel stops the downloads. Anything already downloaded
+that doesn't need your password is still installed. Anything that does need it isn't,
+and nothing asks you for it. Once the first plugin has started going into place there's
+no button, because a half-copied plugin folder is worse than a finished one.
 
 **"Version unknown" isn't a fault.** On Windows a plugin is a bare `.dll` with no
 version in it, so Burrow really can't tell. It'll offer to reinstall the current
