@@ -86,8 +86,9 @@ export function JobStrip({
         <span className="job-text">
           {job.stopping ? (
             <>
-              <strong>Stopping.</strong> Anything already downloaded will still be installed,
-              and nothing will ask for a password.
+              <strong>Stopping.</strong> Anything already downloaded that doesn't need your
+              password will still be installed. Anything that does won't be, and nothing will
+              ask for it.
             </>
           ) : (
             text
