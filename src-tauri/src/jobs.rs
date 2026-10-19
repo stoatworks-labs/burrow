@@ -699,35 +699,7 @@ fn finish(
         return (outcomes, notes);
     }
 
-    let mut ops: Vec<Op> = Vec::new();
-    let mut roots: Vec<PathBuf> = Vec::new();
-
-    for r in &elevated {
-        if !roots.contains(&r.unit.destination) {
-            roots.push(r.unit.destination.clone());
-            ops.push(Op::EnsureRoot { path: r.unit.destination.clone() });
-        }
-        match r.unit.action {
-            Action::Uninstall => {
-                for name in &r.entries {
-                    let live = r.unit.destination.join(name);
-                    ops.push(Op::Retire { path: live.clone() });
-                    let mut aside = live.into_os_string();
-                    aside.push(format!(".burrow-old-{batch}"));
-                    ops.push(Op::Purge { path: PathBuf::from(aside) });
-                }
-            }
-            _ => {
-                for name in &r.entries {
-                    ops.push(Op::Replace {
-                        from: r.staged.join(name),
-                        to: r.unit.destination.join(name),
-                    });
-                }
-            }
-        }
-    }
-
+    let ops = elevated_ops(&elevated, batch);
     let what = describe(&elevated);
     let plan_file = {
         let state = app.state::<AppState>();
@@ -770,6 +742,61 @@ fn finish(
     }
 
     (outcomes, notes)
+}
+
+/// What the privileged helper is asked to do for the units that need a password.
+///
+/// An install or update over an existing copy is a `Replace`, and the helper's
+/// replace moves the old payload aside under this batch's nonce rather than
+/// deleting it — that is what lets it roll back. So every replacement is
+/// followed by a `Purge` of that aside copy, the same tidy-up `commit` does
+/// for an unprivileged folder. Without it each update through the password
+/// prompt left the previous version in `/Library/OFX/Plugins` as
+/// `Name.ofx.bundle.burrow-old-<nonce>`, found there on the author's Mac.
+///
+/// The purges go last, after every replacement: a replacement that fails rolls
+/// the whole plan back, and it can only put back what has not been deleted yet.
+/// A fresh install has nothing aside, and purging a path that is not there is
+/// a no-op in the helper.
+fn elevated_ops(elevated: &[Ready], batch: &str) -> Vec<Op> {
+    let mut ops: Vec<Op> = Vec::new();
+    let mut roots: Vec<PathBuf> = Vec::new();
+    let mut superseded: Vec<PathBuf> = Vec::new();
+
+    for r in elevated {
+        if !roots.contains(&r.unit.destination) {
+            roots.push(r.unit.destination.clone());
+            ops.push(Op::EnsureRoot { path: r.unit.destination.clone() });
+        }
+        match r.unit.action {
+            Action::Uninstall => {
+                for name in &r.entries {
+                    let live = r.unit.destination.join(name);
+                    ops.push(Op::Retire { path: live.clone() });
+                    ops.push(Op::Purge { path: aside(&live, batch) });
+                }
+            }
+            _ => {
+                for name in &r.entries {
+                    let to = r.unit.destination.join(name);
+                    superseded.push(aside(&to, batch));
+                    ops.push(Op::Replace { from: r.staged.join(name), to });
+                }
+            }
+        }
+    }
+
+    ops.extend(superseded.into_iter().map(|path| Op::Purge { path }));
+    ops
+}
+
+/// Where the helper puts a payload it has moved out of the way: the same name
+/// with this batch's nonce on the end, which is the only thing a `Purge` in
+/// this batch is allowed to delete.
+fn aside(live: &Path, batch: &str) -> PathBuf {
+    let mut s = live.as_os_str().to_os_string();
+    s.push(format!(".burrow-old-{batch}"));
+    PathBuf::from(s)
 }
 
 fn apply_unprivileged(app: &AppHandle, reporter: &Reporter, batch: &str, r: &Ready) -> UnitOutcome {
@@ -960,6 +987,96 @@ mod tests {
         assert!(g.due(10, None));
         g.mark();
         assert!(!g.due(20, None));
+    }
+
+    const BATCH: &str = "9f2c4a7e6b1d03589f2c4a7e6b1d0358";
+
+    fn ready(slug: &str, action: Action, entries: &[&str]) -> Ready {
+        let staged = PathBuf::from("/Users/x/Library/Caches/com.stoatworkslabs.burrow/staging")
+            .join(BATCH)
+            .join(format!("{slug}-openfx"));
+        let entries: Vec<String> = entries.iter().map(|e| e.to_string()).collect();
+        Ready {
+            index: 0,
+            unit: PlannedUnit {
+                slug: slug.into(),
+                name: slug.into(),
+                version: Some("v1.0.0".into()),
+                format: Format::Openfx,
+                destination_id: "openfx".into(),
+                destination: PathBuf::from("/Library/OFX/Plugins"),
+                action,
+                url: None,
+                size: None,
+                entries: entries.clone(),
+                needs_elevation: true,
+                install_name: None,
+            },
+            staged,
+            entries,
+            size: 0,
+            sha: None,
+        }
+    }
+
+    fn ofx(name: &str) -> PathBuf {
+        PathBuf::from("/Library/OFX/Plugins").join(name)
+    }
+
+    /// The leftover found on a real Mac: `Rebate.ofx.bundle.burrow-old-<nonce>`
+    /// beside the new Rebate, after an update through the password prompt.
+    #[test]
+    fn an_update_through_the_password_prompt_deletes_what_it_moved_aside() {
+        let units = [
+            ready("downpour", Action::Update, &["Downpour.ofx.bundle", "Downpour Over.ofx.bundle"]),
+            ready("rebate", Action::Install, &["Rebate.ofx.bundle"]),
+        ];
+        let ops = elevated_ops(&units, BATCH);
+
+        let purged: Vec<&PathBuf> = ops
+            .iter()
+            .filter_map(|o| match o {
+                Op::Purge { path } => Some(path),
+                _ => None,
+            })
+            .collect();
+        let old = |n: &str| ofx(&format!("{n}.burrow-old-{BATCH}"));
+        assert_eq!(
+            purged,
+            vec![&old("Downpour.ofx.bundle"), &old("Downpour Over.ofx.bundle"), &old("Rebate.ofx.bundle")]
+        );
+
+        // Every purge after every replacement, so a replacement that fails can
+        // still be rolled back to the copy it moved aside.
+        let last_replace = ops.iter().rposition(|o| matches!(o, Op::Replace { .. })).unwrap();
+        let first_purge = ops.iter().position(|o| matches!(o, Op::Purge { .. })).unwrap();
+        assert!(last_replace < first_purge, "{ops:?}");
+
+        // One EnsureRoot for the shared folder, not one per unit.
+        assert_eq!(ops.iter().filter(|o| matches!(o, Op::EnsureRoot { .. })).count(), 1);
+    }
+
+    /// And the helper's own validator accepts the result: the purges name only
+    /// what this batch's nonce marks, so nothing was widened to allow them.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn the_plan_with_its_purges_passes_the_helpers_validator() {
+        let units = [ready("rebate", Action::Update, &["Rebate.ofx.bundle"])];
+        let plan = elevate::build_plan(BATCH.into(), "test".into(), elevated_ops(&units, BATCH));
+        let cache = PathBuf::from("/Users/x/Library/Caches/com.stoatworkslabs.burrow");
+        assert_eq!(burrow_plan::validate(&plan, &cache), Ok(()));
+    }
+
+    #[test]
+    fn an_uninstall_through_the_password_prompt_is_still_retire_then_purge() {
+        let units = [ready("rebate", Action::Uninstall, &["Rebate.ofx.bundle"])];
+        let ops = elevated_ops(&units, BATCH);
+        assert!(matches!(&ops[0], Op::EnsureRoot { .. }));
+        assert!(matches!(&ops[1], Op::Retire { path } if *path == ofx("Rebate.ofx.bundle")));
+        assert!(
+            matches!(&ops[2], Op::Purge { path } if *path == ofx(&format!("Rebate.ofx.bundle.burrow-old-{BATCH}")))
+        );
+        assert_eq!(ops.len(), 3);
     }
 
     #[test]

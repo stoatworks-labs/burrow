@@ -30,11 +30,14 @@
 //! - [`Op::Retire`] renames a whitelisted destination aside, appending this
 //!   plan's nonce.
 //! - [`Op::Purge`] deletes a path **only** if its name ends in this plan's
-//!   nonce — that is, only something a `Retire` in this same plan just created.
+//!   nonce — that is, only something this same plan just moved aside: a
+//!   `Retire`, or the old copy a `Replace` steps out of the way.
 //!
-//! Uninstall is `Retire` then `Purge`. You can only delete what you just
-//! renamed, with a nonce that is unguessable and single-use. There is no
-//! primitive that removes a path the helper did not itself just move.
+//! Uninstall is `Retire` then `Purge`; an update over an existing copy is
+//! `Replace`, then `Purge` of what it moved aside once every replacement is in.
+//! You can only delete what you just renamed, with a nonce that is unguessable
+//! and single-use. There is no primitive that removes a path the helper did not
+//! itself just move.
 //!
 //! Every destination must be a **direct child, exactly one component deep**, of
 //! a compiled-in root in [`WHITELIST`]. Not a descendant — a child. That is
@@ -367,7 +370,7 @@ pub fn validate(plan: &Plan, cache_root: &Path) -> Result<(), Reject> {
                     .and_then(|n| n.to_str())
                     .ok_or_else(|| Reject::PurgeWithoutNonce(path.clone()))?;
                 // The nonce is the whole guarantee here: this can only remove
-                // something a Retire in *this* plan created.
+                // something a Retire or a Replace in *this* plan moved aside.
                 if !name.ends_with(&suffix) {
                     return Err(Reject::PurgeWithoutNonce(path.clone()));
                 }
@@ -453,6 +456,24 @@ mod tests {
             Op::Retire { path: ofx("Tinsel.ofx.bundle") },
             Op::Purge {
                 path: ofx(&format!("Tinsel.ofx.bundle.burrow-old-{NONCE}")),
+            },
+        ]);
+        assert_eq!(validate(&p, &cache()), Ok(()));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn an_update_purges_the_copy_its_replace_moved_aside() {
+        // What Burrow sends for an OpenFX update since 2026-10-19: without the
+        // purge, the helper's replace left the old bundle beside the new one.
+        let p = plan(vec![
+            Op::EnsureRoot { path: "/Library/OFX/Plugins".into() },
+            Op::Replace {
+                from: cache().join("staging/9f2c/Rebate.ofx.bundle"),
+                to: ofx("Rebate.ofx.bundle"),
+            },
+            Op::Purge {
+                path: ofx(&format!("Rebate.ofx.bundle.burrow-old-{NONCE}")),
             },
         ]);
         assert_eq!(validate(&p, &cache()), Ok(()));
