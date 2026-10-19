@@ -814,3 +814,78 @@ fine. The rule that files a plugin under a heading (`bucket_for`, in Rust) is
 untouched — only the order the UI draws them in moved, together with the guide,
 the README and the screenshots that show it. *Runs in a browser* still comes
 first on the tab that has it; that heading was not part of the decision.
+
+## 2026-10-19 — the strip, watched against real downloads
+
+v0.4.0's progress strip had only ever been driven through the mock backend. This
+time it was the signed copy in `/Applications`, real release archives from GitHub,
+and nothing written anywhere that mattered. What it showed is in the README's
+Status; how, and what turned up on the way, is here.
+
+**A throwaway home is the whole isolation.** Started as
+`HOME=<temp> "/Applications/Stoatworks Burrow.app/Contents/MacOS/burrow"`, Tauri
+resolves the config, cache and Documents folders from `$HOME`, so the settings,
+the ledger, the staging area and the Arena folder all moved with it; the
+`settings.json` there also pointed every overridable destination at a temporary
+folder. OpenFX was left at `/Library/OFX/Plugins` on purpose, so the password path
+was the real one. WebKit's data store ignores `$HOME`, which does not matter:
+Burrow keeps nothing in browser storage. Allan's own `settings.json` and
+`ledger.json` hashed the same before and after.
+
+**Reading the window: Accessibility, not screenshots.** The strip is
+`role="status"`, so WebKit posts `AXLiveRegionChanged` as its text changes, and a
+poller re-reading only the strip's element every 5 ms caught what the
+notifications coalesced. Buttons were pressed with `AXPress` against the test
+copy's pid. Allan's own Burrow was open in exactly the same place, and anything
+that picks an app by bundle id would have picked his.
+
+⚠️ **A covered window draws its bars wrong.** WebKit pauses CSS transitions in a
+window that is fully covered, so screenshots showed bars at 30% under text saying
+100%. The text and each bar's `aria-label` are right; judge a bar's fill only in a
+window you can see.
+
+⚠️ **A test copy's password prompt looks exactly like the real one.** The first
+OpenFX run's prompt was approved at the Mac before the test could cancel it. The
+helper then refused the plan: it takes the cache root from the authorising user's
+real home, and the test copy's plan sat in the throwaway one — *the plan is not
+inside /Users/…/Library/Caches — refusing it*. So the password path cannot be
+applied from a copy with a redirected home, which is the design working. A test
+that raises a prompt should cancel it itself, at once; the second run pressed the
+prompt's Cancel through Accessibility within a tenth of a second.
+
+**Fast phases mostly never reach the screen.** The backend emits every phase, but
+React paints only what lasts a frame. Within one APFS volume the copy is a clone,
+so *Copying into place* and *Clearing quarantine* last milliseconds: each was seen
+once or twice across five batches, never for Amber on its own. An FFGL uninstall
+plans, removes and re-reads before the first frame, so the strip flashes
+*Checking what is installed…* and *Removing* never appears. A small plugin's byte
+count sits at 0 B for the half second of redirect and TLS, then the whole body
+lands at once.
+
+⚠️ **Fixed: every update through the password prompt left the old copy behind.**
+The helper's `replace` moves the existing payload aside as
+`Name.ofx.bundle.burrow-old-<nonce>` so it can roll back, and nothing ever deleted
+it. The unprivileged `commit` does; the elevated plan had no `Purge`. Allan's
+`/Library/OFX/Plugins` held three: two of Cogwheel, moved aside on 10 and 12
+September (the batch id is a timestamp), and one of Rebate from an update at 20:14
+today. `elevated_ops` now ends
+every elevated plan with a `Purge` for each replaced entry, after all of the
+replacements so a failure can still roll back. The validator already allowed
+exactly that name, so nothing was widened. On main, not released. The three on
+Allan's Mac need root to remove; Burrow deliberately doesn't sweep a root folder.
+
+Also fixed: a failure under the prompt was shown with osascript's wrapping round
+it (`0:482: execution error: … (1)`). `osascript_error` keeps the middle.
+
+Still open, and each one is a decision rather than a bug:
+
+- **Nothing says what Cancel left out.** The outcome marks those units cancelled,
+  not failed, so no error appears. But the window then says only *Restart your host
+  to pick up the change.* (or nothing at all), and the rows that were stopped just
+  go back under *Not installed*.
+- **On a fast job the strip appears for a frame and the list jumps.** Holding it
+  back for 150 ms or so would stop the jump, at the cost of the instant "something
+  is happening".
+- The prompt says *needs permission to update plugins* even for a first install.
+- gaffer's name is lower case in the catalogue, so the strip reads "gaffer
+  (FFGL)". That comes from the website's `projects.json`, not from here.

@@ -197,10 +197,20 @@ What I've verified, on macOS:
   invisible, as it should.
 - The privileged helper refuses every hostile plan I gave it: traversal, a path
   outside the whitelist, a forged deletion nonce, a wrong owner, a loose file mode.
-- The progress strip, driven through the UI's mock backend: a 34-plugin batch reported
-  every phase in order, *Cancel* stopped it after the two plugins already downloaded,
-  and a single OpenFX install showed the password step and the final re-read. The
-  strip has not yet watched a real download.
+- The progress strip, first through the UI's mock backend (a 34-plugin batch, every
+  phase in order) and then against real downloads from GitHub, with the signed v0.4.0
+  app and every folder it writes to pointed somewhere temporary. Amber's 22 MB FFGL
+  build counted up under *Downloading*, then went through *Unpacking*, *Checking the
+  copy* and *Checking what is installed…*, and the row's own line said the same at every
+  step. A batch of six counted "1 of 6" to "6 of 6", parked each finished row at
+  *Downloaded · waiting to be installed*, and changed tabs halfway through without the
+  window ever taking more than 30 ms to answer. *Cancel* said *Stopping.* at once,
+  installed only what had already downloaded and asked for no password, even with an
+  OpenFX plugin downloaded and queued for one. An OpenFX install showed *Waiting for
+  your password* for as long as the prompt was up, and cancelling the prompt reported
+  nothing as failed. On a fast connection *Clearing quarantine* and *Copying into place*
+  last a few milliseconds and mostly never reach the screen, and an FFGL uninstall is
+  over before *Removing* can be drawn.
 - The *Self-hosted* tab, in a release build run with a scratch home folder against the
   live catalogue: all 32 entries filed there are listed, the 24 browser tools under
   *Runs in a browser* and the eight applications with their install and *View compose*
