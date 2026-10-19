@@ -21,12 +21,26 @@
 //! together and then thinks better of typing their password still gets their
 //! Resolume plugins, and the OpenFX half reports *cancelled* rather than
 //! *failed* — because nothing went wrong, they said no.
+//!
+//! # Where the work runs
+//!
+//! Not on the thread the window lives on, and not on the async runtime's
+//! workers either. The download is genuinely asynchronous and stays on the
+//! runtime; everything after it — unpacking, hashing, copying, and the
+//! password prompt, which blocks for as long as the person takes to read it —
+//! is plain blocking work and goes to the blocking pool. See [`crate::off_main`]
+//! for why the distinction is not academic.
+//!
+//! What the window hears about it is rate-limited: see [`Reporter`].
 
 use burrow_core::model::{Format, Platform};
-use burrow_core::{archive, commit, dmg, ledger, quarantine};
+use burrow_core::{archive, commit, dmg, hashing, ledger, quarantine};
 use burrow_plan::Op;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::elevate::{self, Elevation};
@@ -116,6 +130,12 @@ pub struct BatchOutcome {
     pub notes: Vec<String>,
 }
 
+/// One step of one unit, as the window draws it.
+///
+/// `bytes_total` is present for every phase that can know it — a download
+/// with a Content-Length, a zip with a central directory, a copy or a hash of
+/// a payload already on disk — and absent where nothing can: a tarball, and
+/// the wait for a password. The window draws an indeterminate bar for those.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Progress {
@@ -130,13 +150,127 @@ struct Progress {
     message: Option<String>,
 }
 
+/// Progress, rate-limited on its way to the window.
+///
+/// Every event is an `eval` on the webview's main thread and a re-render of
+/// the list on the far side of it, and a download hands back a chunk every few
+/// kilobytes. Reporting each one meant thousands of events a second, and the
+/// window they were meant to inform stopped answering for the duration — which
+/// is how a working download came to be reported as a hang.
+///
+/// So a byte count goes out at most every tenth of a second. A change of
+/// phase, and a count reaching its total, always go out: a bar must never be
+/// left short of its end or under the wrong label because the last event
+/// happened to fall inside the gap.
+struct Reporter {
+    app: AppHandle,
+    batch: String,
+    total: usize,
+    gate: Gate,
+}
+
+/// The rate limit on its own, so it can be tested without a window.
+struct Gate {
+    started: Instant,
+    /// Milliseconds after `started` at the last emit; `u64::MAX` for never.
+    last: AtomicU64,
+}
+
+impl Gate {
+    const MIN_GAP_MS: u64 = 100;
+
+    fn new() -> Self {
+        Gate { started: Instant::now(), last: AtomicU64::new(u64::MAX) }
+    }
+
+    /// Should a count go out now? Yes once it reaches its total, and yes once
+    /// enough time has passed since the last one; otherwise it is held back.
+    fn due(&self, done: u64, total: Option<u64>) -> bool {
+        if total.is_some_and(|t| done >= t) {
+            return true;
+        }
+        let last = self.last.load(Ordering::Relaxed);
+        last == u64::MAX || self.now().saturating_sub(last) >= Self::MIN_GAP_MS
+    }
+
+    fn mark(&self) {
+        self.last.store(self.now(), Ordering::Relaxed);
+    }
+
+    fn now(&self) -> u64 {
+        self.started.elapsed().as_millis() as u64
+    }
+}
+
+impl Reporter {
+    fn new(app: AppHandle, batch: String, total: usize) -> Self {
+        Reporter { app, batch, total, gate: Gate::new() }
+    }
+
+    /// A unit has entered a phase. Always sent.
+    fn phase(
+        &self,
+        index: usize,
+        unit: &PlannedUnit,
+        phase: &'static str,
+        bytes_total: Option<u64>,
+        message: Option<String>,
+    ) {
+        self.send(index, unit, phase, 0, bytes_total, message);
+    }
+
+    /// A unit has finished a phase and is waiting on the batch — staged, with
+    /// the next unit's download ahead of its own commit. Always sent, with a
+    /// full bar, or the row would go on showing the last thing it was doing.
+    fn parked(&self, index: usize, unit: &PlannedUnit, phase: &'static str, size: u64) {
+        self.send(index, unit, phase, size, Some(size), None);
+    }
+
+    /// A unit has moved within a phase. Sent when due, or when done.
+    fn bytes(&self, index: usize, unit: &PlannedUnit, phase: &'static str, done: u64, total: Option<u64>) {
+        if self.gate.due(done, total) {
+            self.send(index, unit, phase, done, total, None);
+        }
+    }
+
+    fn send(
+        &self,
+        index: usize,
+        unit: &PlannedUnit,
+        phase: &'static str,
+        bytes_done: u64,
+        bytes_total: Option<u64>,
+        message: Option<String>,
+    ) {
+        self.gate.mark();
+        let _ = self.app.emit(
+            "batch-progress",
+            Progress {
+                batch: self.batch.clone(),
+                index,
+                total: self.total,
+                slug: unit.slug.clone(),
+                format: unit.format,
+                phase,
+                bytes_done,
+                bytes_total,
+                message,
+            },
+        );
+    }
+}
+
 /// A unit that has been fetched, checked and staged, and is ready to be put
 /// into place. Everything expensive and everything fallible has already
 /// happened by the time one of these exists.
 struct Ready {
+    /// Its position in the plan, for the progress the commit still reports.
+    index: usize,
     unit: PlannedUnit,
     staged: PathBuf,
     entries: Vec<String>,
+    /// The payload's size on disk: the total for the copy and the hash to come.
+    size: u64,
     sha: Option<String>,
 }
 
@@ -156,17 +290,17 @@ fn shown(path: &std::path::Path) -> String {
     }
 }
 
-fn emit(app: &AppHandle, p: Progress) {
-    let _ = app.emit("batch-progress", p);
+/// Resolve every request against the catalogue and this machine, touching
+/// nothing. Off the main thread because it needs the environment, which probes
+/// every destination.
+#[tauri::command]
+pub async fn plan_batch(app: AppHandle, requests: Vec<OpRequest>) -> Result<BatchPlan, String> {
+    crate::off_main(move || plan(&app, &requests)).await
 }
 
-#[tauri::command]
-pub fn plan_batch(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    requests: Vec<OpRequest>,
-) -> Result<BatchPlan, String> {
-    let env = state::get_environment(app.clone(), state.clone())?;
+fn plan(app: &AppHandle, requests: &[OpRequest]) -> Result<BatchPlan, String> {
+    let env = state::environment(app)?;
+    let state = app.state::<AppState>();
     let catalog = state.catalog.lock().map_err(|_| "state is poisoned")?;
     let cat = catalog.as_ref().ok_or("the plugin list has not loaded yet")?;
     let led = state.ledger.lock().map_err(|_| "state is poisoned")?;
@@ -177,7 +311,7 @@ pub fn plan_batch(
     let mut download_bytes = 0u64;
     let mut elevated_destinations: Vec<PathBuf> = Vec::new();
 
-    for req in &requests {
+    for req in requests {
         let entry = cat
             .entries
             .iter()
@@ -318,6 +452,7 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
 
     let client = net::client()?;
     let total = plan.units.len();
+    let reporter = Arc::new(Reporter::new(app.clone(), plan.batch.clone(), total));
     let mut outcomes: Vec<UnitOutcome> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
 
@@ -332,9 +467,11 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
         }
         if unit.action == Action::Uninstall {
             ready.push(Ready {
+                index: i,
                 unit: unit.clone(),
                 staged: PathBuf::new(),
                 entries: unit.entries.clone(),
+                size: 0,
                 sha: None,
             });
             continue;
@@ -345,7 +482,7 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
             continue;
         };
 
-        emit(&app, progress(&plan, i, total, unit, "downloading", 0, unit.size, None));
+        reporter.phase(i, unit, "downloading", unit.size, None);
         // Named for what it is: a macOS application arrives as a disk image, a
         // Companion module as an npm tarball, everything else as a zip. The
         // container is settled by the file's own magic bytes rather than by
@@ -366,72 +503,43 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
             plan.batch
         ));
 
-        let app_for_progress = app.clone();
-        let plan_id = plan.batch.clone();
-        let slug = unit.slug.clone();
-        let fmt = unit.format;
-        let cb = move |done: u64, tot: Option<u64>| {
-            let _ = app_for_progress.emit(
-                "batch-progress",
-                Progress {
-                    batch: plan_id.clone(),
-                    index: i,
-                    total,
-                    slug: slug.clone(),
-                    format: fmt,
-                    phase: "downloading",
-                    bytes_done: done,
-                    bytes_total: tot,
-                    message: None,
-                },
-            );
-        };
-
-        let sha = match net::download(&client, &url, &file, &cb).await {
-            Ok(s) => s,
+        let on_bytes = |done: u64, tot: Option<u64>| reporter.bytes(i, unit, "downloading", done, tot);
+        let should_stop = || cancelled(&app.state::<AppState>(), &plan.batch);
+        let sha = match net::download(&client, &url, &file, &on_bytes, &should_stop).await {
+            Ok(net::Download::Complete { sha256 }) => sha256,
+            Ok(net::Download::Cancelled) => {
+                outcomes.push(cancel_outcome(unit));
+                continue;
+            }
             Err(e) => {
                 outcomes.push(fail(unit, &e));
                 continue;
             }
         };
 
-        emit(&app, progress(&plan, i, total, unit, "extracting", 0, None, None));
+        // Unpacking, checking and de-quarantining are blocking work on a file
+        // that is now local: off the runtime, so a download for the next unit
+        // could in principle share the wait, and so nothing async is starved
+        // while a disk image is copied off its mount.
         let staged = staging_root.join(format!("{}-{}", unit.slug, unit.format.id()));
-        // A disk image is mounted rather than unpacked; everything after this
-        // point is identical either way, which is the whole point of both
-        // returning an `Unpacked`.
-        let opened = if is_image {
-            dmg::extract_app(&file, &staged)
-        } else {
-            archive::extract(
-                &file,
-                &staged,
-                unit.format,
-                platform,
-                unit.install_name.as_deref(),
-            )
+        let staging = {
+            let reporter = reporter.clone();
+            let unit = unit.clone();
+            let file = file.clone();
+            let staged = staged.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                stage(&reporter, i, &unit, &file, &staged, platform, is_image)
+            })
+            .await
+            .map_err(|e| format!("the install stopped unexpectedly: {e}"))?
         };
-        let unpacked = match opened {
-            Ok(u) => u,
+        let (unpacked, size) = match staging {
+            Ok(s) => s,
             Err(e) => {
-                let _ = std::fs::remove_file(&file);
-                outcomes.push(fail(unit, &e.to_string()));
+                outcomes.push(fail(unit, &e));
                 continue;
             }
         };
-        let _ = std::fs::remove_file(&file);
-
-        if let Err(e) = archive::validate_layout(&staged, &unpacked, unit.format, platform) {
-            outcomes.push(fail(unit, &e.to_string()));
-            continue;
-        }
-
-        // On the staged copy, before anything moves — which is what keeps the
-        // privileged helper out of the quarantine business entirely.
-        emit(&app, progress(&plan, i, total, unit, "clearing-quarantine", 0, None, None));
-        for name in &unpacked.entries {
-            quarantine::clear(&staged.join(name));
-        }
 
         if !unpacked.extras.is_empty() {
             notes.push(format!(
@@ -465,93 +573,30 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
             ));
         }
 
+        reporter.parked(i, unit, "staged", size);
         ready.push(Ready {
+            index: i,
             unit: unit.clone(),
             staged,
             entries: unpacked.entries,
+            size,
             sha: Some(sha),
         });
     }
 
-    // ---- phase two: unprivileged commits ----
-    let mut elevated: Vec<Ready> = Vec::new();
-
-    for r in ready {
-        if r.unit.needs_elevation {
-            elevated.push(r);
-            continue;
-        }
-        let outcome = apply_unprivileged(&app, &plan, &r);
-        outcomes.push(outcome);
-    }
-
-    // ---- phase three: one prompt, if anything still needs one ----
-    if !elevated.is_empty() {
-        let mut ops: Vec<Op> = Vec::new();
-        let mut roots: Vec<PathBuf> = Vec::new();
-
-        for r in &elevated {
-            if !roots.contains(&r.unit.destination) {
-                roots.push(r.unit.destination.clone());
-                ops.push(Op::EnsureRoot { path: r.unit.destination.clone() });
-            }
-            match r.unit.action {
-                Action::Uninstall => {
-                    for name in &r.entries {
-                        let live = r.unit.destination.join(name);
-                        ops.push(Op::Retire { path: live.clone() });
-                        let mut aside = live.into_os_string();
-                        aside.push(format!(".burrow-old-{}", plan.batch));
-                        ops.push(Op::Purge { path: PathBuf::from(aside) });
-                    }
-                }
-                _ => {
-                    for name in &r.entries {
-                        ops.push(Op::Replace {
-                            from: r.staged.join(name),
-                            to: r.unit.destination.join(name),
-                        });
-                    }
-                }
-            }
-        }
-
-        let what = describe(&elevated);
-        let plan_file = {
-            let state = app.state::<AppState>();
-            let p = elevate::build_plan(plan.batch.clone(), what.clone(), ops);
-            elevate::write_plan(&state.cache_dir, &p)?
-        };
-
-        for r in &elevated {
-            emit(&app, progress(&plan, 0, total, &r.unit, "awaiting-authorization", 0, None,
-                                Some(what.clone())));
-        }
-
-        let result = elevate::run_elevated(&helper, &plan_file, &what);
-        let _ = std::fs::remove_file(&plan_file);
-        let mut result_file = plan_file.into_os_string();
-        result_file.push(".result.json");
-        let _ = std::fs::remove_file(PathBuf::from(result_file));
-
-        for r in &elevated {
-            match &result {
-                Elevation::Applied => {
-                    record(&app, r, &plan.batch);
-                    outcomes.push(ok(&r.unit));
-                }
-                Elevation::Cancelled => outcomes.push(cancel_outcome(&r.unit)),
-                Elevation::Failed(e) => outcomes.push(fail(&r.unit, e)),
-            }
-        }
-        if matches!(result, Elevation::Cancelled) && outcomes.iter().any(|o| o.ok) {
-            notes.push(
-                "You cancelled the password prompt, so the plugins that needed \
-                 administrator rights were not installed. Everything else was."
-                    .into(),
-            );
-        }
-    }
+    // ---- phases two and three: the commits, and the prompt ----
+    // Blocking from here to the end: copies into plugin folders, hashes of what
+    // was placed, and a password prompt that returns when the person does.
+    let finished = {
+        let app = app.clone();
+        let reporter = reporter.clone();
+        let batch = plan.batch.clone();
+        tauri::async_runtime::spawn_blocking(move || finish(&app, &reporter, &batch, &helper, ready))
+            .await
+            .map_err(|e| format!("the install stopped unexpectedly: {e}"))?
+    };
+    outcomes.extend(finished.0);
+    notes.extend(finished.1);
 
     let _ = std::fs::remove_dir_all(&staging_root);
     let _ = state::save_ledger(&app.state::<AppState>());
@@ -570,15 +615,176 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
     Ok(outcome)
 }
 
-fn apply_unprivileged(app: &AppHandle, plan: &BatchPlan, r: &Ready) -> UnitOutcome {
-    let result = if r.unit.action == Action::Uninstall {
-        commit::uninstall(&r.unit.destination, &r.entries, &plan.batch).map(|_| Vec::new())
+/// Turn a downloaded file into a staged, validated, de-quarantined payload.
+///
+/// Returns what was unpacked and its size on disk. The download is deleted
+/// whichever way this goes: a file that failed to unpack is not worth keeping,
+/// and one that unpacked has been superseded by its contents.
+fn stage(
+    reporter: &Reporter,
+    index: usize,
+    unit: &PlannedUnit,
+    file: &Path,
+    staged: &Path,
+    platform: Platform,
+    is_image: bool,
+) -> Result<(archive::Unpacked, u64), String> {
+    reporter.phase(index, unit, "extracting", None, None);
+    let mut on_progress = |done: u64, total: Option<u64>| {
+        reporter.bytes(index, unit, "extracting", done, total)
+    };
+    // A disk image is mounted rather than unpacked; everything after this
+    // point is identical either way, which is the whole point of both
+    // returning an `Unpacked`.
+    let opened = if is_image {
+        dmg::extract_app_with(file, staged, &mut on_progress)
     } else {
-        commit::commit(&r.unit.destination, &r.staged, &r.entries, &plan.batch)
+        archive::extract_with(
+            file,
+            staged,
+            unit.format,
+            platform,
+            unit.install_name.as_deref(),
+            &mut on_progress,
+        )
+    };
+    let _ = std::fs::remove_file(file);
+    let unpacked = opened.map_err(|e| e.to_string())?;
+
+    archive::validate_layout(staged, &unpacked, unit.format, platform).map_err(|e| e.to_string())?;
+
+    // On the staged copy, before anything moves — which is what keeps the
+    // privileged helper out of the quarantine business entirely.
+    reporter.phase(index, unit, "clearing-quarantine", None, None);
+    for name in &unpacked.entries {
+        quarantine::clear(&staged.join(name));
+    }
+
+    let size = hashing::payload_size(staged, &unpacked.entries);
+    Ok((unpacked, size))
+}
+
+/// Phases two and three. Returns the outcomes and notes to append.
+fn finish(
+    app: &AppHandle,
+    reporter: &Reporter,
+    batch: &str,
+    helper: &Path,
+    ready: Vec<Ready>,
+) -> (Vec<UnitOutcome>, Vec<String>) {
+    let mut outcomes: Vec<UnitOutcome> = Vec::new();
+    let mut notes: Vec<String> = Vec::new();
+
+    // ---- phase two: unprivileged commits ----
+    let mut elevated: Vec<Ready> = Vec::new();
+
+    for r in ready {
+        if r.unit.needs_elevation {
+            elevated.push(r);
+            continue;
+        }
+        outcomes.push(apply_unprivileged(app, reporter, batch, &r));
+    }
+
+    // ---- phase three: one prompt, if anything still needs one ----
+    if elevated.is_empty() {
+        return (outcomes, notes);
+    }
+
+    // A person who pressed Cancel is not then asked for their password. What
+    // was already staged for an unprivileged folder went in above, because
+    // that asks nothing of them; this would.
+    if cancelled(&app.state::<AppState>(), batch) {
+        outcomes.extend(elevated.iter().map(|r| cancel_outcome(&r.unit)));
+        return (outcomes, notes);
+    }
+
+    let mut ops: Vec<Op> = Vec::new();
+    let mut roots: Vec<PathBuf> = Vec::new();
+
+    for r in &elevated {
+        if !roots.contains(&r.unit.destination) {
+            roots.push(r.unit.destination.clone());
+            ops.push(Op::EnsureRoot { path: r.unit.destination.clone() });
+        }
+        match r.unit.action {
+            Action::Uninstall => {
+                for name in &r.entries {
+                    let live = r.unit.destination.join(name);
+                    ops.push(Op::Retire { path: live.clone() });
+                    let mut aside = live.into_os_string();
+                    aside.push(format!(".burrow-old-{batch}"));
+                    ops.push(Op::Purge { path: PathBuf::from(aside) });
+                }
+            }
+            _ => {
+                for name in &r.entries {
+                    ops.push(Op::Replace {
+                        from: r.staged.join(name),
+                        to: r.unit.destination.join(name),
+                    });
+                }
+            }
+        }
+    }
+
+    let what = describe(&elevated);
+    let plan_file = {
+        let state = app.state::<AppState>();
+        let p = elevate::build_plan(batch.to_string(), what.clone(), ops);
+        match elevate::write_plan(&state.cache_dir, &p) {
+            Ok(f) => f,
+            Err(e) => {
+                outcomes.extend(elevated.iter().map(|r| fail(&r.unit, &e)));
+                return (outcomes, notes);
+            }
+        }
+    };
+
+    for r in &elevated {
+        reporter.phase(r.index, &r.unit, "awaiting-authorization", None, Some(what.clone()));
+    }
+
+    let result = elevate::run_elevated(helper, &plan_file, &what);
+    let _ = std::fs::remove_file(&plan_file);
+    let mut result_file = plan_file.into_os_string();
+    result_file.push(".result.json");
+    let _ = std::fs::remove_file(PathBuf::from(result_file));
+
+    for r in &elevated {
+        match &result {
+            Elevation::Applied => {
+                record(app, reporter, r);
+                outcomes.push(ok(&r.unit));
+            }
+            Elevation::Cancelled => outcomes.push(cancel_outcome(&r.unit)),
+            Elevation::Failed(e) => outcomes.push(fail(&r.unit, e)),
+        }
+    }
+    if matches!(result, Elevation::Cancelled) && outcomes.iter().any(|o| o.ok) {
+        notes.push(
+            "You cancelled the password prompt, so the plugins that needed \
+             administrator rights were not installed. Everything else was."
+                .into(),
+        );
+    }
+
+    (outcomes, notes)
+}
+
+fn apply_unprivileged(app: &AppHandle, reporter: &Reporter, batch: &str, r: &Ready) -> UnitOutcome {
+    let result = if r.unit.action == Action::Uninstall {
+        reporter.phase(r.index, &r.unit, "removing", None, None);
+        commit::uninstall(&r.unit.destination, &r.entries, batch).map(|_| Vec::new())
+    } else {
+        reporter.phase(r.index, &r.unit, "committing", Some(r.size), None);
+        commit::commit_with(&r.unit.destination, &r.staged, &r.entries, batch, &mut |done| {
+            reporter.bytes(r.index, &r.unit, "committing", done, Some(r.size))
+        })
     };
     match result {
         Ok(_) => {
-            record(app, r, &plan.batch);
+            record(app, reporter, r);
             ok(&r.unit)
         }
         Err(e) => fail(&r.unit, &e.to_string()),
@@ -586,7 +792,7 @@ fn apply_unprivileged(app: &AppHandle, plan: &BatchPlan, r: &Ready) -> UnitOutco
 }
 
 /// Update the ledger to match what just happened.
-fn record(app: &AppHandle, r: &Ready, batch: &str) {
+fn record(app: &AppHandle, reporter: &Reporter, r: &Ready) {
     let state = app.state::<AppState>();
     let Ok(mut led) = state.ledger.lock() else { return };
 
@@ -595,10 +801,16 @@ fn record(app: &AppHandle, r: &Ready, batch: &str) {
         return;
     }
 
-    let payload_sha = burrow_core::hashing::hash_entries(&r.unit.destination, &r.entries)
+    // Hashed where it landed, not where it was staged: the ledger's claim is
+    // about the bytes in the plugin folder, and this is the one moment those
+    // are known to be exactly what Burrow put there.
+    reporter.phase(r.index, &r.unit, "verifying", Some(r.size), None);
+    let payload_sha =
+        hashing::hash_entries_with(&r.unit.destination, &r.entries, &mut |done| {
+            reporter.bytes(r.index, &r.unit, "verifying", done, Some(r.size))
+        })
         .unwrap_or_else(|_| String::new());
     let _ = r.sha;
-    let _ = batch;
 
     led.upsert(ledger::LedgerEntry {
         slug: r.unit.slug.clone(),
@@ -691,29 +903,6 @@ fn helper_path(app: &AppHandle) -> PathBuf {
     PathBuf::from(name)
 }
 
-fn progress(
-    plan: &BatchPlan,
-    index: usize,
-    total: usize,
-    unit: &PlannedUnit,
-    phase: &'static str,
-    bytes_done: u64,
-    bytes_total: Option<u64>,
-    message: Option<String>,
-) -> Progress {
-    Progress {
-        batch: plan.batch.clone(),
-        index,
-        total,
-        slug: unit.slug.clone(),
-        format: unit.format,
-        phase,
-        bytes_done,
-        bytes_total,
-        message,
-    }
-}
-
 fn ok(u: &PlannedUnit) -> UnitOutcome {
     UnitOutcome {
         slug: u.slug.clone(),
@@ -744,5 +933,45 @@ fn cancel_outcome(u: &PlannedUnit) -> UnitOutcome {
         ok: false,
         cancelled: true,
         error: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The reporter's whole reason to exist: a byte count arriving on every
+    /// chunk must not go out on every chunk.
+    #[test]
+    fn a_byte_count_is_rate_limited_but_never_dropped_at_the_end() {
+        let g = Gate::new();
+        // The first one goes: nothing has been sent yet.
+        assert!(g.due(10, Some(100)));
+        g.mark();
+        // Straight after, an intermediate count is held back...
+        assert!(!g.due(20, Some(100)));
+        // ...but reaching the total is not.
+        assert!(g.due(100, Some(100)));
+    }
+
+    #[test]
+    fn a_count_with_no_total_is_still_rate_limited() {
+        let g = Gate::new();
+        assert!(g.due(10, None));
+        g.mark();
+        assert!(!g.due(20, None));
+    }
+
+    #[test]
+    fn the_gate_reopens_once_the_gap_has_passed() {
+        // A gate that has been open for a second, with its last emit exactly
+        // one gap ago — backdated rather than slept for.
+        let g = Gate {
+            started: Instant::now() - std::time::Duration::from_secs(1),
+            last: AtomicU64::new(1000 - Gate::MIN_GAP_MS),
+        };
+        assert!(g.due(20, Some(100)));
+        g.mark();
+        assert!(!g.due(30, Some(100)));
     }
 }

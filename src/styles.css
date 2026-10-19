@@ -457,8 +457,71 @@ button.btn.danger:hover:not(:disabled) { filter: brightness(1.08); }
   background: var(--panel-2);
   overflow: hidden;
   margin-top: 8px;
+  position: relative;
 }
 .progress > i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+
+/*
+ * A phase with nothing to count against — a tarball, a wait for a password,
+ * the re-read of the list — keeps moving so it is visibly alive. A stopped bar
+ * and a stopped app look the same, and the difference is the whole point.
+ */
+.progress.indeterminate > i {
+  position: absolute;
+  left: 0;
+  width: 30%;
+  transition: none;
+  animation: progress-slide 1.4s ease-in-out infinite;
+}
+@keyframes progress-slide {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress.indeterminate > i { animation-duration: 3s; }
+}
+
+.row-progress { margin-top: 2px; }
+.progress-text {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.progress-note { color: var(--dim); }
+
+/* ---- the job strip ------------------------------------------------------ */
+
+/*
+ * Above the banners and below the tools, on every tab: a batch started from
+ * "Update all" belongs to no row, and the row it does belong to may be on
+ * another tab or under the fold.
+ */
+.job {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 10px 14px 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.job-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.job-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.job-text strong { color: var(--text); font-weight: 600; }
+.job-bar { margin-top: 9px; }
 
 .inline-err { color: var(--bad); font-size: 12.5px; margin-top: 6px; }
 a { color: var(--accent); }

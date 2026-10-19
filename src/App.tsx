@@ -25,6 +25,8 @@ import { RefreshTools } from './components/RefreshTools'
 import { VideoModal } from './components/VideoModal'
 import { ComposeModal } from './components/ComposeModal'
 import { UpdateBanner } from './components/UpdateBanner'
+import { JobStrip } from './components/JobStrip'
+import type { JobState } from './components/JobStrip'
 import { filmDelay, isFilming, runFilm } from './film'
 
 /**
@@ -68,11 +70,16 @@ export function App() {
   const [catalog, setCatalog] = useState<CatalogInfo | null>(null)
   const [plugins, setPlugins] = useState<PluginView[]>([])
   const [progress, setProgress] = useState<Record<string, Progress>>({})
+  /* The newest event of the batch, whichever unit it was for: what the strip
+     at the top shows. `progress` keys by unit for the rows. */
+  const [latest, setLatest] = useState<Progress | null>(null)
+  const [job, setJob] = useState<JobState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notes, setNotes] = useState<string[]>([])
   const [filmQuery, setFilmQuery] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
+  const [checking, setChecking] = useState(false)
   const [lastScan, setLastScan] = useState<number | null>(null)
   const [refreshResult, setRefreshResult] = useState<string | null>(null)
   const [playing, setPlaying] = useState<PluginView | null>(null)
@@ -117,9 +124,11 @@ export function App() {
     ;(async () => {
       const offP = await onProgress(p => {
         setProgress(prev => ({ ...prev, [`${p.slug}:${p.format}`]: p }))
+        setLatest(p)
       })
       const offF = await onFinished((o: BatchOutcome) => {
         setProgress({})
+        setLatest(null)
         setNotes(o.notes)
         const failed = o.units.filter(u => !u.ok && !u.cancelled)
         if (failed.length > 0) {
@@ -206,6 +215,7 @@ export function App() {
   /** Fetch the plugin list. The only one of the two that uses the network. */
   const refresh = useCallback(async () => {
     setBusy(true)
+    setChecking(true)
     setError(null)
     setRefreshResult(null)
     const before = plugins
@@ -218,6 +228,7 @@ export function App() {
       setError(String(err))
     } finally {
       setBusy(false)
+      setChecking(false)
     }
   }, [plugins, summarise])
 
@@ -368,24 +379,63 @@ export function App() {
     [scanClaimable],
   )
 
+  /*
+   * A batch, from the button to the list being current again.
+   *
+   * The three stages are what the strip at the top reports, and the last one
+   * matters as much as the middle: re-reading the list after an install means
+   * reading every plist and, for an application, hashing it. With nothing on
+   * screen for that stretch it looked like the app had stopped — and before the
+   * backend moved that work off the window's own thread, it had.
+   */
   const runOps = useCallback(
     async (requests: OpRequest[]) => {
       if (requests.length === 0) return
       setBusy(true)
       setError(null)
       setNotes([])
+      setJob({ stage: 'planning', plan: null, stopping: false })
       try {
         const plan = await api.planBatch(requests)
+        setJob({ stage: 'running', plan, stopping: false })
         await api.runBatch(plan)
+        setJob(j => ({ stage: 'finishing', plan, stopping: j?.stopping ?? false }))
         await reload()
       } catch (err) {
         setError(String(err))
       } finally {
         setBusy(false)
+        setJob(null)
         setProgress({})
+        setLatest(null)
       }
     },
     [reload],
+  )
+
+  /**
+   * Ask the running batch to stop.
+   *
+   * The backend checks between units and between download chunks, and what
+   * has already been downloaded is still installed — see JobStrip for why the
+   * strip says so. The flag is set here first so the button answers at once,
+   * whatever the round trip takes.
+   */
+  const cancelJob = useCallback(async () => {
+    const batch = job?.plan?.batch
+    if (!batch || job?.stage !== 'running') return
+    setJob(j => (j ? { ...j, stopping: true } : j))
+    try {
+      await api.cancelBatch(batch)
+    } catch (err) {
+      setError(String(err))
+    }
+  }, [job])
+
+  /** A plugin's name from its slug, for the strip. Falls back to the slug. */
+  const nameOf = useCallback(
+    (slug: string) => plugins.find(p => p.slug === slug)?.name ?? slug,
+    [plugins],
   )
 
   const saveSettings = useCallback(
@@ -494,12 +544,15 @@ export function App() {
       <RefreshTools
         catalog={catalog}
         busy={busy}
+        checking={checking}
         scanning={scanning}
         lastScanEpoch={lastScan}
         result={refreshResult}
         onRescan={rescan}
         onCheck={refresh}
       />
+
+      <JobStrip job={job} latest={latest} nameOf={nameOf} onCancel={cancelJob} />
 
       {update?.available && !updateDismissed && (
         <UpdateBanner

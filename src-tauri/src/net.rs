@@ -46,7 +46,13 @@ pub fn user_agent() -> String {
 pub fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(user_agent())
-        .timeout(Duration::from_secs(60))
+        // A *read* timeout, not `timeout()`. That one is a deadline on the whole
+        // request, body included, and at sixty seconds it failed every download
+        // that took longer than a minute — an application on an ordinary
+        // connection — with "the connection timed out", which is exactly what it
+        // was not. What a download needs caught is a stall: a minute with no
+        // bytes at all.
+        .read_timeout(Duration::from_secs(60))
         .connect_timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if attempt.previous().len() >= 5 {
@@ -136,18 +142,35 @@ pub async fn fetch_catalog(
 /// Progress callback: (bytes so far, total if the server said).
 pub type OnProgress<'a> = &'a (dyn Fn(u64, Option<u64>) + Send + Sync);
 
+/// Asked between chunks: should this download stop now?
+pub type ShouldStop<'a> = &'a (dyn Fn() -> bool + Send + Sync);
+
+/// How a download ended.
+#[derive(Debug)]
+pub enum Download {
+    /// Every byte arrived, and this is the SHA-256 of them.
+    Complete { sha256: String },
+    /// The caller asked to stop. The partial file is already gone.
+    Cancelled,
+}
+
 /// Download an archive to `dest`, streaming, with progress.
 ///
 /// Returns the SHA-256 of what arrived. The caller compares it against the
 /// digest GitHub publishes for the asset; where there is none to compare
 /// against, it is still recorded in the ledger so a later scan can tell
 /// whether the bytes on disk are still the bytes that were installed.
+///
+/// `should_stop` is consulted between chunks, so a cancelled batch stops
+/// within one chunk of being asked rather than at the end of the file — for
+/// an application that is the difference between a second and a minute.
 pub async fn download(
     client: &reqwest::Client,
     url: &str,
     dest: &Path,
     on_progress: OnProgress<'_>,
-) -> Result<String, String> {
+    should_stop: ShouldStop<'_>,
+) -> Result<Download, String> {
     let resp = client.get(url).send().await.map_err(|e| friendly(&e))?;
     if !resp.status().is_success() {
         return Err(format!(
@@ -174,6 +197,11 @@ pub async fn download(
     let mut stream = resp.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
+        if should_stop() {
+            drop(file);
+            let _ = tokio::fs::remove_file(dest).await;
+            return Ok(Download::Cancelled);
+        }
         let chunk = chunk.map_err(|e| friendly(&e))?;
         seen += chunk.len() as u64;
         if seen > MAX_DOWNLOAD {
@@ -192,7 +220,7 @@ pub async fn download(
     use tokio::io::AsyncWriteExt;
     file.flush().await.map_err(|e| e.to_string())?;
 
-    Ok(hex::encode(hasher.finalize()))
+    Ok(Download::Complete { sha256: hex::encode(hasher.finalize()) })
 }
 
 /// Turn a transport error into something worth showing a person.

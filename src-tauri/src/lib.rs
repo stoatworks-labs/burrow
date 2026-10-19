@@ -26,6 +26,28 @@ mod update;
 use state::AppState;
 use tauri::Manager;
 
+/// Run a command's body on the blocking pool, off the thread the window lives on.
+///
+/// ⚠️ A `#[tauri::command]` that is not `async` runs **inline in the IPC
+/// handler**, and on macOS that is the webview's message delegate on the main
+/// thread: for as long as the body takes, nothing repaints, no click lands and
+/// the window is, to the person holding the mouse, hung. That is fine for a
+/// command that reads a mutex and returns; it is not fine for one that probes
+/// every plugin folder, reads every bundle's plist, or hashes an installed
+/// application. Every command that touches the disk goes through here.
+///
+/// `spawn_blocking` rather than `async_runtime::spawn`: the body is plain
+/// synchronous I/O, and parking it on one of the runtime's worker threads would
+/// stall whichever async work — a catalogue refresh, an update check — shared
+/// that thread.
+pub(crate) async fn off_main<T: Send + 'static>(
+    body: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(body)
+        .await
+        .map_err(|e| format!("the work stopped unexpectedly: {e}"))?
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

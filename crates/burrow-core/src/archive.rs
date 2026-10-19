@@ -408,6 +408,27 @@ pub fn extract(
     platform: Platform,
     install_name: Option<&str>,
 ) -> Result<Unpacked, ArchiveError> {
+    extract_with(src, dest, format, platform, install_name, &mut |_, _| {})
+}
+
+/// Progress through an unpack: bytes written so far, and the total if the
+/// container declares one.
+///
+/// A zip's central directory says how big every member is, so the total is
+/// known before the first byte is written. A tarball declares nothing up front
+/// — see `unpack_tgz` — so its total is `None` and the bar it feeds is
+/// indeterminate.
+pub type OnProgress<'a> = &'a mut dyn FnMut(u64, Option<u64>);
+
+/// [`extract`], reporting progress as members are written.
+pub fn extract_with(
+    src: &Path,
+    dest: &Path,
+    format: Format,
+    platform: Platform,
+    install_name: Option<&str>,
+    on_progress: OnProgress<'_>,
+) -> Result<Unpacked, ArchiveError> {
     let mut head = [0u8; 4];
     {
         use std::io::Read;
@@ -425,9 +446,9 @@ pub fn extract(
     }
     fs::create_dir_all(dest)?;
     if zip {
-        unpack_zip(src, dest)?;
+        unpack_zip(src, dest, on_progress)?;
     } else {
-        unpack_tgz(src, dest)?;
+        unpack_tgz(src, dest, on_progress)?;
     }
 
     collect_payload(dest, format, platform, install_name)
@@ -454,7 +475,7 @@ fn member_target(raw: &str, dest: &Path) -> Result<Option<PathBuf>, ArchiveError
     Ok(Some(out))
 }
 
-fn unpack_zip(zip_path: &Path, dest: &Path) -> Result<(), ArchiveError> {
+fn unpack_zip(zip_path: &Path, dest: &Path, on_progress: OnProgress<'_>) -> Result<(), ArchiveError> {
     let file = fs::File::open(zip_path)?;
     let mut zip = zip::ZipArchive::new(file)
         .map_err(|e| ArchiveError::NotAZip(e.to_string()))?;
@@ -469,11 +490,17 @@ fn unpack_zip(zip_path: &Path, dest: &Path) -> Result<(), ArchiveError> {
         return Err(ArchiveError::TooLarge(declared));
     }
 
+    // Against the declared sizes rather than the bytes actually written, so
+    // the count and the total are in the same units and a member that is
+    // skipped as debris still moves the bar past its share.
+    let mut done = 0u64;
+    on_progress(0, Some(declared));
     for i in 0..zip.len() {
         let mut member = zip
             .by_index(i)
             .map_err(|e| ArchiveError::NotAZip(e.to_string()))?;
         let raw = member.name().to_string();
+        done += member.size();
 
         if let Some(mode) = member.unix_mode() {
             const S_IFMT: u32 = 0o170000;
@@ -484,6 +511,7 @@ fn unpack_zip(zip_path: &Path, dest: &Path) -> Result<(), ArchiveError> {
         }
 
         let Some(out) = member_target(&raw, dest)? else {
+            on_progress(done, Some(declared));
             continue;
         };
 
@@ -507,6 +535,7 @@ fn unpack_zip(zip_path: &Path, dest: &Path) -> Result<(), ArchiveError> {
                 let _ = fs::set_permissions(&out, fs::Permissions::from_mode(mode & 0o777));
             }
         }
+        on_progress(done, Some(declared));
     }
     Ok(())
 }
@@ -518,7 +547,7 @@ fn unpack_zip(zip_path: &Path, dest: &Path) -> Result<(), ArchiveError> {
 /// are applied to the *decompressed* stream as it is read, because a tarball
 /// declares no total size up front: a gzip bomb is a stream that never ends,
 /// not a header that admits to being enormous.
-fn unpack_tgz(src: &Path, dest: &Path) -> Result<(), ArchiveError> {
+fn unpack_tgz(src: &Path, dest: &Path, on_progress: OnProgress<'_>) -> Result<(), ArchiveError> {
     let file = fs::File::open(src)?;
     let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
     let mut count = 0usize;
@@ -575,6 +604,7 @@ fn unpack_tgz(src: &Path, dest: &Path) -> Result<(), ArchiveError> {
         }
         #[cfg(not(unix))]
         let _ = mode;
+        on_progress(total, None);
     }
     Ok(())
 }

@@ -152,8 +152,18 @@ pub fn save_ledger(state: &AppState) -> Result<(), String> {
 // commands
 // ---------------------------------------------------------------------------
 
+/// Where things can go on this machine, and which hosts are here.
+///
+/// Off the main thread: `dest::discover` proves each destination writable by
+/// creating a file in it, and the host detection reads `/Applications`.
 #[tauri::command]
-pub fn get_environment(app: AppHandle, state: State<'_, AppState>) -> Result<Environment, String> {
+pub async fn get_environment(app: AppHandle) -> Result<Environment, String> {
+    crate::off_main(move || environment(&app)).await
+}
+
+/// The body of [`get_environment`], for the commands that need it inline.
+pub fn environment(app: &AppHandle) -> Result<Environment, String> {
+    let state = app.state::<AppState>();
     let settings = state.settings.lock().map_err(|_| "state is poisoned")?;
     let platform = Platform::current();
 
@@ -464,9 +474,21 @@ pub enum Bucket {
     NotInstalled,
 }
 
+/// Every plugin the catalogue knows, reconciled against this machine.
+///
+/// Off the main thread, and this is the command that made the app hang: the
+/// reconciliation reads a plist per installed bundle and, where the ledger has
+/// to be checked, hashes the payload — an installed application is hundreds of
+/// megabytes — and it runs after every install, on every rescan and at launch.
 #[tauri::command]
-pub fn list_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<PluginView>, String> {
-    let env = get_environment(app, state.clone())?;
+pub async fn list_plugins(app: AppHandle) -> Result<Vec<PluginView>, String> {
+    crate::off_main(move || plugin_views(&app)).await
+}
+
+/// The body of [`list_plugins`], for the commands that return a refreshed list.
+pub fn plugin_views(app: &AppHandle) -> Result<Vec<PluginView>, String> {
+    let env = environment(app)?;
+    let state = app.state::<AppState>();
     let catalog = state.catalog.lock().map_err(|_| "state is poisoned")?;
     let Some(cat) = catalog.as_ref() else {
         return Ok(Vec::new());
@@ -619,8 +641,8 @@ fn bucket_for(slots: &[Slot]) -> Bucket {
 }
 
 #[tauri::command]
-pub fn rescan(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<PluginView>, String> {
-    list_plugins(app, state)
+pub async fn rescan(app: AppHandle) -> Result<Vec<PluginView>, String> {
+    list_plugins(app).await
 }
 
 fn ensure_demos(state: &AppState) -> Result<(), String> {

@@ -114,12 +114,32 @@ impl std::fmt::Display for CommitError {
 /// Applications folder — and silently dropping it is how a payload arrives
 /// looking complete and broken.
 pub fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
-    copy_within(from, to, to)
+    copy_tree_with(from, to, &mut |_| {})
+}
+
+/// Called with the running total of bytes copied so far.
+///
+/// Per file, not per chunk: `fs::copy` hands the whole file to the kernel,
+/// which is the fast path on every platform this runs on, so the count moves
+/// in file-sized steps. An application is thousands of small files and a
+/// handful of large ones, and a bar that moves per file is honest enough.
+pub type OnBytes<'a> = &'a mut dyn FnMut(u64);
+
+/// [`copy_tree`], reporting the running byte count as it goes.
+pub fn copy_tree_with(from: &Path, to: &Path, on_bytes: OnBytes<'_>) -> io::Result<()> {
+    let mut done = 0u64;
+    copy_within(from, to, to, &mut done, on_bytes)
 }
 
 /// `root` is the top of the tree being copied, which is what a symlink target
 /// has to stay inside. It is threaded through the recursion unchanged.
-fn copy_within(from: &Path, to: &Path, root: &Path) -> io::Result<()> {
+fn copy_within(
+    from: &Path,
+    to: &Path,
+    root: &Path,
+    done: &mut u64,
+    on_bytes: OnBytes<'_>,
+) -> io::Result<()> {
     let meta = fs::symlink_metadata(from)?;
     if meta.file_type().is_symlink() {
         return copy_symlink(from, to, root);
@@ -128,7 +148,8 @@ fn copy_within(from: &Path, to: &Path, root: &Path) -> io::Result<()> {
         if let Some(p) = to.parent() {
             fs::create_dir_all(p)?;
         }
-        fs::copy(from, to)?;
+        *done += fs::copy(from, to)?;
+        on_bytes(*done);
         return Ok(());
     }
     fs::create_dir_all(to)?;
@@ -139,15 +160,16 @@ fn copy_within(from: &Path, to: &Path, root: &Path) -> io::Result<()> {
         if ft.is_symlink() {
             copy_symlink(&entry.path(), &target, root)?;
         } else if ft.is_dir() {
-            copy_within(&entry.path(), &target, root)?;
+            copy_within(&entry.path(), &target, root, done, on_bytes)?;
         } else if ft.is_file() {
-            fs::copy(entry.path(), &target)?;
+            *done += fs::copy(entry.path(), &target)?;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 let mode = entry.metadata()?.permissions().mode();
                 let _ = fs::set_permissions(&target, fs::Permissions::from_mode(mode));
             }
+            on_bytes(*done);
         }
     }
     Ok(())
@@ -228,6 +250,21 @@ pub fn commit(
     entries: &[String],
     batch: &str,
 ) -> Result<Vec<String>, CommitError> {
+    commit_with(dest, staged, entries, batch, &mut |_| {})
+}
+
+/// [`commit`], reporting the bytes copied into the destination as it goes.
+///
+/// The copy is the only part that takes time — the renames that follow are
+/// instantaneous whatever the payload's size — so the count runs to the
+/// payload's size and the commit is done the moment it gets there.
+pub fn commit_with(
+    dest: &Path,
+    staged: &Path,
+    entries: &[String],
+    batch: &str,
+    on_bytes: OnBytes<'_>,
+) -> Result<Vec<String>, CommitError> {
     fs::create_dir_all(dest).map_err(|e| CommitError::Io {
         entry: dest.display().to_string(),
         source: e,
@@ -237,11 +274,20 @@ pub fn commit(
     // renames below cannot fail with EXDEV.
     let work = staging_dir(dest, batch);
     let _ = remove_any(&work);
+    // One running count across every entry: downpour's two bundles are one
+    // payload to the person watching the bar.
+    let mut done = 0u64;
     for name in entries {
-        copy_tree(&staged.join(name), &work.join(name)).map_err(|e| {
+        let mut so_far = 0u64;
+        copy_tree_with(&staged.join(name), &work.join(name), &mut |n| {
+            so_far = n;
+            on_bytes(done + n);
+        })
+        .map_err(|e| {
             let _ = remove_any(&work);
             CommitError::Io { entry: name.clone(), source: e }
         })?;
+        done += so_far;
     }
 
     // (entry, was_there_before) for everything committed so far, so a failure
@@ -499,6 +545,26 @@ mod tests {
 
         assert_eq!(read_bin(dest.path(), "Downpour.bundle"), b"a");
         assert_eq!(read_bin(dest.path(), "Downpour Over.bundle"), b"b");
+    }
+
+    #[test]
+    fn the_byte_count_runs_across_every_entry_to_the_payload_size() {
+        // What the progress bar is drawn from: one count for the whole payload,
+        // rising monotonically, ending exactly on what was copied.
+        let staged = TempDir::new().unwrap();
+        let dest = TempDir::new().unwrap();
+        bundle(staged.path(), "Downpour.bundle", b"aaaa");
+        bundle(staged.path(), "Downpour Over.bundle", b"bb");
+        let entries = vec!["Downpour.bundle".to_string(), "Downpour Over.bundle".to_string()];
+
+        let mut seen: Vec<u64> = Vec::new();
+        commit_with(dest.path(), staged.path(), &entries, &new_batch_id(), &mut |n| seen.push(n))
+            .unwrap();
+
+        assert!(seen.windows(2).all(|w| w[0] <= w[1]), "must only rise: {seen:?}");
+        let expected = crate::hashing::payload_size(staged.path(), &entries);
+        assert_eq!(seen.last().copied(), Some(expected));
+        assert_eq!(expected, (4 + 2 + 2 * "<plist/>".len()) as u64);
     }
 
     #[test]

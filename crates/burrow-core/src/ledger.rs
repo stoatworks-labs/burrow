@@ -268,6 +268,22 @@ pub fn reconcile_one(
             None => {}
         }
     }
+    // Does the payload still hash to what the ledger recorded?
+    //
+    // Asked lazily, and answered at most once. Hashing reads every byte of the
+    // payload, and for an installed application that is hundreds of megabytes
+    // — on every scan, for every entry, and this used to run unconditionally
+    // and then a second time for the version below. On macOS the plist settles
+    // both questions for almost everything, and the hash is never needed.
+    let mut unchanged: Option<bool> = None;
+    let mut recorded_and_unchanged = |rec: &LedgerEntry| -> bool {
+        *unchanged.get_or_insert_with(|| {
+            hashing::hash_entries(dest, &rec.entries)
+                .map(|h| h == rec.payload_sha256)
+                .unwrap_or(false)
+        })
+    };
+
     // A payload the ledger records, still hashing to what was recorded, is not
     // foreign whatever its identifier says — Burrow either installed it or the
     // user adopted it deliberately, and both are statements of ownership that
@@ -275,12 +291,7 @@ pub fn reconcile_one(
     //
     // The hash is what keeps this honest: swap the payload for somebody else's
     // afterwards and it stops matching, and the foreign check applies again.
-    let recorded_and_unchanged = record.is_some_and(|rec| {
-        hashing::hash_entries(dest, &rec.entries)
-            .map(|h| h == rec.payload_sha256)
-            .unwrap_or(false)
-    });
-    if saw_foreign && !saw_ours && !recorded_and_unchanged {
+    if saw_foreign && !saw_ours && !record.is_some_and(&mut recorded_and_unchanged) {
         base.foreign = true;
         base.state = InstallState::NotInstalled;
         return base;
@@ -293,10 +304,7 @@ pub fn reconcile_one(
         // The ledger is believed only if the bytes still match what it
         // describes. Without this gate it would keep asserting a version for a
         // payload somebody has since replaced by hand.
-        let unchanged = hashing::hash_entries(dest, &rec.entries)
-            .map(|h| h == rec.payload_sha256)
-            .unwrap_or(false);
-        unchanged.then(|| (rec.version.clone(), VersionSource::Ledger))
+        recorded_and_unchanged(rec).then(|| (rec.version.clone(), VersionSource::Ledger))
     } else {
         None
     };

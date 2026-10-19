@@ -245,6 +245,10 @@ const progressHandlers: Array<(p: Progress) => void> = []
 const finishedHandlers: Array<(o: BatchOutcome) => void> = []
 const updateHandlers: Array<(p: UpdateProgress) => void> = []
 
+/** The batch `cancel_batch` was last asked to stop, honoured the way the
+    backend honours it: between units and between download chunks. */
+let cancelledBatch: string | null = null
+
 /** The version this preview claims to be running. */
 const MOCK_VERSION = '0.2.2'
 const MOCK_NEXT = '0.2.3'
@@ -311,6 +315,9 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
 
     case 'list_plugins':
     case 'rescan': {
+      // The real one reads every plist and can hash an application. Under
+      // `?job=slow` it takes long enough to see the strip's last stage.
+      if (p('job') === 'slow') await new Promise(r => setTimeout(r, 1800))
       const entries = await catalog()
       const has = installedSpec()
       const dests = destinations()
@@ -433,40 +440,113 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return plan as T
     }
 
+    /*
+     * The batch, at the real cadence: the backend reports a byte count at
+     * most ten times a second, and each phase that can count does. `?job=slow`
+     * stretches every phase so the strip, the row and the Cancel button can be
+     * looked at; the other modes hurry through so a screenshot of the outcome
+     * does not wait on them.
+     */
     case 'run_batch': {
       const plan = args!.plan as BatchPlan
       const mode = p('job', 'ok')
-      for (const [i, unit] of plan.units.entries()) {
-        for (const phase of ['downloading', 'extracting', 'committing'] as const) {
-          progressHandlers.forEach(h =>
-            h({
-              batch: plan.batch,
-              index: i,
-              total: plan.units.length,
-              slug: unit.slug,
-              format: unit.format,
-              phase,
-              bytesDone: phase === 'downloading' ? (unit.size ?? 0) : 0,
-              bytesTotal: unit.size,
-              message: null,
-            }),
-          )
-          await new Promise(r => setTimeout(r, 120))
+      const slow = mode === 'slow'
+      const steps = slow ? 25 : 4
+      const tick = slow ? 100 : 30
+      cancelledBatch = null
+      const stopped: string[] = []
+
+      const emit = (
+        i: number,
+        unit: BatchPlan['units'][number],
+        phase: Progress['phase'],
+        bytesDone: number,
+        bytesTotal: number | null,
+        message: string | null = null,
+      ) =>
+        progressHandlers.forEach(h =>
+          h({
+            batch: plan.batch,
+            index: i,
+            total: plan.units.length,
+            slug: unit.slug,
+            format: unit.format,
+            phase,
+            bytesDone,
+            bytesTotal,
+            message,
+          }),
+        )
+      const count = async (
+        i: number,
+        unit: BatchPlan['units'][number],
+        phase: Progress['phase'],
+        total: number,
+      ) => {
+        for (let k = 0; k <= steps; k++) {
+          if (cancelledBatch === plan.batch && phase === 'downloading') return false
+          emit(i, unit, phase, Math.round((total * k) / steps), total)
+          await new Promise(r => setTimeout(r, tick))
         }
+        return true
       }
+
+      for (const [i, unit] of plan.units.entries()) {
+        if (cancelledBatch === plan.batch) {
+          stopped.push(`${unit.slug}:${unit.format}`)
+          continue
+        }
+        if (unit.action === 'uninstall') continue
+        const size = unit.size ?? 4_000_000
+        if (!(await count(i, unit, 'downloading', size))) {
+          stopped.push(`${unit.slug}:${unit.format}`)
+          continue
+        }
+        // A tarball has no total; everything else unpacks against one.
+        if (unit.format === 'companion') {
+          emit(i, unit, 'extracting', 0, null)
+          await new Promise(r => setTimeout(r, tick * 4))
+        } else {
+          await count(i, unit, 'extracting', size * 2)
+        }
+        emit(i, unit, 'clearing-quarantine', 0, null)
+        await new Promise(r => setTimeout(r, tick))
+        emit(i, unit, 'staged', size * 2, size * 2)
+      }
+      for (const [i, unit] of plan.units.entries()) {
+        if (stopped.includes(`${unit.slug}:${unit.format}`)) continue
+        if (unit.action === 'uninstall') {
+          emit(i, unit, 'removing', 0, null)
+          await new Promise(r => setTimeout(r, tick * 3))
+          continue
+        }
+        if (unit.needsElevation) {
+          emit(i, unit, 'awaiting-authorization', 0, null,
+            `Stoatworks Burrow needs permission to update plugins in ${unit.destination}.`)
+          await new Promise(r => setTimeout(r, slow ? 2500 : tick * 4))
+          continue
+        }
+        const size = (unit.size ?? 4_000_000) * 2
+        await count(i, unit, 'committing', size)
+        await count(i, unit, 'verifying', size)
+      }
+
       const outcome: BatchOutcome = {
         batch: plan.batch,
         units: plan.units.map(u => ({
           slug: u.slug,
           format: u.format,
           destinationId: u.destinationId,
-          ok: mode === 'ok',
-          cancelled: mode === 'cancelled' && u.needsElevation,
+          ok: (mode === 'ok' || slow) && !stopped.includes(`${u.slug}:${u.format}`),
+          cancelled:
+            (mode === 'cancelled' && u.needsElevation) ||
+            stopped.includes(`${u.slug}:${u.format}`),
           error: mode === 'failed' ? 'the download failed (503)' : null,
         })),
         notes:
-          mode === 'ok' ? ['Restart your host to pick up the change.'] : [],
+          mode === 'ok' || slow ? ['Restart your host to pick up the change.'] : [],
       }
+      cancelledBatch = null
       finishedHandlers.forEach(h => h(outcome))
       return outcome as T
     }
@@ -615,6 +695,9 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     }
 
     case 'cancel_batch':
+      cancelledBatch = (args as any).batch as string
+      return undefined as T
+
     case 'open_external':
     case 'reveal_path':
       return undefined as T

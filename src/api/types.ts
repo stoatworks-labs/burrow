@@ -321,12 +321,23 @@ export interface BatchOutcome {
   notes: string[]
 }
 
+/**
+ * Where a unit is, as the backend names it.
+ *
+ * `staged` is a unit that has been downloaded and unpacked and is waiting for
+ * the batch to reach the commits — every unit downloads before any installs.
+ * `verifying` is the hash of what was just placed, taken for the ledger; it
+ * follows `committing` and can take as long for an application.
+ */
 export type Phase =
   | 'downloading'
   | 'extracting'
   | 'clearing-quarantine'
+  | 'staged'
   | 'awaiting-authorization'
   | 'committing'
+  | 'removing'
+  | 'verifying'
 
 export interface Progress {
   batch: string

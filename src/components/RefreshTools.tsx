@@ -24,6 +24,7 @@ import type { CatalogInfo } from '../api/types'
 export function RefreshTools({
   catalog,
   busy,
+  checking,
   scanning,
   lastScanEpoch,
   result,
@@ -31,7 +32,11 @@ export function RefreshTools({
   onCheck,
 }: {
   catalog: CatalogInfo | null
+  /** Anything is running, so neither button should start something else. */
   busy: boolean
+  /** This button's own work is running. `busy` alone made the button say
+      "Checking…" for the whole of an install it had nothing to do with. */
+  checking: boolean
   scanning: boolean
   lastScanEpoch: number | null
   /** What the last refresh of either kind actually changed. */
@@ -62,7 +67,7 @@ export function RefreshTools({
         disabled={busy}
         title="Fetch the plugin list — new versions and release notes."
       >
-        {busy ? 'Checking…' : 'Check for updates'}
+        {checking ? 'Checking…' : 'Check for updates'}
         <span className={`tools-when${offline ? ' stale' : ''}`}>
           {offline ? 'not checked' : ago(checked)}
         </span>

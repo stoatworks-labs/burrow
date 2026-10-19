@@ -13,6 +13,7 @@ import { SectionHead, ops, rowSlots } from '../components/SectionHead'
 import { FormatChips } from '../components/FormatChips'
 import { PluginArt } from '../components/PluginArt'
 import { humanSize } from '../api/backend'
+import { fraction, progressText } from '../api/progress'
 
 /**
  * One category's list, with a search bar, under four headings.
@@ -322,18 +323,7 @@ function Row({
           </div>
         )}
 
-        {live && (
-          <div className="progress" aria-label={live.phase}>
-            <i
-              style={{
-                width:
-                  live.bytesTotal && live.bytesTotal > 0
-                    ? `${Math.min(100, (live.bytesDone / live.bytesTotal) * 100)}%`
-                    : '35%',
-              }}
-            />
-          </div>
-        )}
+        {live && <RowProgress live={live} />}
 
         <div className="actions">
           {behind.length > 0 && (
@@ -461,6 +451,32 @@ function Row({
 }
 
 /**
+ * A row's own bar, with the words for it.
+ *
+ * The bar used to sit at a fixed 35% for every phase but the download, which
+ * for an application meant most of a minute at 35% with no label — a bar that
+ * has stopped is indistinguishable from an app that has. Now a phase that can
+ * count reports its count, and one that cannot animates so it is visibly alive.
+ */
+function RowProgress({ live }: { live: Progress }) {
+  const frac = fraction(live)
+  const text = progressText(live)
+  return (
+    <div className="row-progress">
+      <div className={`progress${frac === null ? ' indeterminate' : ''}`} aria-label={text}>
+        <i style={frac === null ? undefined : { width: `${frac * 100}%` }} />
+      </div>
+      <div className="progress-text">
+        {text}
+        {live.message && live.phase === 'awaiting-authorization' && (
+          <span className="progress-note"> — {live.message}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
  * How far along a project is, in the website's own words.
  *
  * The label and the tooltip both come from the catalogue rather than from a
@@ -540,7 +556,7 @@ function CompanionModule({
         {behind.length > 0 && 'update available'}
         {installed.length === 0 && offered.length > 0 && slots[0]?.destinationLabel}
         {slots.length === 0 && 'no build for this machine'}
-        {live && ` · ${live.phase}`}
+        {live && ` · ${progressText(live)}`}
       </span>
       {behind.length > 0 && (
         <button className="btn primary" disabled={busy} onClick={() => onRun(req(behind, 'update'))}>

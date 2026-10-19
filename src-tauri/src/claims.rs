@@ -15,7 +15,7 @@ use burrow_core::claim::{self, Candidate, IdentifierIndex};
 use burrow_core::dest::Destination;
 use burrow_core::model::Format;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::state::{self, AppState};
 
@@ -85,7 +85,13 @@ fn index(state: &AppState) -> Result<IdentifierIndex, String> {
 /// that state, and a cached or baked copy can be one for a long time, so it is
 /// reported rather than flattened into a quiet empty list.
 #[tauri::command]
-pub fn scan_claimable(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Claimable>, String> {
+pub async fn scan_claimable(app: AppHandle) -> Result<Vec<Claimable>, String> {
+    // Off the main thread: this reads every bundle's plist in every destination.
+    crate::off_main(move || scan(&app)).await
+}
+
+fn scan(app: &AppHandle) -> Result<Vec<Claimable>, String> {
+    let state = app.state::<AppState>();
     let idx = index(&state)?;
     if idx.is_empty() {
         return Err("the plugin list Burrow has does not say what each project's \
@@ -93,7 +99,7 @@ pub fn scan_claimable(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<
                     updates to fetch a newer one."
             .into());
     }
-    let env = state::get_environment(app, state.clone())?;
+    let env = state::environment(app)?;
     let names: Vec<(String, String)> = {
         let cat = state.catalog.lock().map_err(|_| "state is poisoned")?;
         cat.as_ref()
@@ -179,12 +185,15 @@ pub fn list_claimed(state: State<'_, AppState>) -> Result<Vec<ClaimedEntry>, Str
 /// Returns the refreshed plugin list, so the row the user was looking at
 /// changes under them rather than after a manual rescan.
 #[tauri::command]
-pub fn claim(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    request: ClaimRequest,
-) -> Result<Vec<state::PluginView>, String> {
-    let env = state::get_environment(app.clone(), state.clone())?;
+pub async fn claim(app: AppHandle, request: ClaimRequest) -> Result<Vec<state::PluginView>, String> {
+    // Off the main thread: `entry_for` hashes the payload being adopted, and an
+    // application is hundreds of megabytes.
+    crate::off_main(move || adopt(&app, request)).await
+}
+
+fn adopt(app: &AppHandle, request: ClaimRequest) -> Result<Vec<state::PluginView>, String> {
+    let state = app.state::<AppState>();
+    let env = state::environment(app)?;
     let dest: &Destination = env
         .destinations
         .iter()
@@ -245,7 +254,7 @@ pub fn claim(
         ledger.upsert(entry);
     }
     state::save_ledger(&state)?;
-    state::list_plugins(app, state)
+    state::plugin_views(app)
 }
 
 /// Forget a claim. Deletes nothing — the payload stays exactly where it is.
@@ -255,19 +264,23 @@ pub fn claim(
 /// reasonable thing to want about anything in the ledger, and it is the only
 /// non-destructive way out of a wrong claim.
 #[tauri::command]
-pub fn release(
+pub async fn release(
     app: AppHandle,
-    state: State<'_, AppState>,
     slug: String,
     format: Format,
     destination_id: String,
 ) -> Result<Vec<state::PluginView>, String> {
-    {
-        let mut ledger = state.ledger.lock().map_err(|_| "state is poisoned")?;
-        ledger.remove(&slug, format, &destination_id);
-    }
-    state::save_ledger(&state)?;
-    state::list_plugins(app, state)
+    // The ledger edit is trivial; the refreshed list it returns is not.
+    crate::off_main(move || {
+        let state = app.state::<AppState>();
+        {
+            let mut ledger = state.ledger.lock().map_err(|_| "state is poisoned")?;
+            ledger.remove(&slug, format, &destination_id);
+        }
+        state::save_ledger(&state)?;
+        state::plugin_views(&app)
+    })
+    .await
 }
 
 #[cfg(test)]

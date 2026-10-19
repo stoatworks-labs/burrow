@@ -76,6 +76,19 @@ fn trailer(path: &Path) -> Result<Vec<u8>, ArchiveError> {
 /// same validation, quarantine clearing, hashing and commit as everything else.
 #[cfg(target_os = "macos")]
 pub fn extract_app(image: &Path, dest: &Path) -> Result<Unpacked, ArchiveError> {
+    extract_app_with(image, dest, &mut |_, _| {})
+}
+
+/// [`extract_app`], reporting the copy off the image as it goes.
+///
+/// The total is the application's size, measured on the mount before the copy
+/// starts — a walk of the metadata, which is cheap next to the copy it sizes.
+#[cfg(target_os = "macos")]
+pub fn extract_app_with(
+    image: &Path,
+    dest: &Path,
+    on_progress: crate::archive::OnProgress<'_>,
+) -> Result<Unpacked, ArchiveError> {
     use std::process::Command;
 
     if !looks_like_dmg(&trailer(image)?) {
@@ -116,7 +129,7 @@ pub fn extract_app(image: &Path, dest: &Path) -> Result<Unpacked, ArchiveError> 
     }
 
     // Everything from here detaches before it returns, whichever way it goes.
-    let result = copy_app_from(&mount, dest);
+    let result = copy_app_from(&mount, dest, on_progress);
 
     let _ = Command::new("/usr/bin/hdiutil")
         .args(["detach", "-quiet"])
@@ -138,13 +151,26 @@ pub fn extract_app(_image: &Path, _dest: &Path) -> Result<Unpacked, ArchiveError
     ))
 }
 
+#[cfg(not(target_os = "macos"))]
+pub fn extract_app_with(
+    image: &Path,
+    dest: &Path,
+    _on_progress: crate::archive::OnProgress<'_>,
+) -> Result<Unpacked, ArchiveError> {
+    extract_app(image, dest)
+}
+
 /// Find the one application on a mounted image and copy it into `dest`.
 ///
 /// macOS-only, like everything that can reach it: without the gate this is dead
 /// code on Linux and Windows, and CI runs clippy with `-D warnings` on all
 /// three. That failure is invisible from a Mac.
 #[cfg(target_os = "macos")]
-fn copy_app_from(mount: &Path, dest: &Path) -> Result<Unpacked, ArchiveError> {
+fn copy_app_from(
+    mount: &Path,
+    dest: &Path,
+    on_progress: crate::archive::OnProgress<'_>,
+) -> Result<Unpacked, ArchiveError> {
     let mut apps: Vec<PathBuf> = Vec::new();
     let mut extras: Vec<String> = Vec::new();
 
@@ -178,7 +204,9 @@ fn copy_app_from(mount: &Path, dest: &Path) -> Result<Unpacked, ArchiveError> {
         .to_string_lossy()
         .to_string();
 
-    crate::commit::copy_tree(app, &dest.join(&name))
+    let total = crate::hashing::payload_size(mount, std::slice::from_ref(&name));
+    on_progress(0, Some(total));
+    crate::commit::copy_tree_with(app, &dest.join(&name), &mut |n| on_progress(n, Some(total)))
         .map_err(|e| ArchiveError::Io(format!("could not copy {name} out of the disk image: {e}")))?;
 
     extras.sort();
