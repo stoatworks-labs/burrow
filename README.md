@@ -246,15 +246,15 @@ What I **haven't**:
 
 ## Download
 
-**[v0.4.1](https://github.com/stoatworks-labs/burrow/releases/tag/v0.4.1)** — prebuilt for macOS and Windows. Pick your platform:
+**[v0.4.2](https://github.com/stoatworks-labs/burrow/releases/tag/v0.4.2)** — prebuilt for macOS and Windows. Pick your platform:
 
 <details>
 <summary><b>macOS</b> — Universal (Apple Silicon + Intel)</summary>
 
 | Build | Download | Size |
 | --- | --- | --- |
-| Universal (Apple Silicon + Intel) · .dmg disk image | [`burrow-0.4.1-macos-universal.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.1/burrow-0.4.1-macos-universal.dmg) | 26 MB |
-| Universal (Apple Silicon + Intel) · .pkg installer | [`burrow-0.4.1-macos-universal.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.1/burrow-0.4.1-macos-universal.pkg) | 26 MB |
+| Universal (Apple Silicon + Intel) · .dmg disk image | [`burrow-0.4.2-macos-universal.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.2/burrow-0.4.2-macos-universal.dmg) | 26 MB |
+| Universal (Apple Silicon + Intel) · .pkg installer | [`burrow-0.4.2-macos-universal.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.2/burrow-0.4.2-macos-universal.pkg) | 26 MB |
 
 </details>
 
@@ -263,13 +263,13 @@ What I **haven't**:
 
 | Build | Download | Size |
 | --- | --- | --- |
-| x64 · .exe installer | [`Stoatworks.Burrow_0.4.1_x64-setup.exe`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.1/Stoatworks.Burrow_0.4.1_x64-setup.exe) | 12 MB |
+| x64 · .exe installer | [`Stoatworks.Burrow_0.4.2_x64-setup.exe`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.2/Stoatworks.Burrow_0.4.2_x64-setup.exe) | 12 MB |
 
 </details>
 
 Also in this release:
 
-- [`burrow-0.4.1-macos-universal.app.tar.gz`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.1/burrow-0.4.1-macos-universal.app.tar.gz) — macOS app bundle (updater archive; the .dmg is the install), 26 MB
+- [`burrow-0.4.2-macos-universal.app.tar.gz`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.2/burrow-0.4.2-macos-universal.app.tar.gz) — macOS app bundle (updater archive; the .dmg is the install), 26 MB
 
 All builds, checksums and release notes: [github.com/stoatworks-labs/burrow/releases](https://github.com/stoatworks-labs/burrow/releases).
 
