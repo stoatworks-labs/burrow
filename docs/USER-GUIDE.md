@@ -4,7 +4,7 @@ Burrow is a desktop app that installs, updates and removes the Stoatworks plugin
 and Companion modules. It's one list with one click for each thing, and it knows where
 every format goes on your machine.
 
-> **Status at v0.3.1. Read this first.**
+> **Status at v0.3.2. Read this first.**
 >
 > I've tested Burrow thoroughly against real plugin downloads, but **no plugin
 > has been installed into a running Resolume, Resolve or After Effects through

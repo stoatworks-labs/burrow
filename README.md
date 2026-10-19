@@ -161,7 +161,10 @@ prompt, the plugins that didn't need it are already installed.
 
 ## Status
 
-**Beta, at v0.3.1.** New since v0.3.0: a plugin whose version Burrow can't read (a bare
+**Beta, at v0.3.2.** v0.3.2 changes nothing you can see: it moves rustls, the TLS library
+behind every download and the updater, to 0.23.46 for a medium-severity advisory
+([GHSA-2mjx-qc3c-rqvc](https://github.com/advisories/GHSA-2mjx-qc3c-rqvc)). New at v0.3.1:
+a plugin whose version Burrow can't read (a bare
 FFGL `.dll`, or an OpenFX bundle with no `Info.plist`, which is every hand-installed plugin
 on Windows) goes under its own *Version unknown* heading instead of being counted as *Up to
 date*, and gets a *Reinstall* button (per row and in bulk) to put the current release in
