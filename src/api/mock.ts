@@ -21,6 +21,9 @@
  *
  * It serves the catalogue that actually ships in the app, so the data under
  * test is the data users get.
+ *
+ * The Device firmware tab's commands are faked in mockFirmware.ts, with its own
+ * parameters (?device=, ?fw=).
  */
 
 import type {
@@ -42,6 +45,7 @@ import type {
   UpdateInfo,
   UpdateProgress,
 } from './types'
+import { listenFirmware, mockFirmware, NOT_MINE } from './mockFirmware'
 
 const params = new URLSearchParams(
   typeof window === 'undefined' ? '' : window.location.search,
@@ -88,12 +92,43 @@ let catalogCache: CatalogEntry[] | null = null
 /** The status vocabulary the catalogue sends, id → label and blurb. */
 let statusCache: Record<string, { label: string; blurb?: string }> = {}
 
+/**
+ * The two firmware entries the website emits, for a baked catalogue written
+ * before it emitted any. Only added when absent, so a catalogue that carries
+ * the real ones shows the real ones.
+ */
+function withFirmware(entries: CatalogEntry[]): CatalogEntry[] {
+  if (entries.some(e => (e as any).kind === 'firmware')) return entries
+  const fw = (slug: string, name: string, device: string, version: string, hook: string) =>
+    ({
+      slug,
+      name,
+      kind: 'firmware',
+      category: 'firmware',
+      tab: 'firmware',
+      device,
+      hook,
+      summary: hook,
+      version,
+      builds: {},
+      assets: [],
+      releaseUrl: `https://github.com/stoatworks-labs/${slug === 'canary-firmware' ? 'canary' : 'birddog-play-patcher'}/releases/tag/${version}`,
+    }) as unknown as CatalogEntry
+  return [
+    ...entries,
+    fw('canary-firmware', 'CANary firmware', 'canary', 'v0.2.0',
+      'The open IP-to-CAN converter for the d&b amplifier ecosystem, written over its own USB-C port.'),
+    fw('play-patcher-kit', 'PLAY patcher kit', 'birddog-play', 'v0.3.0',
+      'What a BirdDog PLAY update package is built from.'),
+  ]
+}
+
 async function catalog(): Promise<CatalogEntry[]> {
   if (catalogCache) return catalogCache
   try {
     const res = await fetch('./catalog.json')
     const data = await res.json()
-    catalogCache = data.entries as CatalogEntry[]
+    catalogCache = withFirmware(data.entries as CatalogEntry[])
     statusCache = data.statuses ?? {}
   } catch {
     catalogCache = []
@@ -388,6 +423,7 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
           videoUrl: e.videoUrl ?? null,
           releaseUrl: e.releaseUrl,
           hostedUrl: (e as any).hostedUrl ?? null,
+          device: (e as any).device ?? null,
           repoUrl: (e as any).repoUrl ?? null,
           releasesUrl: e.releasesUrl,
           slots,
@@ -720,8 +756,11 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       console.info('[mock] would open the demo for', (args as any).slug)
       return undefined as T
 
-    default:
+    default: {
+      const fw = await mockFirmware(cmd, args)
+      if (fw !== NOT_MINE) return fw as T
       throw new Error(`the mock backend has no ${cmd}`)
+    }
   }
 }
 
@@ -735,6 +774,9 @@ export async function mockListen<T>(
       const i = progressHandlers.indexOf(handler as any)
       if (i >= 0) progressHandlers.splice(i, 1)
     }
+  }
+  if (event === 'firmware-progress') {
+    return listenFirmware(handler as any)
   }
   if (event === 'update-progress') {
     updateHandlers.push(handler as any)

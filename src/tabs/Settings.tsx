@@ -296,6 +296,16 @@ export function SettingsTab({
             you press play.
           </p>
           <p>
+            The <em>Device firmware</em> tab adds two more, and only when you ask for
+            them. Building a PLAY package with Tailscale in it fetches Tailscale from
+            Tailscale&rsquo;s own download server, <code>pkgs.tailscale.com</code>, and checks
+            it against the SHA-256 they publish. Sending a package to a PLAY talks to that
+            PLAY, at the address you typed, with the BirdUI password you typed &mdash; plain
+            HTTP, because that is all BirdUI speaks &mdash; and the password is kept nowhere.
+            Firmware itself comes from GitHub, and is written only if its bytes match the
+            SHA-256 the list gives for it.
+          </p>
+          <p>
             The <em>Send feedback</em> button at the bottom of this window is the one
             exception, and only when you use it: it sends what you type into it, plus
             the app version.

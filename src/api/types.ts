@@ -142,6 +142,8 @@ export interface PluginView {
   releaseUrl: string | null
   /** Where a browser tool already runs. Null for anything Burrow installs. */
   hostedUrl: string | null
+  /** For firmware, the device it is written to: `canary`, `birddog-play`. */
+  device: string | null
   /** Its source, for running your own copy. */
   repoUrl: string | null
   releasesUrl: string | null
