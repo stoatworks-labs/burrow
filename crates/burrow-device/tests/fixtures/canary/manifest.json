@@ -1,0 +1,96 @@
+{
+  "releases": [
+    {
+      "id": "main-ff4110d",
+      "date": "2026-09-27",
+      "commit": "ff4110d1fe9e7f60b536112d8fb35dbe3a6a20cc",
+      "variants": [
+        {
+          "id": "standard",
+          "name": "Standard",
+          "summary": "Ethernet bridge only. The USB-C port stays a serial console, so the next flash needs no buttons.",
+          "recommended": true,
+          "app": {
+            "version": "main-ff4110d",
+            "project": "canary",
+            "time": "14:11:25",
+            "date": "Sep 27 2026",
+            "idfVersion": "v5.5.5"
+          },
+          "parts": [
+            {
+              "name": "bootloader",
+              "offset": 0,
+              "path": "main-ff4110d/standard/bootloader.bin",
+              "size": 20928,
+              "sha256": "14f87b920e6dc8ba3bb1206a748953545e25fd4606c2782b3ba25806a09694e8"
+            },
+            {
+              "name": "partition table",
+              "offset": 32768,
+              "path": "main-ff4110d/standard/partition-table.bin",
+              "size": 3072,
+              "sha256": "1de2d87ee561e99e9e35af13bd6cc29822bda68c1d28562477a32cbe5c4314c8"
+            },
+            {
+              "name": "otadata",
+              "offset": 61440,
+              "path": "main-ff4110d/standard/ota_data_initial.bin",
+              "size": 8192,
+              "sha256": "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
+            },
+            {
+              "name": "app",
+              "offset": 131072,
+              "path": "main-ff4110d/standard/canary.bin",
+              "size": 461184,
+              "sha256": "24f5d7445a6b0db3db9a98f992e5c708566478480bcf60accdeb306cc56c9cb7"
+            }
+          ]
+        },
+        {
+          "id": "usb-network",
+          "name": "USB network + config page",
+          "summary": "Also a USB network adapter at 192.168.7.1 with the settings page. After 8 s the USB-C port stops being a serial port, so reflashing needs BOOT held while EN is tapped.",
+          "app": {
+            "version": "main-ff4110d",
+            "project": "canary",
+            "time": "14:11:43",
+            "date": "Sep 27 2026",
+            "idfVersion": "v5.5.5"
+          },
+          "parts": [
+            {
+              "name": "bootloader",
+              "offset": 0,
+              "path": "main-ff4110d/usb-network/bootloader.bin",
+              "size": 20928,
+              "sha256": "1248d29ba5b199f211374bc2be9289447af51db35bf3103afd4ea8f134182492"
+            },
+            {
+              "name": "partition table",
+              "offset": 32768,
+              "path": "main-ff4110d/usb-network/partition-table.bin",
+              "size": 3072,
+              "sha256": "1de2d87ee561e99e9e35af13bd6cc29822bda68c1d28562477a32cbe5c4314c8"
+            },
+            {
+              "name": "otadata",
+              "offset": 61440,
+              "path": "main-ff4110d/usb-network/ota_data_initial.bin",
+              "size": 8192,
+              "sha256": "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
+            },
+            {
+              "name": "app",
+              "offset": 131072,
+              "path": "main-ff4110d/usb-network/canary.bin",
+              "size": 598704,
+              "sha256": "acc2674ac441413205a83c1e4ec5a49ceae622266f64078ccb512909717501ae"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

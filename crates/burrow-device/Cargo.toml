@@ -1,0 +1,48 @@
+[package]
+name = "burrow-device"
+version = "0.4.1"
+edition = "2021"
+# espflash 4.6 needs 1.95. The other crates still say 1.85 because nothing in
+# them needs more; the app as a whole needs whatever its newest member does.
+rust-version = "1.95"
+description = "Writing firmware to the fleet's devices: a CANary over USB serial, a BirdDog PLAY over Rockchip USB, and the PLAY's update packages."
+license = "MIT"
+
+# A crate of its own, not part of burrow-core, for the same reason burrow-plan is
+# separate from the helper: what it depends on is part of what it is. Writing to
+# a device needs a serial stack and a USB stack, and neither belongs in the crate
+# that reconciles plugin folders. No Tauri and no HTTP here either — the shell
+# downloads, this decides what may be written and writes it.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+
+# The ESP32 serial protocol, stub loader and USB-Serial-JTAG reset. Default
+# features off: they are the command-line tool (clap, crossterm, a terminal
+# monitor, an update checker), none of which belongs in an app. `serialport` is
+# the library half, and espflash asks for it without libudev, so the Linux CI
+# needs no system package.
+espflash = { version = "4.6", default-features = false, features = ["serialport"] }
+serialport = { version = "4.7", default-features = false }
+# The same major as espflash's own, so there is one MD5 in the binary. Used for
+# the check that does not trust the flasher: our own digest of the file against
+# the device's digest of its flash.
+md-5 = "0.11"
+# espflash reads flash into a file and nowhere else.
+tempfile = "3"
+
+# The PLAY's Rockchip USB, spoken directly rather than through the rockusb
+# crate: its constructor claims the interface, and claiming before the maskrom
+# push is precisely what makes ENTRY472 time out (fleet notes, 2026-08-15).
+# Pure Rust on every platform — no libusb to bundle, sign or notarise.
+nusb = "0.2"
+# The .fw is a gzip'd ustar. The tar layer is written and read by hand, ported
+# from the web patcher's fw.js, because its header bytes and its module gate are
+# what the device and the page already agree on; flate2 does the gzip, with a
+# fixed header so the same inputs give the same .fw.
+flate2 = "1"
+
+[dev-dependencies]
+tempfile = "3"
