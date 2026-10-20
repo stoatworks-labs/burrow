@@ -170,7 +170,7 @@ struct Reporter {
 }
 
 /// The rate limit on its own, so it can be tested without a window.
-struct Gate {
+pub(crate) struct Gate {
     started: Instant,
     /// Milliseconds after `started` at the last emit; `u64::MAX` for never.
     last: AtomicU64,
@@ -179,13 +179,13 @@ struct Gate {
 impl Gate {
     const MIN_GAP_MS: u64 = 100;
 
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Gate { started: Instant::now(), last: AtomicU64::new(u64::MAX) }
     }
 
     /// Should a count go out now? Yes once it reaches its total, and yes once
     /// enough time has passed since the last one; otherwise it is held back.
-    fn due(&self, done: u64, total: Option<u64>) -> bool {
+    pub(crate) fn due(&self, done: u64, total: Option<u64>) -> bool {
         if total.is_some_and(|t| done >= t) {
             return true;
         }
@@ -193,7 +193,7 @@ impl Gate {
         last == u64::MAX || self.now().saturating_sub(last) >= Self::MIN_GAP_MS
     }
 
-    fn mark(&self) {
+    pub(crate) fn mark(&self) {
         self.last.store(self.now(), Ordering::Relaxed);
     }
 

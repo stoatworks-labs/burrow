@@ -17,6 +17,7 @@
 mod claims;
 mod demos;
 mod elevate;
+mod firmware;
 mod jobs;
 mod net;
 mod settings;
@@ -54,10 +55,15 @@ pub fn run() {
         // Driven from Rust, never from the webview: see the module note in
         // update.rs. The capability file grants the window nothing for it.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // File pickers for the Firmware tab — a recovery image, a package, a
+        // module, an own build, and where to save a package. Opened from Rust
+        // (firmware::pick_*), so the window is granted nothing for it.
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let state = AppState::new(&handle)?;
             app.manage(state);
+            firmware::manage(&handle);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -87,6 +93,20 @@ pub fn run() {
             jobs::plan_batch,
             jobs::run_batch,
             jobs::cancel_batch,
+            firmware::canary_release,
+            firmware::canary_ports,
+            firmware::canary_describe,
+            firmware::canary_write,
+            firmware::play_devices,
+            firmware::play_inspect_image,
+            firmware::play_kit,
+            firmware::play_build,
+            firmware::play_save,
+            firmware::play_send,
+            firmware::play_flash,
+            firmware::play_write_partitions,
+            firmware::pick_files,
+            firmware::pick_save,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Stoatworks Burrow");

@@ -4,7 +4,8 @@ version = "0.4.1"
 description = "Stoatworks Burrow — install, update and remove the Stoatworks video plugins"
 authors = ["Allan Sargeant"]
 edition = "2021"
-rust-version = "1.85"
+# burrow-device's espflash needs 1.95.
+rust-version = "1.95"
 license = "MIT"
 
 [lib]
@@ -19,9 +20,13 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 burrow-core = { path = "../crates/burrow-core" }
 burrow-plan = { path = "../crates/burrow-plan" }
+# Writing firmware to devices. Not a dependency of the helper and never will be:
+# a device write needs no root, and the helper's dependency list is the design.
+burrow-device = { path = "../crates/burrow-device" }
 
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
 # Burrow updating itself. Default features are rustls, matching the choice
 # made for the app's own client above — though the plugin carries its *own*
 # copy of reqwest (0.13 against this crate's 0.12), so there are two HTTP
@@ -39,7 +44,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 # outside the async runtime. See demos.rs — GitHub serves release assets with
 # `content-disposition: attachment`, which WebKit refuses to render as media, so
 # the bytes are passed through and re-labelled rather than linked to directly.
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "blocking"] }
+# `cookies` and `multipart` are for one thing: sending a package to a PLAY,
+# which means a BirdUI login session and its upload form. See net.rs.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "blocking", "cookies", "multipart"] }
 futures-util = "0.3"
 sha2 = "0.10"
 hex = "0.4"

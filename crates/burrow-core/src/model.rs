@@ -34,6 +34,16 @@ pub enum Format {
     /// own settings — Companion has no fixed modules directory to find. See
     /// [`crate::dest::companion_modules_dir`].
     Companion,
+    /// Firmware for one of the fleet's devices, written to the device rather
+    /// than placed in a folder.
+    ///
+    /// Representable so the catalogue can carry it, and **deliberately not in
+    /// [`Format::SHIPPING`]**: everything that iterates the shipping formats —
+    /// the slots, the default "wanted" formats, Install all, Update all — must
+    /// never sweep a device in. A device write has its own path, its own gate
+    /// and its own confirmation (`burrow-device`, and the Firmware tab), and
+    /// nothing in the folder-install machinery reaches it.
+    Firmware,
     /// A format this build has never heard of, arriving from a newer
     /// catalogue.
     ///
@@ -77,6 +87,7 @@ impl Format {
             Format::Au => "au",
             Format::App => "app",
             Format::Companion => "companion",
+            Format::Firmware => "firmware",
             Format::Unknown => "unknown",
         }
     }
@@ -92,6 +103,7 @@ impl Format {
             Format::Au => "Audio Unit",
             Format::App => "Application",
             Format::Companion => "Companion module",
+            Format::Firmware => "Device firmware",
             Format::Unknown => "Unknown",
         }
     }
@@ -136,7 +148,7 @@ impl Format {
             Format::Au => &[".component"],
             Format::App => &[".app", ".exe"],
             Format::Fxplug => &[".fxplug"],
-            Format::Companion | Format::Unknown => &[],
+            Format::Companion | Format::Firmware | Format::Unknown => &[],
         }
     }
 

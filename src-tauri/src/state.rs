@@ -436,6 +436,10 @@ pub struct PluginView {
     /// Where a browser tool already runs, and where its source is. Both None
     /// for anything Burrow installs.
     pub hosted_url: Option<String>,
+    /// For firmware, the device it is written to. See [`Entry::device`].
+    ///
+    /// [`Entry::device`]: burrow_core::catalog::Entry::device
+    pub device: Option<String>,
     pub repo_url: Option<String>,
     pub releases_url: Option<String>,
     /// Every (format, destination) this plugin could occupy on this machine.
@@ -582,6 +586,7 @@ pub fn plugin_views(app: &AppHandle) -> Result<Vec<PluginView>, String> {
             video_url: entry.video_url.clone(),
             release_url: entry.release_url.clone(),
             hosted_url: entry.hosted_url.clone(),
+            device: entry.device.clone(),
             repo_url: entry.repo_url.clone(),
             releases_url: entry.releases_url.clone(),
             has_override: settings.has_override(&entry.slug),

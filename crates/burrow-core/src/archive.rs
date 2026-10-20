@@ -454,6 +454,28 @@ pub fn extract_with(
     collect_payload(dest, format, platform, install_name)
 }
 
+/// Unpack a zip whole into `dest`, with every guard [`extract`] applies and no
+/// payload selection.
+///
+/// For the archives whose layout is read from a manifest inside them rather
+/// than recognised by suffix: a firmware release and the PLAY patcher kit.
+/// Neither is placed anywhere — they are read from where this leaves them.
+pub fn unpack_all(src: &Path, dest: &Path) -> Result<(), ArchiveError> {
+    let mut head = [0u8; 4];
+    {
+        use std::io::Read;
+        let mut f = fs::File::open(src)?;
+        let _ = f.read(&mut head)?;
+    }
+    if !looks_like_zip(&head) {
+        return Err(ArchiveError::NotAZip(
+            "it starts with something else — most likely an error page".into(),
+        ));
+    }
+    fs::create_dir_all(dest)?;
+    unpack_zip(src, dest, &mut |_, _| {})
+}
+
 /// Where an extracted member is allowed to land, or an error.
 ///
 /// Shared by both containers so a tarball gets exactly the same treatment as a
