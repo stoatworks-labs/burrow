@@ -889,3 +889,65 @@ Still open, and each one is a decision rather than a bug:
 - The prompt says *needs permission to update plugins* even for a first install.
 - gaffer's name is lower case in the catalogue, so the strip reads "gaffer
   (FFGL)". That comes from the website's `projects.json`, not from here.
+
+## 2026-10-20 — the Firmware tab writes to devices
+
+The tab that said "coming soon" since 2026-08-25 now writes CANary firmware over the
+unit's own USB port, restores a BirdDog PLAY from its factory image over Rockchip
+USB, and builds the PLAY's update packages. All three were browser tools first
+(CANary Flasher, PLAY Flasher, PLAY Patcher), and the webview has neither Web Serial
+nor WebUSB, so the device half is Rust, in a crate of its own (`burrow-device`), and
+the JS stays as the reference it was ported from. The rules that came out of it are
+AGENTS.md §3a; these are the decisions and what nearly went wrong.
+
+**Byte-identical, or it is not a port.** The PLAY's GPT, the ext2 injection and the
+package tar are checked against the web tools' own modules on the same inputs
+(`scripts/crosscheck-play.mjs`), with the GPT's randomness and the filesystem's clock
+fixed on both sides so any difference is a difference in the code. All five outputs
+matched first time, which is more reassuring than it sounds: the ext2 writer has
+four places where an off-by-one produces a filesystem that mounts and then lies.
+
+**The plan said rockusb; the code speaks the protocol itself.** rockusb's constructor
+claims the interface, and claiming before the maskrom push is the exact thing that
+made 472 time out on a real PLAY. nusb gives device-level control transfers with
+nothing claimed (macOS and Linux) and bulk endpoints for loader mode, which is all
+the browser flasher uses WebUSB for. Windows has no device-level control transfer,
+so there the push claims interface 0 — the same claim — and is marked unproven.
+
+**The mode is probed, not believed.** The browser flasher trusts bcdUSB's low bit;
+the fleet note says rkdeveloptool's `ld` reports maskrom with a loader running, and a
+loader pushed into a running loader hangs the unit until it is power-cycled. Burrow
+believes bcdUSB only when it says *loader*, and otherwise tries a one-sector read —
+`rl || db`, as the working command sequence did it.
+
+**The CANary gate got the checks the README promised.** The flasher's `checkPlan` is
+here rule for rule, and its tests are ported against the real `main-ff4110d` parts.
+Added: an 8 MB part (the page refused only writes that did not fit, so a 4 MB S3
+passed), the slot read from the unit's own partition table rather than hard-coded,
+an unreadable flash size treated as a refusal rather than as 8 MB, and secure boot or
+flash encryption refused. And an MD5 of our own per region after writing, so the
+check does not rest on espflash having sent what it was given.
+
+**Firmware needs a digest; the catalogue now carries one for everything.** GitHub
+publishes a SHA-256 for every release asset, so `gen-downloads.py` records it and the
+catalogue carries it as an additive `sha256`. The Firmware tab refuses an asset
+without one. That check fired on its first day: the patcher kit was re-uploaded in
+its final layout after the catalogue had been generated, and the live catalogue's
+digest was for the earlier zip. Exactly the case it exists for, just earlier than
+expected.
+
+**Three releases had to exist first, because Burrow only downloads from GitHub.**
+CANary firmware had only ever been served from the flasher's own site, and the
+patcher's module binaries only from its page's origin. Now `stoatworks-labs/canary`
+v0.2.0 carries the firmware (exported from the flasher's `public/firmware/`, so the
+page and Burrow cannot disagree about a release) and `birddog-play-patcher` v0.3.0
+carries the kit (the page's own `public/assets/` plus `kit.json`).
+
+**Tailscale and the PLAY's BirdUI are new hosts.** Both are §6 changes, made on
+Allan's word (2026-10-19), and both happen only on a click: Tailscale when a package
+is built with it in, BirdUI when one is sent. They are in `net.rs` with every other
+request, and in the README, the guide, Settings and the footer note.
+
+Not done, and said so in the README: **nothing has been written to a device by Burrow
+yet.** The first CANary write will also be the first time `main-ff4110d` has been on
+a board.

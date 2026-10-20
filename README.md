@@ -26,7 +26,7 @@ It now covers the rest of the fleet the same way, under six tabs:
 | **Audio** | VST3 and Audio Unit plugins, and the audio tools that run on their own. |
 | **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running. |
 | **Self-hosted** | The things you run rather than install: the services that ship as containers, and the browser tools. |
-| **Device firmware** | Coming soon. |
+| **Device firmware** | CANary firmware written over its own USB port, a BirdDog PLAY restored from its factory image, and the PLAY's update packages. See [below](#device-firmware). |
 
 A browser tool has nothing to install, so its row offers **Open** (the copy on the
 website), **Source**, and, where the project ships a `docker-compose.yml`, **Run your
@@ -103,6 +103,14 @@ Checking whether there's a **newer Burrow** adds one request, to Burrow's own Gi
 release, and it happens when you press the button in Settings. There's a checkbox to have
 it ask at startup too, and it's off until you turn it on.
 
+The *Device firmware* tab adds two more, and only when you ask for them. Building a PLAY
+package with Tailscale in it fetches Tailscale from Tailscale's own download server,
+`pkgs.tailscale.com`, and checks it against the SHA-256 they publish beside it. Sending a
+package to a PLAY talks to that PLAY, at the address you typed, with the BirdUI password you
+typed. That's plain HTTP, because it's all BirdUI speaks, and the password isn't kept
+anywhere afterwards. Looking for a device is a button too. Burrow never goes looking on its
+own, because looking at a CANary restarts it.
+
 The *Send feedback* button at the bottom of the window is the only other thing that sends
 anything. It only does it when you press it, and it only sends what you type into it.
 
@@ -158,6 +166,40 @@ else (downloading, unpacking, checking) happens beforehand, without any elevated
 
 The unprivileged work always runs first, so if you change your mind at the password
 prompt, the plugins that didn't need it are already installed.
+
+## Device firmware
+
+Two of the fleet's devices can be written to from Burrow now, which had a "coming soon"
+tab for a long time for a good reason: writing firmware isn't the same risk as copying a
+bundle into a folder. There's nothing to stage, nothing to roll back to, and a write that
+stops halfway leaves you holding a device rather than a folder. So every write tells you
+exactly what goes where before it starts, re-reads the device and checks again just before
+the first byte, and can't be cancelled once it's going. Stopping halfway through a
+partition is worse than finishing it.
+
+- **CANary.** Plug it in by its USB-C port and press *Look for a unit*. Burrow reads what
+  it's running and offers the current release in the version you want: Standard, or USB
+  network for the settings page over the cable. By default only the four regions a release
+  carries get written, so the unit keeps its name, port and LAN address. If a write fails,
+  the unit isn't bricked, because the ESP32-S3's boot ROM can't be overwritten: hold BOOT,
+  tap EN and write it again. It refuses a board with less than 8 MB of flash, with secure
+  boot or flash encryption on, or with a different chip, and it won't quietly overwrite
+  something that isn't CANary firmware. You can write your own build too, identified by its
+  contents rather than its filename.
+- **BirdDog PLAY packages.** The [PLAY Patcher](https://birddog-play-patcher.stoatworks-labs.com),
+  without the browser: SSH, Tailscale, the NDI KVM endpoint, the USB media player, the UVC
+  converter, the streaming gateway and your own modules, packed into a `.fw` byte for byte
+  as the web page packs it. Save it and upload it from BirdUI, or let Burrow send it.
+- **BirdDog PLAY recovery.** The [PLAY Flasher](https://birddog-play-flasher.stoatworks-labs.com),
+  without the browser: a PLAY in recovery mode (a paperclip in the headphone socket) is
+  restored from **your own** copy of BirdDog's factory image, optionally with a package
+  installed on its first boot, or has named partitions written into it. Burrow doesn't ship
+  or download BirdDog's image or the loader inside it, and never will. On Windows the unit
+  needs the WinUSB driver, which [Zadig](https://zadig.akeo.ie) puts on. Burrow tells you
+  when it's missing, and doesn't install drivers itself.
+
+Not affiliated with, endorsed by or supported by BirdDog. BirdDog is a trademark of its
+owner.
 
 ## Status
 
@@ -216,7 +258,20 @@ What I've verified, on macOS:
   *Runs in a browser* and the eight applications with their install and *View compose*
   buttons. Every one of the catalogue's 173 entries lands on a tab the window shows.
 
+- The *Device firmware* tab's code paths, without a device. The CANary checks are the
+  CANary Flasher's own, ported rule for rule and run against the real `main-ff4110d`
+  images, plus the ones it left out. A whole PLAY restore runs into a disk that is only
+  memory, with a real ext2 rootfs, and `e2fsck` passes the filesystem afterwards. The PLAY
+  partition table, the injected filesystem and the package come out **byte for byte** the
+  same as the web flasher's and patcher's own code on the same inputs. And it all runs
+  against the two release downloads Burrow will really fetch. Every screen and failure in
+  the tab has been driven through the mock backend.
+
 What I **haven't**:
+
+- **No firmware has been written to a device by Burrow yet.** Not to a CANary, not to a
+  PLAY in either mode, and no package has been sent to BirdUI or installed on first boot.
+  Until it has, treat the tab as untested on hardware, whatever the tests above say.
 
 - No plugin has been installed into a running Resolume, Resolve or After Effects
   through the app, and no audio plugin into a running DAW.

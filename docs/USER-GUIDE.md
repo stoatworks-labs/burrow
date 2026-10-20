@@ -24,6 +24,11 @@ every format goes on your machine.
 > installed into a real Applications folder through it yet**, nor a module into a
 > real Companion.
 >
+> **The Device firmware tab is new, and no firmware has been written to a device by
+> Burrow yet.** Not to a CANary, not to a PLAY. Its checks are tested hard without a
+> device, but that isn't the same thing. Until this line says otherwise, write to a unit
+> you can afford to have on the bench for an afternoon.
+>
 > This is an AI-assisted project, directed and reviewed by a human author.
 
 ---
@@ -53,7 +58,7 @@ for:
 | **Audio** | VST3 and Audio Unit plugins, and the audio tools that run on their own |
 | **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running |
 | **Self-hosted** | Things you run rather than install — containers, and the browser tools |
-| **Device firmware** | Coming soon — nothing in it yet, and it says so |
+| **Device firmware** | CANary firmware, BirdDog PLAY packages, and restoring a PLAY from its factory image |
 
 An effect you load into Resolume is a different errand from an application you
 launch, which is why the video ones are two tabs rather than one.
@@ -174,6 +179,103 @@ compose** beside it for when you'd rather run it in a container.
 catalogue, so everything filed here showed on no tab at all, and those eight apps
 were only reachable from *What's new*. If you've had one installed since then,
 this is the first time Burrow has shown it to you.
+
+## Device firmware
+
+This tab writes to devices, not folders, and it behaves differently because of that.
+Nothing happens when you open it: no device is looked for and nothing is downloaded
+until you press a button. Every write shows you exactly what goes where and waits
+for you to say yes. Once it's started it can't be cancelled, because stopping halfway
+through a partition is worse than finishing it.
+
+### CANary
+
+Plug the unit in by its USB-C port and press **Look for a unit**, then **Read it**.
+Reading a unit restarts it, because opening that port resets the ESP32-S3, so don't
+do it to one that's running a show. You'll see its chip, its MAC address, how much
+flash it has and which firmware it boots.
+
+Pick **Standard** (the Ethernet bridge, with the USB-C port left as a serial console)
+or **USB network** (the same, plus a settings page over the cable), and **Write**.
+With *Keep this unit's settings* ticked, which is the default, only the four regions a
+release carries are written, and the unit keeps its name, port and LAN address. Untick
+it and the whole flash is erased first.
+
+Burrow won't write to a unit with less than 8 MB of flash, a chip that isn't an
+ESP32-S3, or secure boot or flash encryption turned on. If the unit is running
+something that isn't CANary firmware, or nothing readable at all (a blank board looks
+like that), it says so and asks you to tick a box before it'll replace it.
+
+**If a write fails, the unit isn't bricked.** The ESP32-S3's boot ROM can't be
+overwritten: hold BOOT, tap EN, press *Look for a unit* again and write it again.
+
+A unit on the **USB network** firmware turns its USB-C port into a network adapter
+8 seconds after it starts, and from then on there's no serial port to find. Either
+look for it within those 8 seconds of plugging it in, or hold BOOT, tap EN, let go of
+BOOT, and look then.
+
+**Write your own build** takes the `.bin` files from an ESP-IDF build. They're placed
+by what they are, not by what they're called, and an app that isn't a CANary build
+needs a box ticking.
+
+### BirdDog PLAY packages
+
+**Set up a package** fetches the patcher kit (about 30 MB, from GitHub), and then it's
+the [PLAY Patcher](https://birddog-play-patcher.stoatworks-labs.com) without the
+browser: paste an SSH public key, tick what you want (Tailscale, the NDI KVM
+endpoint, the USB media player, the UVC converter, the streaming gateway), add your
+own modules if you have any, and **Build the package**. Tailscale comes from
+Tailscale's own download server and is checked against the SHA-256 they publish. The
+streaming gateway's MediaMTX comes from its GitHub release, checked the same way.
+
+Then either **Save** it and upload it from BirdUI's System page under *System
+Update*, or **Send to a PLAY**: type its address and the BirdUI password, and Burrow
+logs in, uploads it the way the System page does, and waits up to ten minutes for the
+unit to come back. That's plain HTTP, because it's all BirdUI speaks. The password is
+used for that one send and isn't kept.
+
+Installing a package won't do your warranty any favours. Treat the first one as an
+experiment on a unit you can afford to have offline.
+
+### Restoring a PLAY
+
+This is the [PLAY Flasher](https://birddog-play-flasher.stoatworks-labs.com) without
+the browser. It needs **your own copy** of BirdDog's factory image (`PLAY_1.0.30.img`,
+from their reimage instructions). Burrow doesn't ship or download BirdDog's software,
+including the loader inside that image.
+
+1. Power the PLAY off.
+2. Push a paperclip into the 3.5 mm headphone socket (the recovery button is inside
+   it) and hold it.
+3. Apply power, still holding, and connect its USB-C port to your computer.
+4. Let go, then **Choose a factory image** and **Look for a PLAY**.
+
+**Erase and write** wipes the unit completely, including its serial, its hostname and
+everything under `/userdata`, and writes the image. Choose a package to go with it and
+the PLAY installs it on its first boot, then restarts again, so give it a few minutes
+before expecting video. A unit in *maskrom* has the loader from your image started
+first; one already in *loader mode* doesn't need it.
+
+With *read back what can be read* ticked, Burrow checks what it wrote. A PLAY returns
+filler rather than data above a certain point on its storage, whatever is there, so
+anything past that point is reported as *not read back* rather than as a failure. That's
+the device, not the write.
+
+**Write partitions** (loader mode only) puts named image files into the matching
+partitions, found in the unit's own partition table, and leaves everything else alone.
+`uboot`, `trust` and `recovery` are how the unit gets recovered, so writing one of those
+needs a box ticking.
+
+If a restore fails, leave the unit in recovery mode and write it again. That's what
+recovers it.
+
+**On Windows** the PLAY needs the WinUSB driver, which [Zadig](https://zadig.akeo.ie)
+puts on: pick the Rockchip device, choose WinUSB, *Replace Driver*. Burrow tells you
+when it's missing and doesn't install drivers itself. Windows on ARM can't do this at
+all.
+
+Not affiliated with, endorsed by or supported by BirdDog. BirdDog is a trademark of
+its owner.
 
 ## Software you installed yourself
 
@@ -394,6 +496,12 @@ Checking for a new Burrow is one more request, to Burrow's own GitHub release,
 asking what the current version is. It happens when you press the button, and
 at startup as well if you ticked that box. Nothing about your machine goes with
 the question.
+
+The *Device firmware* tab adds two more, both only when you ask. Building a PLAY
+package with Tailscale in it fetches Tailscale from `pkgs.tailscale.com`. Sending a
+package to a PLAY talks to that PLAY at the address you typed, with the password you
+typed. Firmware itself comes from GitHub like everything else, and Burrow won't write
+it unless its bytes match the SHA-256 the plugin list gives for it.
 
 The **Send feedback** button at the bottom of the window is the exception, and only
 when you press it: it sends what you type, plus the version of Burrow.

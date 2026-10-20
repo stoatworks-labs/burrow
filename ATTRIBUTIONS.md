@@ -42,6 +42,36 @@ Cargo dependencies, resolved and pinned in Cargo.lock.
 
 Async runtimes, protocol codecs, serialisation and GUI toolkits. The exact set and versions for any build are in that repo's Cargo.lock, which is the authoritative list.
 
+### espflash
+
+<https://github.com/esp-rs/espflash>  
+Licence: MIT or Apache-2.0  
+Copyright: the esp-rs contributors
+
+A Cargo dependency, without its command-line half.
+
+Speaks the ESP32 serial protocol for the Device firmware tab: the USB-Serial-JTAG reset, the stub loader, flash writes and the MD5 checks. Burrow decides what may be written; espflash writes it.
+
+### serialport-rs
+
+<https://github.com/serialport/serialport-rs>  
+Licence: MPL-2.0  
+Copyright: the serialport-rs contributors
+
+A Cargo dependency, used unmodified; its source is on crates.io.
+
+Lists and opens the serial port a CANary appears on.
+
+### nusb
+
+<https://github.com/kevinmehall/nusb>  
+Licence: MIT or Apache-2.0  
+Copyright: Kevin Mehall and contributors
+
+A Cargo dependency.
+
+Pure-Rust USB, for a BirdDog PLAY in Rockchip recovery mode: the maskrom control transfers and the loader's bulk endpoints. No libusb to bundle or sign.
+
 ### The npm ecosystem
 
 <https://www.npmjs.com>  
@@ -65,6 +95,37 @@ implementation searches — `/Library/OFX/Plugins` on macOS and
 `Common Files\OFX\Plugins` on Windows — which is why installing an OpenFX plugin
 needs an administrator password. That behaviour was read out of
 `HostSupport/src/ofxhPluginCache.cpp` rather than assumed.
+
+### rkdeveloptool
+
+<https://github.com/rockchip-linux/rkdeveloptool>  
+Licence: GPL-2.0  
+Copyright: Fuzhou Rockchip Electronics Co., Ltd
+
+No code from it is included. The Rockchip USB protocol constants Burrow uses (the
+maskrom vendor request, the CBW opcodes, the padding rules, the GPT built from
+`parameter.txt`) were read out of its source by the browser PLAY Flasher, and Burrow's
+Rust is a port of that flasher's own code.
+
+### The CANary Flasher, PLAY Flasher and PLAY Patcher
+
+<https://github.com/stoatworks-labs/canary-flasher>  
+<https://github.com/stoatworks-labs/birddog-play-flasher>  
+<https://github.com/stoatworks-labs/birddog-play-patcher>  
+Licence: MIT  
+Copyright: Allan Sargeant
+
+The Device firmware tab is a port of these three browser tools into Rust: their
+checks, their image and partition handling, and their package format, kept byte for
+byte compatible and tested against them.
+
+### What a PLAY package carries
+
+Burrow ships none of it. When you build a package, it fetches Tailscale (BSD-3-Clause,
+from `pkgs.tailscale.com`) and MediaMTX (MIT, from its GitHub release), and packs them
+with the patcher kit's own binaries, whose licences and source offer travel in the kit's
+`NOTICES/`. BirdDog's factory image and its loader are only ever your own copy, and
+BirdDog is a trademark of its owner; Burrow is not affiliated with them.
 
 ### The plugins themselves
 

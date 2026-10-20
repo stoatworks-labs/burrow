@@ -15,9 +15,11 @@ archives per video plugin and knowing three different destination directories, t
 of which need an administrator password — and then something different again for an
 audio plugin, an application and a Companion module.
 
-**Six tabs, five of them populated.** Video plugins, Video tools, Audio,
-Networking & Infrastructure, Self-hosted, and a Device firmware tab that says
-"coming soon" and means it. The tab is a field on each catalogue entry, chosen
+**Six tabs.** Video plugins, Video tools, Audio, Networking & Infrastructure,
+Self-hosted, and Device firmware — which, unlike the other five, writes to a
+device rather than to a folder: a CANary over its USB serial port, a BirdDog PLAY
+over Rockchip USB, and the PLAY's update packages. That tab has rules of its own,
+in §3a. The tab is a field on each catalogue entry, chosen
 by the website from the fleet's own `category` data — see §4. **Self-hosted cuts
 across the others**: anything that ships a `docker-compose.yml`, and every
 browser tool, sits there whatever it is for, because how you run a thing decides
@@ -27,9 +29,10 @@ three gates in the catalogue route once dropped silently (docs/NOTES.md,
 2026-08-25).
 
 **It is a client, not a service.** There is no account, no telemetry and no
-backend. One HTTPS GET for the plugin list, and downloads straight from GitHub.
-Anything that would change that is a change to the product, not an implementation
-detail — see §6.
+backend. One HTTPS GET for the plugin list, and downloads straight from GitHub —
+plus, only when someone asks for them in the Firmware tab, Tailscale's own download
+server and a PLAY on the local network. Anything that would change that is a change
+to the product, not an implementation detail — see §6.
 
 ## 2. Layout
 
@@ -42,6 +45,10 @@ crates/burrow-core/     Catalogue model, host detection, archive handling, disk
                         images, quarantine, commit/rollback, the install ledger
                         and reconciliation. Free of Tauri, so it is all
                         unit-testable.
+crates/burrow-device/   Writing firmware to devices: the CANary (ESP32-S3, via
+                        espflash) and the PLAY (Rockchip USB, via nusb), the
+                        gates in front of both, and the PLAY's package builder.
+                        No Tauri, no HTTP, no root. See §3a.
 src-tauri/              The shell: network, commands, job runner, demo server,
                         the elevation prompt, and Burrow's own updater.
 src/                    React UI. Six tabs, plus a mock backend.
@@ -163,6 +170,94 @@ Documents is, and a string join installs into a folder Resolume never reads.
 root:wheel`, which reads as group-writable and is not, for a user in `staff` and
 `admin` rather than `wheel`. Anything short of creating a file gets this wrong.
 
+## 3a. Device firmware
+
+A device write is not a file install. There is no staging copy to inspect, no
+rename to back out of, and no ledger entry that means anything — the device is
+the record. So the safety is up front, and it is all in `burrow-device`, where
+`cargo test` reaches it without a unit.
+
+**None of it is near the helper.** Writing to a serial port or a USB device needs
+no root on macOS, `burrow-device` is not a dependency of `burrow-helper`, and must
+never become one. The folder-install machinery in `jobs.rs` does not touch a
+device either: `Format::Firmware` exists so the catalogue can carry firmware, and
+is **left out of `Format::SHIPPING`** so the slots, the default formats and
+Install/Update all can never sweep a device in. A test in `settings.rs` pins it.
+
+**Nothing looks for a device unless asked.** Opening a CANary's port resets the
+ESP32-S3 (USB-Serial-JTAG does that), and probing a PLAY claims it. Both are
+buttons; neither is something to do to a unit nobody pointed Burrow at, and a
+background scan would be both.
+
+**The gate runs twice.** Once when the confirmation is drawn, and again inside
+`Unit::write` against a fresh read of the unit, immediately before the first byte
+— a board swapped between the two is a different board. The CANary's gate is the
+CANary Flasher's `checkPlan`, rule for rule and message for message (its tests are
+ported too), plus what the page left to its README: an 8 MB part, the slot read
+from the unit's *own* partition table, and a refusal when secure boot or flash
+encryption is on. A unit that boots something other than CANary firmware is not
+refused — a blank board is how every CANary starts — but the confirmation names it
+and needs a tick.
+
+**Firmware is only written if the catalogue vouches for its bytes.** The asset's
+`sha256` (GitHub's own digest, carried by the catalogue) is required for anything
+the Firmware tab downloads. A plugin can be inspected in staging; firmware goes to
+the device, so this is the check.
+
+**A write cannot be cancelled.** Stopping half way through a partition is worse
+than finishing it, and both devices recover from a failed write the same way they
+recover from a good one: by being written again. The interface says so before the
+write, not after.
+
+**CANary.** Only the four regions a release carries are written, so NVS (the
+unit's name, port and LAN address), phy_init, ota_1 and the coredump survive
+unless the user turns off "Keep this unit's settings", which erases the lot.
+Flash mode, frequency and size are never patched (espflash writes raw bytes; the
+check below would catch it if that ever changed). After writing, every region is
+checked with an MD5 of our own against the unit's — not espflash's word for it.
+The unit is restarted whether or not the write finished. The USB network variant
+turns the port into a network adapter 8 s after boot; the next write needs BOOT+EN.
+
+**PLAY.** The factory image and the loader inside it are BirdDog's, and only ever
+come from the user's own file: Burrow never ships or downloads either, and a
+change that bundles a loader "for convenience" is the moment this stops being
+publishable. Three things learned on a unit (fleet notes, 2026-08-15) are in the
+code and must stay: the mode is **probed with a read**, not taken from bcdUSB,
+because a loader-mode unit can carry the maskrom bit and a loader pushed into a
+running loader hangs it; the maskrom 0x471/0x472 push **claims nothing** on macOS
+and Linux, because claiming first made 472 time out every time; and **whole
+partitions only, never a delta**, verified only below the read ceiling (sector
+0x10000 on a PLAY, above which every read is 0xCC fill whatever is there). That is
+also why the plan said "rockusb" and the code does not use it: its constructor
+claims the interface.
+
+**The PLAY ports are byte-identical to the web tools.** `gpt.rs`, `ext2.rs`,
+`inject.rs` and the package tar produce the same bytes as the browser flasher's and
+patcher's own modules on the same inputs. `scripts/crosscheck-play.mjs` proves it;
+re-run it when either side changes (§7). Two departures from the JS, both only
+safer: the ext2 group descriptor table is found at `first_data_block + 1` (the
+page's formula is wrong for 4 KiB blocks, though right for the PLAY's 1 KiB), and a
+new inode's record is zeroed before it is filled.
+
+**Windows.** A Rockchip device needs the WinUSB driver bound (Zadig); Burrow
+detects the wrong driver and says so, and never installs one — that would be a new
+elevated path. WinUSB has no device-level control transfer, so the maskrom push
+there goes through a claimed interface, which is exactly the claim that broke 472
+on a Mac. That path is unproven until it has run on a Windows x64 machine.
+
+**Sending a package to a PLAY** is a BirdUI login (`POST /login`,
+`auth_password`) and the System Update form (multipart `POST /settings`,
+`update_file`, `button=update`) at an address the user typed — a host name or an
+IPv4 address and nothing else — then a bounded wait for the unit's front page to
+answer again. Plain HTTP, because that is all BirdUI speaks. The password is used
+for that send and kept nowhere. All of it is in `net.rs`, with every other
+request this app makes.
+
+**Wording.** Public text never names the product the CANary stands in for, its
+model numbers or its control application ("the control application"; "the d&b
+amplifier ecosystem" where compatibility needs saying). The PLAY's sections carry
+the flasher's non-affiliation line.
+
 ## 4. The catalogue
 
 Burrow reads `stoatworks-labs.com/catalog.json`, which the **website** generates at
@@ -198,6 +293,25 @@ notes, and what each archive unpacks to. The second is read from the archives'
 central directories over HTTP range requests — 62 KB for all 77 archives, rather
 than 40 MB of downloads.
 
+**Firmware is a fifth kind.** `kind: "firmware"`, with `category` and `tab` both
+`firmware` (so a client from before the tab split files it under the placeholder
+rather than under Audio), a `device` naming which device it is written to
+(`canary`, `birddog-play`; an unknown one is shown and not offered), and assets in
+`format: "firmware"`, one zip repeated per published platform with arch `universal`
+like a Companion module. Every asset now carries an additive `sha256` from GitHub's
+digest; firmware is refused without one. The website emits a firmware entry only
+for a project with a public repo and a `device`, so the firmware projects that are
+not written by Burrow stay out. What is inside the two zips is fixed:
+
+- **CANary** (`stoatworks-labs/canary` releases): `manifest.json` in the CANary
+  Flasher's own shape with one release, and the parts under
+  `<release-id>/<variant>/`. Exported from the flasher's `public/firmware/`, so
+  the page and Burrow cannot disagree about a release.
+- **PLAY patcher kit** (`stoatworks-labs/birddog-play-patcher` releases):
+  `kit.json` (format, version, the MediaMTX pin, where Tailscale comes from, the
+  reserved module names), the patcher's own `assets/` with its `manifest.json`,
+  and `NOTICES/`. Burrow packs the .fw member for member as the page's `app.js`.
+
 **A copy of the catalogue ships inside the app.** Not a nicety: it makes a first
 run work offline, it is the baseline that stops "What's new" announcing all
 twenty-four plugins on first launch, and the GitHub fallback cannot *discover*
@@ -232,7 +346,11 @@ Flag these rather than implementing them quietly:
 
 - Any network request beyond the catalogue, GitHub downloads and the update
   manifest — and that last one only when the user asks, or at startup if they
-  turned the checkbox on. Nothing here polls.
+  turned the checkbox on — plus the two the Firmware tab makes when asked:
+  `pkgs.tailscale.com` for a package with Tailscale in it, and a PLAY's BirdUI at
+  an address the user typed. Nothing here polls; the one loop, waiting for a PLAY
+  to come back after a send, is bounded and follows a click.
+- Looking for devices in the background, or installing a driver.
 - Anything that identifies the user or the machine.
 - Reading the plugin directory rather than named entries.
 - Widening the helper's whitelist, its operation set, or its dependencies.
@@ -249,7 +367,7 @@ pinning it: `no_format_added_for_the_new_categories_can_ask_for_a_password`.
 ## 7. Testing
 
 ```bash
-cargo test --workspace     # the library crates: no Tauri, every platform
+cargo test --workspace     # the library crates, burrow-device included: no Tauri, every platform
 (cd src-tauri && cargo test)   # the shell: settings, demo server, updater
 npm run build              # type-checks the UI
 
@@ -276,6 +394,28 @@ awkward states get looked at:
 ?update=none|available|blocked|error|fail        a newer Burrow, or not
 ```
 
+The Firmware tab has its own (`src/api/mockFirmware.ts`):
+
+```
+?device=both|none|canary|canary-old|canary-foreign|blank|s3-small|play-maskrom|play-loader|play-win-nodriver
+?fw=ok|fail                                    whether a write gets to the end
+```
+
+`burrow-device`'s tests run the CANary gate against the real `main-ff4110d`
+parts, restore a whole PLAY image (with a real mke2fs-made ext2 rootfs) into a
+`Vec` standing in for the eMMC, and check the injected filesystem with
+`e2fsck -fn` where e2fsprogs is installed. Two runs that are not CI:
+
+```bash
+# The PLAY ports against the web tools' own modules, byte for byte.
+cargo run -p burrow-device --example crosscheck -- /tmp/xc
+node scripts/crosscheck-play.mjs /tmp/xc <birddog-play-flasher> <birddog-play-patcher>
+
+# Against the release zips Burrow will really download, unpacked.
+BURROW_CANARY_DIR=… BURROW_PLAY_KIT_DIR=… \
+  cargo test -p burrow-device --test real_artefacts -- --ignored
+```
+
 Same idea as av-launcher's `mockInvoke`, and for the same reason: a screenshot of
 "the password prompt was cancelled" should not require cancelling a password
 prompt.
@@ -283,7 +423,9 @@ prompt.
 **What only a real machine can settle:** the authorisation prompt end to end;
 whether a plugin Burrow installed actually appears in Resolume, Resolve and After
 Effects; and quarantine clearing, which needs a *downloaded* copy of the app,
-because a locally built one is never quarantined.
+because a locally built one is never quarantined. And every device write: a CANary
+on the bench, a PLAY in loader mode and in maskrom, a package sent to BirdUI, an
+injected package installing on first boot, and anything at all on Windows.
 
 ## 8. Releasing, and the update key
 
