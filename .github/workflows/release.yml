@@ -334,7 +334,7 @@ jobs:
             An optional desktop client for the Stoatworks software. Shows every
             plugin, tool and Companion module, what you have installed and what
             has an update, and installs each one in whichever formats you use —
-            under Video, Audio, and Networking & Infrastructure.
+            under Video, Audio, Networking & Infrastructure and PowerPoint.
 
             Using it is entirely optional — everything in it is still a normal
             download from its own release page.
@@ -345,7 +345,8 @@ jobs:
             **Windows** — `-setup.exe`, x86_64. FFGL plugins for Resolume,
             applications, VST3 plugins and Companion modules install normally;
             OpenFX and After Effects installs are not supported on Windows in
-            this release and Burrow says so rather than half-working.
+            this release and Burrow says so rather than half-working. PowerPoint
+            add-ins are written for Windows but have not been tried there.
 
             **No Linux build yet.** Resolve runs on Linux and OpenFX has a home
             there, but no plugin in the fleet ships a Linux artefact — so a Linux

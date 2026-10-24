@@ -4,7 +4,7 @@ Burrow is a desktop app that installs, updates and removes the Stoatworks plugin
 and Companion modules. It's one list with one click for each thing, and it knows where
 every format goes on your machine.
 
-> **Status at v0.4.2. Read this first.**
+> **Status at v0.5.0. Read this first.**
 >
 > I've tested Burrow thoroughly against real plugin downloads, but **no plugin
 > has been installed into a running Resolume, Resolve or After Effects through
@@ -23,6 +23,10 @@ every format goes on your machine.
 > Applications and Companion modules arrived in v0.2.0. Applications have since gone
 > into a real Applications folder through it, but **no module has been loaded by a real
 > Companion yet**.
+>
+> PowerPoint add-ins arrived in v0.5.0. Font Manager has been installed, found and
+> removed through it on a Mac, and PowerPoint listed it afterwards. **Nothing has been
+> tried on Windows yet.**
 >
 > This is an AI-assisted project, directed and reviewed by a human author.
 

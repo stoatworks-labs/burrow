@@ -1012,6 +1012,7 @@ against the new catalogue served locally and real downloads from GitHub:
 - **PowerPoint**, quit and relaunched in the background with a new deck, still caches
   the manifest under `Wef/{…}/Manifests/abc06eaf-…_1.0.0.0` (same bytes). As earlier
   measured, no Home-tab button after a relaunch. The *Add-ins* popover can't be
-  captured without full-screen control, which Allan wasn't there to approve, so
-  nobody has watched it list the file Burrow placed. It's the same file the `.pkg`
-  placed, and that one was seen working earlier today.
+  captured without full-screen control, which Allan wasn't there to approve then.
+  At 18:18 the Exporter session, which had the screen next, opened it on that same
+  launch: *Developer Add-ins* listed **Font Manager** beside *Advanced E…*. Nobody
+  opened Font Manager from there.

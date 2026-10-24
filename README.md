@@ -171,8 +171,14 @@ prompt, the plugins that didn't need it are already installed.
 
 ## Status
 
-**Beta, at v0.4.2.** v0.4.2 stops an OpenFX or After Effects update through the password
-prompt leaving the previous version behind in the system plugin folder under a
+**Beta, at v0.5.0.** New in v0.5.0: a *PowerPoint* tab, for the add-ins that work
+inside PowerPoint, starting with Font Manager for PowerPoint. Burrow puts an add-in's
+manifest exactly where the add-in's own installer would, so either can see what the
+other installed. It finds the add-in by the ID inside that file, so a copy the installer
+put there shows as installed. It leaves PowerPoint's folder alone until you install an
+add-in or press *Look in PowerPoint*, because macOS asks before one app reads another's
+folder, and nobody needs that question at first launch. v0.4.2 stopped an OpenFX or
+After Effects update through the password prompt leaving the previous version behind in the system plugin folder under a
 `.burrow-old-` name. It tidies up after itself now, though it can't reach the copies earlier
 versions left there without your password
 (`sudo rm -rf /Library/OFX/Plugins/*.burrow-old-*` clears them). A failure at that step
@@ -254,11 +260,10 @@ What I **haven't**:
   Effects, or an audio plugin in a DAW. They land in the right folders; the host
   picking them up is the untested part.
 - No Companion module Burrow placed has been loaded by a real Companion.
-- Nobody has watched PowerPoint list an add-in *Burrow* placed under Developer
-  Add-ins. The file is byte-identical to the one Font Manager's own installer puts
-  there, which does show up, but that's an inference, not a sighting. macOS's
-  prompt for Burrow reading PowerPoint's folder hasn't been seen either, and
-  nothing's been tried on Windows.
+- The PowerPoint side is half watched. On the next launch after Burrow placed Font
+  Manager, PowerPoint listed it under *Home ▸ Add-ins ▸ Developer Add-ins*, but
+  nobody has opened it from there yet. macOS's prompt for Burrow reading
+  PowerPoint's folder hasn't been seen either, and nothing's been tried on Windows.
 - The quarantine clearing can't be proven from a local build. It needs a
   downloaded, Gatekeeper-quarantined copy of the app itself. The copy that did the
   real update wasn't quarantined, so that run doesn't settle it either.
