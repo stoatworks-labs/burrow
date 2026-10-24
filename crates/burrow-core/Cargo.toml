@@ -30,11 +30,22 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 tar = "0.4"
 flate2 = "1"
 
+# PowerPoint add-in manifests. Already compiled in, as `plist`'s XML reader, so
+# this adds no crate: reading the `<Id>` an uninstall is decided on wants a real
+# parser rather than a search of text that opens with a long comment.
+quick-xml = "0.41"
+
 # The quarantine call. Deliberately not the `xattr` crate: its `remove` follows
 # symlinks and offers no way to pass XATTR_NOFOLLOW, and exact parity with the
 # C++ that is proven against Resolume matters more here than a wrapper.
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
+
+# The one registry value a PowerPoint add-in needs on Windows, under
+# HKEY_CURRENT_USER. The same version the app's build already pulls in through
+# embed-resource.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
 
 [dev-dependencies]
 tempfile = "3"

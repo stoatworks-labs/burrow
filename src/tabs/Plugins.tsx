@@ -206,6 +206,7 @@ export function Plugins({
               key={p.slug}
               plugin={p}
               modules={children.get(p.slug) ?? []}
+              mac={env.platform === 'macos'}
               settings={settings}
               busy={busy}
               progress={progress}
@@ -234,6 +235,7 @@ export function Plugins({
                   key={p.slug}
                   plugin={p}
                   modules={children.get(p.slug) ?? []}
+                  mac={env.platform === 'macos'}
                   settings={settings}
                   busy={busy}
                   progress={progress}
@@ -258,6 +260,7 @@ export function Plugins({
 function Row({
   plugin,
   modules,
+  mac,
   settings,
   busy,
   progress,
@@ -271,6 +274,8 @@ function Row({
   plugin: PluginView
   /** Companion modules that drive this one. Usually none or one. */
   modules: PluginView[]
+  /** Where PowerPoint lists a sideloaded add-in differs by platform. */
+  mac: boolean
   settings: Settings
   busy: boolean
   progress: Record<string, Progress>
@@ -412,6 +417,22 @@ function Row({
             </button>
           )}
         </div>
+
+        {/* PowerPoint for Mac drops a sideloaded add-in's Home-tab button
+            when it quits (measured on 16.112.3), so where to find it again is
+            worth a line on the row and not only in the note after installing. */}
+        {plugin.slots.some(
+          s =>
+            s.format === 'powerpoint' &&
+            (s.state.state === 'up-to-date' ||
+              s.state.state === 'update-available' ||
+              s.state.state === 'version-unknown'),
+        ) && (
+          <div className="stat">
+            In PowerPoint: Home ▸ Add-ins
+            {mac ? ', under Developer Add-ins' : ''}.
+          </div>
+        )}
 
         {plugin.extras.length > 0 && (
           <div className="stat">

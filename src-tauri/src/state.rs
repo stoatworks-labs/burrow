@@ -4,6 +4,7 @@ use burrow_core::catalog::{self, Catalog};
 use burrow_core::dest::{self, Destination, Environment};
 use burrow_core::ledger::{self, Ledger};
 use burrow_core::model::{Format, InstallState, Platform};
+use burrow_core::officeaddin;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -209,7 +210,7 @@ pub fn environment(app: &AppHandle) -> Result<Environment, String> {
     // one the user nominates inside Companion itself, so not finding the app
     // says nothing about whether a module can be installed — see
     // `dest::companion_modules_dir`.
-    let other_hosts = vec![dest::DetectedHost {
+    let mut other_hosts = vec![dest::DetectedHost {
         name: "Bitfocus Companion".into(),
         loads_effects: dest::detect_companion(&applications),
         note: Some(
@@ -223,6 +224,29 @@ pub fn environment(app: &AppHandle) -> Result<Environment, String> {
             .into(),
         ),
     }];
+
+    // PowerPoint, for the add-ins. Reported so a Mac that has never opened it
+    // says why nothing installs, rather than leaving that to the error.
+    if let Some(p) = platform.filter(|p| dest::powerpoint_dir(*p, &home).is_some()) {
+        let ready = dest::powerpoint_ready(p, &home);
+        other_hosts.push(dest::DetectedHost {
+            name: "Microsoft PowerPoint".into(),
+            loads_effects: ready,
+            note: Some(
+                if !ready {
+                    "PowerPoint hasn’t been opened on this account yet, so it has nowhere to keep \
+                     add-ins. Open it once and quit it, and Burrow can install them."
+                } else if p == Platform::Macos {
+                    "Add-ins go into PowerPoint’s own add-in folder and appear when it next starts, \
+                     under Home ▸ Add-ins ▸ Developer Add-ins."
+                } else {
+                    "Add-ins are registered with Office for your account and appear when PowerPoint \
+                     next starts, under Home ▸ Add-ins."
+                }
+                .into(),
+            ),
+        });
+    }
 
     Ok(Environment { platform, resolume, other_hosts, destinations })
 }
@@ -517,6 +541,35 @@ pub fn plugin_views(app: &AppHandle) -> Result<Vec<PluginView>, String> {
 
         for d in env.destinations.iter().filter(|d| known.contains(&d.format)) {
             let asset = entry.asset(d.format, platform);
+            // A PowerPoint add-in is found by its Id rather than by a name in
+            // a folder, and its manifest says nothing about which release it
+            // came from — see `officeaddin::reconcile`.
+            if d.format == Format::Powerpoint {
+                let declared = asset.map(|a| a.entries.clone()).unwrap_or_default();
+                let name = officeaddin::install_name(&declared, &entry.slug, &entry.name, platform);
+                let ids = officeaddin::ids_for(&entry.identifiers, &d.path, &name, platform);
+                let found = officeaddin::find_installed(platform, &d.path, &ids);
+                let r = officeaddin::reconcile(
+                    &entry.slug,
+                    &d.id,
+                    &found,
+                    led.key(&entry.slug, d.format, &d.id),
+                    asset.is_some(),
+                    entry.version.as_deref(),
+                    asset.and_then(|a| a.sha256.as_deref()),
+                );
+                slots.push(Slot {
+                    format: d.format,
+                    destination_id: d.id.clone(),
+                    destination_label: d.label.clone(),
+                    state: r.state,
+                    needs_elevation: false,
+                    missing: r.missing,
+                    foreign: r.foreign,
+                    size: asset.and_then(|a| a.size),
+                });
+                continue;
+            }
             if let Some(a) = asset {
                 for x in &a.extras {
                     if !extras.contains(x) {
