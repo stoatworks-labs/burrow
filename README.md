@@ -244,7 +244,9 @@ What I've verified, on macOS:
   real PowerPoint folder: it found the copy Font Manager's own `.pkg` had installed,
   removed it and put it back byte for byte, and never touched the Exporter's
   manifest beside it. A launch with nothing installed doesn't touch PowerPoint's
-  container, so macOS has no reason to ask about it.
+  container, so macOS has no reason to ask about it. On the next launch PowerPoint
+  listed Font Manager under *Home ▸ Add-ins ▸ Developer Add-ins*, and it opened from
+  there with v0.2.0 in its footer.
 - A real update of my own Mac, through v0.4.0 on 19 October. Rebate's FFGL and OpenFX
   builds went to v0.3.1, the OpenFX one through the password prompt into
   `/Library/OFX/Plugins`, where it still verifies and is stapled. LivePremier Plus,
@@ -260,10 +262,8 @@ What I **haven't**:
   Effects, or an audio plugin in a DAW. They land in the right folders; the host
   picking them up is the untested part.
 - No Companion module Burrow placed has been loaded by a real Companion.
-- The PowerPoint side is half watched. On the next launch after Burrow placed Font
-  Manager, PowerPoint listed it under *Home ▸ Add-ins ▸ Developer Add-ins*, but
-  nobody has opened it from there yet. macOS's prompt for Burrow reading
-  PowerPoint's folder hasn't been seen either, and nothing's been tried on Windows.
+- macOS's prompt for Burrow reading PowerPoint's folder hasn't been seen, and no
+  PowerPoint add-in has been tried on Windows.
 - The quarantine clearing can't be proven from a local build. It needs a
   downloaded, Gatekeeper-quarantined copy of the app itself. The copy that did the
   real update wasn't quarantined, so that run doesn't settle it either.
@@ -274,15 +274,15 @@ What I **haven't**:
 
 ## Download
 
-**[v0.4.2](https://github.com/stoatworks-labs/burrow/releases/tag/v0.4.2)** — prebuilt for macOS and Windows. Pick your platform:
+**[v0.5.0](https://github.com/stoatworks-labs/burrow/releases/tag/v0.5.0)** — prebuilt for macOS and Windows. Pick your platform:
 
 <details>
 <summary><b>macOS</b> — Universal (Apple Silicon + Intel)</summary>
 
 | Build | Download | Size |
 | --- | --- | --- |
-| Universal (Apple Silicon + Intel) · .dmg disk image | [`burrow-0.4.2-macos-universal.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.2/burrow-0.4.2-macos-universal.dmg) | 26 MB |
-| Universal (Apple Silicon + Intel) · .pkg installer | [`burrow-0.4.2-macos-universal.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.2/burrow-0.4.2-macos-universal.pkg) | 26 MB |
+| Universal (Apple Silicon + Intel) · .dmg disk image | [`burrow-0.5.0-macos-universal.dmg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.5.0/burrow-0.5.0-macos-universal.dmg) | 26 MB |
+| Universal (Apple Silicon + Intel) · .pkg installer | [`burrow-0.5.0-macos-universal.pkg`](https://github.com/stoatworks-labs/burrow/releases/download/v0.5.0/burrow-0.5.0-macos-universal.pkg) | 26 MB |
 
 </details>
 
@@ -291,13 +291,13 @@ What I **haven't**:
 
 | Build | Download | Size |
 | --- | --- | --- |
-| x64 · .exe installer | [`Stoatworks.Burrow_0.4.2_x64-setup.exe`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.2/Stoatworks.Burrow_0.4.2_x64-setup.exe) | 12 MB |
+| x64 · .exe installer | [`Stoatworks.Burrow_0.5.0_x64-setup.exe`](https://github.com/stoatworks-labs/burrow/releases/download/v0.5.0/Stoatworks.Burrow_0.5.0_x64-setup.exe) | 12 MB |
 
 </details>
 
 Also in this release:
 
-- [`burrow-0.4.2-macos-universal.app.tar.gz`](https://github.com/stoatworks-labs/burrow/releases/download/v0.4.2/burrow-0.4.2-macos-universal.app.tar.gz) — macOS app bundle (updater archive; the .dmg is the install), 26 MB
+- [`burrow-0.5.0-macos-universal.app.tar.gz`](https://github.com/stoatworks-labs/burrow/releases/download/v0.5.0/burrow-0.5.0-macos-universal.app.tar.gz) — macOS app bundle (updater archive; the .dmg is the install), 26 MB
 
 All builds, checksums and release notes: [github.com/stoatworks-labs/burrow/releases](https://github.com/stoatworks-labs/burrow/releases).
 

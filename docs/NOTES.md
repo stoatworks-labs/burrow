@@ -1014,5 +1014,10 @@ against the new catalogue served locally and real downloads from GitHub:
   measured, no Home-tab button after a relaunch. The *Add-ins* popover can't be
   captured without full-screen control, which Allan wasn't there to approve then.
   At 18:18 the Exporter session, which had the screen next, opened it on that same
-  launch: *Developer Add-ins* listed **Font Manager** beside *Advanced E…*. Nobody
-  opened Font Manager from there.
+  launch: *Developer Add-ins* listed **Font Manager** beside *Advanced E…*. At 18:54,
+  after another fresh launch, Font Manager opened from there and its pane's footer
+  read *Font Manager v0.2.0*. Opening it put its button back on the Home tab.
+- **Installer asks every time.** The Exporter session ran its `.pkg` twice through
+  Installer.app (18:45 and 18:48), and the App Data prompt came up both times. The
+  first run's grant didn't carry over to the second. Whether Burrow's grant lasts
+  from one launch to the next hasn't been seen yet.
