@@ -931,6 +931,7 @@ fn apply_addin(app: &AppHandle, reporter: &Reporter, batch: &str, r: &Ready) -> 
     };
     let name = r.entries.first().cloned().unwrap_or_default();
     let unit = &r.unit;
+    remember_looking_in_powerpoint(app, platform);
 
     if unit.action == Action::Uninstall {
         reporter.phase(r.index, unit, "removing", None, None);
@@ -1001,6 +1002,21 @@ fn apply_addin(app: &AppHandle, reporter: &Reporter, batch: &str, r: &Ready) -> 
             (ok(unit), notes)
         }
         Err(e) => (fail(unit, &e.to_string()), notes),
+    }
+}
+
+/// From the first add-in the user installs or removes, scans may look in
+/// PowerPoint's folder: macOS has asked them about it by now, at a moment
+/// that made sense. See `Settings::look_in_powerpoint`.
+fn remember_looking_in_powerpoint(app: &AppHandle, platform: Platform) {
+    if platform != Platform::Macos {
+        return;
+    }
+    let state = app.state::<AppState>();
+    let Ok(mut s) = state.settings.lock() else { return };
+    if !s.look_in_powerpoint {
+        s.look_in_powerpoint = true;
+        let _ = crate::settings::store(&state.settings_path(), &s);
     }
 }
 

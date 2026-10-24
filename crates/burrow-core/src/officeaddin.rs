@@ -448,6 +448,9 @@ fn write_then_rename(dest: &Path, bytes: &[u8], batch: &str) -> Result<(), Addin
     let file = dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let tmp = dir.join(format!(".{file}.burrow-{batch}"));
     std::fs::write(&tmp, bytes).map_err(io_err(format!("writing into {}", dir.display())))?;
+    // As for every other payload: unconditionally, and before it goes live. A
+    // file written by a downloaded copy of Burrow can inherit the flag.
+    crate::quarantine::clear(&tmp);
     std::fs::rename(&tmp, dest).map_err(|error| {
         let _ = std::fs::remove_file(&tmp);
         AddinError::Io { doing: format!("putting {file} in place"), error }

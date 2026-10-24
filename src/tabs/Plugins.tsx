@@ -154,6 +154,14 @@ export function Plugins({
 
   const updates = mine.filter(p => p.bucket === 'update-available')
 
+  /*
+   * PowerPoint keeps add-ins inside its own app container, and macOS asks
+   * before one app reads another's. Burrow doesn't put that question to
+   * everybody at launch, so until the user installs an add-in or asks, it
+   * hasn't looked, and says so rather than calling everything not installed.
+   */
+  const unlooked = mine.some(p => p.slots.some(s => s.unchecked))
+
   return (
     <>
       <div className="search">
@@ -185,6 +193,24 @@ export function Plugins({
           <strong>Nothing matches &ldquo;{query}&rdquo;</strong>
           <button className="btn quiet" onClick={() => setQuery('')}>
             Clear the search
+          </button>
+        </div>
+      )}
+
+      {unlooked && (
+        <div className="banner">
+          <div>
+            <strong>Burrow hasn&rsquo;t looked in PowerPoint yet.</strong> PowerPoint keeps
+            its add-ins inside its own app folder, and macOS asks you before another app
+            reads it, so Burrow waits to be asked. Anything you installed with an
+            add-in&rsquo;s own installer shows here once it has looked.
+          </div>
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() => onSaveSettings({ ...settings, lookInPowerpoint: true })}
+          >
+            Look in PowerPoint
           </button>
         </div>
       )}
