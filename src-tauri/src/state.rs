@@ -487,6 +487,11 @@ pub struct Slot {
     pub missing: Vec<String>,
     pub foreign: bool,
     pub size: Option<u64>,
+    /// Burrow has not looked, because looking would make macOS ask the user
+    /// a question they have not invited yet — see
+    /// `Settings::look_in_powerpoint`. The state beside it says only that
+    /// nothing is known to be installed.
+    pub unchecked: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -545,10 +550,15 @@ pub fn plugin_views(app: &AppHandle) -> Result<Vec<PluginView>, String> {
             // a folder, and its manifest says nothing about which release it
             // came from — see `officeaddin::reconcile`.
             if d.format == Format::Powerpoint {
+                let unchecked = platform == Platform::Macos && !settings.look_in_powerpoint;
                 let declared = asset.map(|a| a.entries.clone()).unwrap_or_default();
                 let name = officeaddin::install_name(&declared, &entry.slug, &entry.name, platform);
-                let ids = officeaddin::ids_for(&entry.identifiers, &d.path, &name, platform);
-                let found = officeaddin::find_installed(platform, &d.path, &ids);
+                let found = if unchecked {
+                    Vec::new()
+                } else {
+                    let ids = officeaddin::ids_for(&entry.identifiers, &d.path, &name, platform);
+                    officeaddin::find_installed(platform, &d.path, &ids)
+                };
                 let r = officeaddin::reconcile(
                     &entry.slug,
                     &d.id,
@@ -567,6 +577,7 @@ pub fn plugin_views(app: &AppHandle) -> Result<Vec<PluginView>, String> {
                     missing: r.missing,
                     foreign: r.foreign,
                     size: asset.and_then(|a| a.size),
+                    unchecked,
                 });
                 continue;
             }
@@ -598,6 +609,7 @@ pub fn plugin_views(app: &AppHandle) -> Result<Vec<PluginView>, String> {
                 missing: r.missing,
                 foreign: r.foreign,
                 size: asset.and_then(|a| a.size),
+                unchecked: false,
             });
         }
 
@@ -896,6 +908,7 @@ mod tests {
             missing: Vec::new(),
             foreign: false,
             size: None,
+            unchecked: false,
         }
     }
 

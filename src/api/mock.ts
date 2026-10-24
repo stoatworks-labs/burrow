@@ -256,6 +256,7 @@ let currentSettings: Settings = {
   catalogUrl: 'https://stoatworks-labs.com/catalog.json',
   allowGithubFallback: true,
   checkUpdatesOnLaunch: false,
+  lookInPowerpoint: p('ppt') !== 'unchecked',
   seen: {},
   seenAt: null,
   lastRefresh: null,
@@ -369,6 +370,8 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
             missing: [],
             foreign: false,
             size: assetFor(d.format)?.size ?? null,
+            // `?ppt=unchecked` shows the tab before Burrow has looked.
+            unchecked: d.format === 'powerpoint' && p('ppt') === 'unchecked',
           }
         })
         // Mirrors `bucket_for` in src-tauri/src/state.rs, including its

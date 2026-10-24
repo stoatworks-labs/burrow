@@ -133,6 +133,20 @@ called `Font Manager for PowerPoint` under `%LOCALAPPDATA%\Programs\Stoatworks`
 the release's: an installed add-in is up to date when its bytes match the
 catalogue's `sha256` for the current release, and nothing else says so.
 
+⚠️ **Nothing touches PowerPoint's Mac container until the user asks.** macOS asks
+the user before one app reads or writes another app's container ("would like to
+access data from other apps", TCC's `kTCCServiceSystemPolicyAppData`). tccd's log
+on 2026-10-24 shows it prompting for Claude Code and for Apple's own Installer when
+they reached into PowerPoint's. Scans run at every launch, so reading `wef` then
+would put that question to everyone with PowerPoint before they had shown any
+interest. So `dest::discover` gives the PowerPoint destination no write probe and
+checks only that the container exists (outside it), and scans skip `wef` until
+`Settings::look_in_powerpoint` is set. That happens on the first add-in install or
+removal, or when *Look in PowerPoint* on the tab is pressed. A bench copy launched
+with the flag off made no App Data request at all. Keep it that way: anything new
+that reads under `~/Library/Containers/com.microsoft.Powerpoint` at launch puts the
+prompt back.
+
 **Never hardcode a bundle name.** downpour ships `Downpour.bundle` *and*
 `Downpour Over.bundle`; orrery, vectrix, idler, coinop, burin and flipbook all ship
 a second bundle too. Names come from the catalogue, which reads them out of each

@@ -17,7 +17,7 @@ After Effects build), and installing one by hand means finding the project page,
 which of six archives you want, unzipping it, and dragging a bundle into a folder that lives
 somewhere different for every format and every platform.
 
-It now covers the rest of the fleet the same way, under six tabs:
+It now covers the rest of the fleet the same way, under seven tabs:
 
 | | |
 |---|---|
@@ -25,6 +25,7 @@ It now covers the rest of the fleet the same way, under six tabs:
 | **Video tools** | The applications you launch, and the Companion modules that drive them. |
 | **Audio** | VST3 and Audio Unit plugins, and the audio tools that run on their own. |
 | **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running. |
+| **PowerPoint** | Add-ins that work inside PowerPoint, on the open deck. |
 | **Self-hosted** | The things you run rather than install: the services that ship as containers, and the browser tools. |
 | **Device firmware** | Coming soon. |
 
@@ -37,6 +38,15 @@ has an Unraid Community Applications template, in
 Applications get copied out of their disk image, and every tool that has a
 [Bitfocus Companion](https://bitfocus.io/companion) module offers it on the same
 row. Companion's own developer modules folder is just another destination.
+
+A PowerPoint add-in has no code to install at all: it runs from its own website inside
+PowerPoint. What Burrow puts on the machine is the add-in's manifest, the small file that
+tells PowerPoint where to find it, and it puts it exactly where the add-in's own installer
+would (PowerPoint's add-in folder on a Mac, a per-user folder and a registry entry on
+Windows). It recognises the add-in by the ID inside that file, so one you installed with
+the add-in's own installer shows up as installed too. PowerPoint only notices when it
+starts, so quit and reopen it afterwards. On a Mac the add-in then lives under
+*Home ▸ Add-ins*, under *Developer Add-ins*.
 
 Burrow is one searchable list instead of all that faff.
 
@@ -64,7 +74,7 @@ awkward to produce on demand, and one of them is a cancelled password prompt.*
 
 - **What's new:** release notes for updates you could take, and plugins you
   haven't seen.
-- **Video plugins · Video tools · Audio · Networking & Infrastructure:** everything in
+- **Video plugins · Video tools · Audio · Networking & Infrastructure · PowerPoint:** everything in
   that part of the fleet, under *Update available*, *Version unknown*, *Up to date* and
   *Not installed*, with per-format state on each row, and how far along each project is
   (*Field proven*, *Field testing*, *Stable*, *Released*, *Beta*, *In development*) in

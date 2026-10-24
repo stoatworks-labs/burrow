@@ -499,8 +499,25 @@ pub fn discover(
     }
 
     if let Some(path) = powerpoint_dir(platform, home) {
-        // No override is read: see `powerpoint_dir`.
-        out.push(destination("powerpoint", Format::Powerpoint, "PowerPoint".into(), path, home, false));
+        // No override is read: see `powerpoint_dir`. And on a Mac nothing
+        // under the container is touched here — not even the write probe every
+        // other destination gets. macOS asks the user before one app reads or
+        // writes another's container ("would like to access data from other
+        // apps"; seen in tccd's log on 2026-10-24 for Claude Code and for
+        // Installer itself), and this runs at every launch. Only the
+        // container's own existence is checked, which is outside it.
+        let mac = platform == Platform::Macos;
+        out.push(Destination {
+            id: "powerpoint".into(),
+            format: Format::Powerpoint,
+            label: "PowerPoint".into(),
+            display_path: abbreviate(&path, home),
+            exists: if mac { powerpoint_ready(platform, home) } else { path.is_dir() },
+            writable: mac || probe_writable(&path),
+            needs_elevation: false,
+            custom: false,
+            path,
+        });
     }
 
     if matches!(platform, Platform::Macos | Platform::Windows | Platform::Linux) {
@@ -779,7 +796,8 @@ mod tests {
             p.display_path,
             "~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
         );
-        // And PowerPoint has not run in this home.
+        // And PowerPoint has not run in this home, so it does not exist.
+        assert!(!p.exists);
         assert!(!powerpoint_ready(Platform::Macos, home.path()));
         std::fs::create_dir_all(home.path().join("Library/Containers/com.microsoft.Powerpoint")).unwrap();
         assert!(powerpoint_ready(Platform::Macos, home.path()));

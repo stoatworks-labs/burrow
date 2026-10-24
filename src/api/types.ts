@@ -89,6 +89,11 @@ export interface Slot {
   /** Something of that name is there, but it is not ours. */
   foreign: boolean
   size: number | null
+  /**
+   * A PowerPoint add-in on a Mac that Burrow has not looked for yet, because
+   * looking makes macOS ask the user first. See `lookInPowerpoint`.
+   */
+  unchecked: boolean
 }
 
 export interface Note {
@@ -208,6 +213,12 @@ export interface Settings {
   allowGithubFallback: boolean
   /** Ask about a newer Burrow at startup. Off unless the user turns it on. */
   checkUpdatesOnLaunch: boolean
+  /**
+   * Scans may look in PowerPoint's add-in folder. Off until the user installs
+   * or removes an add-in, or asks: macOS asks them before one app reads
+   * another's container, and scans run at every launch.
+   */
+  lookInPowerpoint: boolean
   seen: Record<string, string>
   seenAt: string | null
   lastRefresh: { at: number; ok: boolean; source: string; error: string | null } | null

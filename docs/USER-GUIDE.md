@@ -52,6 +52,7 @@ for:
 | **Video tools** | The applications you launch, and the Companion modules that drive them |
 | **Audio** | VST3 and Audio Unit plugins, and the audio tools that run on their own |
 | **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running |
+| **PowerPoint** | Add-ins that work inside PowerPoint, on the open deck |
 | **Self-hosted** | Things you run rather than install — containers, and the browser tools |
 | **Device firmware** | Coming soon — nothing in it yet, and it says so |
 
@@ -280,6 +281,41 @@ one you name in **Settings → Developer modules path**, so:
 
 Already got a modules folder? Change the path in Burrow's Settings to yours and
 step 2 is done.
+
+## PowerPoint add-ins
+
+A PowerPoint add-in isn't installed the way anything else here is, because there's
+nothing to install: it's a web page that PowerPoint opens in a pane beside the deck,
+and it runs from its own website, so it's always the current version. What goes on the
+machine is the add-in's *manifest*, a file a few kilobytes long that tells PowerPoint
+the add-in exists and where to find it.
+
+Burrow puts it where the add-in's own installer would. On a Mac that's PowerPoint's
+add-in folder, inside PowerPoint's own app container. On Windows it's a folder under
+`%LOCALAPPDATA%\Programs\Stoatworks` and an entry in your part of the registry that
+tells Office where the file is. No password either way.
+
+- **PowerPoint has to have been opened once** on your account. Until it has, there's
+  no container for the add-in to go in, and Burrow says so rather than making one.
+- **Quit and reopen PowerPoint** afterwards. It looks for add-ins when it starts.
+- **On a Mac, open it from *Home ▸ Add-ins*, under *Developer Add-ins*.** PowerPoint
+  gives a sideloaded add-in a button on the Home tab the first time, and drops it
+  again when it quits, so *Add-ins* is where you'll find it from then on.
+- **One installed with the add-in's own installer counts.** Burrow knows an add-in by
+  the ID inside its manifest, not by the file's name, so it sees one the `.pkg` or
+  `Setup.exe` put there, and it'll uninstall that one too.
+- **It's up to date when the file matches the current release's**, byte for byte.
+  The manifest's own version number belongs to the manifest, not the release, so
+  that's the only honest check there is. A copy from an older release, or more than
+  one copy at once, shows as *version unknown*, and **Reinstall** leaves you with one
+  current copy.
+
+**On a Mac, macOS asks first.** PowerPoint's add-in folder is inside its own app
+container, and macOS asks you before another app reads one: it'll ask whether Burrow
+may access data from other apps. So Burrow doesn't look there until you install or
+remove an add-in, or press **Look in PowerPoint** on the tab, and you get the question
+then rather than every time Burrow starts. Say yes, or Burrow can't see or change
+PowerPoint's add-ins. If you said no, it's in System Settings ▸ Privacy & Security.
 
 ## Applications
 

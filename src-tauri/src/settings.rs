@@ -75,6 +75,18 @@ pub struct Settings {
     #[serde(default)]
     pub check_updates_on_launch: bool,
 
+    /// Whether Burrow may look in PowerPoint's add-in folder when it scans.
+    ///
+    /// The folder is inside PowerPoint's app container, and macOS asks the
+    /// user before one app reads another's container. Scanning runs at every
+    /// launch, so reading it unasked would put that question to everybody
+    /// with PowerPoint installed before they had shown any interest in an
+    /// add-in. Off until they install or remove one, or press *Look in
+    /// PowerPoint* on its tab, so the question arrives when it makes sense.
+    /// Windows keeps add-ins in the registry and never needs it.
+    #[serde(default)]
+    pub look_in_powerpoint: bool,
+
     /// The last version of each plugin the user has seen in "What's new".
     ///
     /// Seeded on first run from the catalogue that shipped inside the app, so
@@ -143,6 +155,7 @@ impl Default for Settings {
             catalog_url: default_catalog_url(),
             allow_github_fallback: true,
             check_updates_on_launch: false,
+            look_in_powerpoint: false,
             seen: BTreeMap::new(),
             seen_at: None,
             last_refresh: None,

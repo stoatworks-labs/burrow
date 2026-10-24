@@ -895,3 +895,89 @@ Still open, and each one is a decision rather than a bug:
 - The prompt says *needs permission to update plugins* even for a first install.
 - gaffer's name is lower case in the catalogue, so the strip reads "gaffer
   (FFGL)". That comes from the website's `projects.json`, not from here.
+
+## 2026-10-24 — PowerPoint add-ins, and the second folder Burrow reads without owning
+
+Allan asked for the Font Manager add-in's new installer to be in Burrow as well as on the
+site. The Advanced Exporter follows the same way. Both are Office.js add-ins, and
+those have no code on the machine. They run from their own websites inside PowerPoint's
+webview, and the only installable thing is the manifest. Outside Microsoft Marketplace
+and an M365 admin deployment, the one route is to sideload that manifest, which is all
+the add-ins' own `.pkg` and `Setup.exe` do. So a new format, `powerpoint`, whose install
+is "put the manifest where PowerPoint looks", in the add-ins' installers' own places and
+names (`officeaddin.rs`):
+
+- **macOS:** `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef/<name>.xml`.
+  `<name>` comes from the catalogue: `stoatworks-font-manager.xml`,
+  `stoatworks-advanced-exporter.xml`.
+- **Windows:** `%LOCALAPPDATA%\Programs\Stoatworks\<Name>\manifest.xml`, plus the string
+  value `<Id>` = that path under `HKCU\Software\Microsoft\Office\16.0\Wef\Developer`.
+
+**Found by Id, because that is all Office knows an add-in by.** The `wef` folder can
+hold this add-in under three names: Burrow's, the `.pkg`'s and the old sideload
+script's (`pptx-font-manager.manifest.xml`). Two manifests with one Id confuse
+PowerPoint. So detection opens every `.xml` in `wef`, install and uninstall remove the
+ones carrying this add-in's GUID, and nothing else in the folder is touched. That is
+also what the `.pkg` does. It is the second folder Burrow reads without owning it,
+after claiming, and AGENTS §3 and §6 say so. The Id is the catalogue's `identifiers`
+(bundle-ids.json on the website). A download carrying a different Id is refused, and
+so is one whose `<Hosts>` doesn't include `Presentation`. The XML is parsed with
+quick-xml, already in the tree as `plist`'s reader, and only `<OfficeApp>`'s own
+children count: the fleet's manifests open with a long comment, and
+`<VersionOverrides>` has `<Hosts>` of its own.
+
+**The manifest's `<Version>` is not the release's.** Both manifests say `1.0.0`; Office
+wants ≥ 1.0 and caches by it. So "up to date" is new: `VersionSource::Checksum`, the
+installed bytes match the catalogue's `sha256` for the current release. The catalogue
+copies that from downloads.json, so it says which release the bytes belong to. A copy
+whose bytes match what Burrow last installed reads as an update from the ledger's
+version. Anything else (an older release's manifest, a localhost rewrite, two copies)
+reads as *version unknown*, and Reinstall leaves one current copy.
+
+**A tab sent straight in `tab`, not additively.** `video-tools` arrived as a new field
+beside `category` so old clients kept reading the coarse one. That would be wrong here:
+v0.4.2 cannot install an add-in, so a row in one of its known tabs would be a row with
+no button on it. Sending `powerpoint` in `tab` makes it `Category::Unknown` there, and
+the entry shows on no tab. Checked by building v0.4.2's `burrow-core` and parsing the
+new catalogue with it: 179 entries parse, the two add-ins are on no tab and not
+installable, and nothing else moves. **v0.4.2's *What's new* still lists them** (it
+doesn't filter by tab, and they have versions), with only *Not for me*, which is how the
+firmware entries already look there. That is why the website change waits for the
+release.
+
+**Settings schema 3** adds `powerpoint` to existing defaults. Without it the tab would
+have arrived full of add-ins with no Install button, the schema-2 story again.
+
+**Refused, politely, when PowerPoint has never run.** No container means nowhere to put
+it, and making one by hand would invent a container macOS didn't make. That's the same
+test the `.pkg` makes. The unit fails before downloading, with "Open PowerPoint once, quit it,
+then install again", and the plan and Settings both say so in advance.
+
+Verified on this Mac so far:
+
+- The whole thing compiles and its tests pass on macOS. CI's Windows crates job builds
+  the `winreg` code and runs the Windows logic's tests against a fake registry.
+- Read-only against the real `wef`, the scan example finds the `.pkg`-installed
+  Font Manager as *up to date v0.2.0 (Checksum)* and the Exporter's dev sideload
+  (`pptx-exporter.manifest.xml`, rewritten for localhost) by its Id as *version unknown*.
+- A release build with a scratch home fetched the new catalogue from a local server,
+  showed the PowerPoint tab, and migrated a schema-2 settings file to include the
+  format.
+
+⚠️ **The container asks first.** The first build read `wef` on every scan, and gave the
+PowerPoint destination the same write probe every destination gets, so it created and
+deleted a file in `wef` at launch. On this Mac (macOS 26.4.1) that would have been a
+privacy prompt at every first launch for anyone with PowerPoint. tccd's log for the day
+shows `AUTHREQ_PROMPTING service=kTCCServiceSystemPolicyAppData` for Claude Code at 15:30,
+when it first listed `wef`, and for Installer at 15:58, during the `.pkg`'s GUI install.
+Nobody had noticed the second one: the `.pkg` asks too, it just looks like part of
+installing. So scans now leave the container alone until the user installs or removes
+an add-in, or presses *Look in PowerPoint*, which the tab offers when it hasn't looked
+(`Settings::look_in_powerpoint`). The destination checks only that the container exists,
+from outside it. Checked: an ad-hoc bench copy (bundle id `com.stoatworkslabs.burrow.bench`),
+launched through LaunchServices so it is its own responsible process, with a scratch home
+whose `Library/Containers/com.microsoft.Powerpoint` is a symlink to the real one, made no
+App Data request at all. WebKit's usual microphone, camera and listen-event preflights
+are all tccd saw. Burrow's own prompt hasn't been seen yet, because that means putting a
+dialog on Allan's screen that only he should answer. Denied, the install fails with a
+sentence saying where to change it.
