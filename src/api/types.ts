@@ -17,6 +17,7 @@ export type FormatId =
   | 'au'
   | 'app'
   | 'companion'
+  | 'powerpoint'
   | 'unknown'
 export type PlatformId = 'macos' | 'windows'
 
@@ -35,6 +36,7 @@ export type CategoryId =
   | 'audio'
   | 'netinfra'
   | 'firmware'
+  | 'powerpoint'
   | 'unknown'
 
 /** Which of the install headings a plugin sits under. */
@@ -56,16 +58,23 @@ export interface CatalogInfo {
   newerSchema: boolean
 }
 
+/**
+ * Where a version claim came from. `checksum` is a PowerPoint add-in whose
+ * manifest is byte for byte the current release's: the manifest's own version
+ * is not the release's, so that is the only claim there is to make.
+ */
+export type VersionSource = 'info-plist' | 'ledger' | 'checksum'
+
 /** Mirrors `burrow_core::model::InstallState`, an internally tagged enum. */
 export type InstallState =
   | { state: 'not-installed' }
   | { state: 'no-build' }
-  | { state: 'up-to-date'; version: string; source: 'info-plist' | 'ledger' }
+  | { state: 'up-to-date'; version: string; source: VersionSource }
   | {
       state: 'update-available'
       installed: string
       latest: string
-      source: 'info-plist' | 'ledger'
+      source: VersionSource
     }
   | { state: 'version-unknown'; entries: string[] }
 
@@ -360,6 +369,7 @@ export const FORMAT_LABEL: Record<string, string> = {
   au: 'Audio Unit',
   app: 'Application',
   companion: 'Companion module',
+  powerpoint: 'PowerPoint add-in',
 }
 
 export const FORMAT_HOSTS: Record<string, string> = {
@@ -370,6 +380,7 @@ export const FORMAT_HOSTS: Record<string, string> = {
   au: 'Logic Pro, GarageBand, Final Cut Pro',
   app: 'Runs on its own',
   companion: 'Bitfocus Companion',
+  powerpoint: 'PowerPoint for Mac and Windows',
 }
 
 /**
@@ -384,5 +395,6 @@ export const CATEGORY_LABEL: Record<CategoryId, string> = {
   audio: 'Audio',
   netinfra: 'Networking & Infrastructure',
   firmware: 'Device firmware',
+  powerpoint: 'PowerPoint',
   unknown: 'Other',
 }

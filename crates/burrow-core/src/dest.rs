@@ -322,6 +322,45 @@ pub fn detect_companion(applications: &Path) -> bool {
         .any(|n| applications.join(n).exists())
 }
 
+/// Where a PowerPoint add-in's manifest goes.
+///
+/// macOS: the `wef` folder in PowerPoint's sandbox container, which is the one
+/// place PowerPoint for Mac reads a sideloaded add-in from. Returned whether or
+/// not PowerPoint has made its container yet, so an add-in row still has a
+/// slot to say why it cannot install — see
+/// [`crate::officeaddin::AddinError::PowerPointNeverOpened`].
+///
+/// Windows: `%LOCALAPPDATA%\Programs\Stoatworks`, the folder the add-ins' own
+/// `Setup.exe` installs into, one folder per add-in inside it. PowerPoint does
+/// not look here — a registry value tells it where each manifest is — so this
+/// is only where the file is kept, and it is the same place the add-in's own
+/// installer keeps it.
+///
+/// Never a custom destination. PowerPoint reads `wef` and the registry, and a
+/// manifest anywhere else is an add-in it will never see.
+pub fn powerpoint_dir(platform: Platform, home: &Path) -> Option<PathBuf> {
+    match platform {
+        Platform::Macos => Some(crate::officeaddin::wef_dir(home)),
+        Platform::Windows => std::env::var("LOCALAPPDATA")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|base| PathBuf::from(base).join("Programs").join("Stoatworks")),
+        Platform::Linux | Platform::Unknown => None,
+    }
+}
+
+/// Whether PowerPoint has run on this account, as far as it can be told.
+///
+/// macOS: its container exists, which is the same test the add-ins' own
+/// `.pkg` makes. Windows has no equivalent that does not involve guessing at an
+/// Office install, so it says yes and lets PowerPoint's own launch be the test.
+pub fn powerpoint_ready(platform: Platform, home: &Path) -> bool {
+    match platform {
+        Platform::Macos => crate::officeaddin::container_dir(home).is_dir(),
+        _ => true,
+    }
+}
+
 /// A path with the home directory replaced by `~`.
 ///
 /// Textual and exact: only a path that really is inside the home directory is
@@ -457,6 +496,11 @@ pub fn discover(
             home,
             overrides.contains_key("applications"),
         ));
+    }
+
+    if let Some(path) = powerpoint_dir(platform, home) {
+        // No override is read: see `powerpoint_dir`.
+        out.push(destination("powerpoint", Format::Powerpoint, "PowerPoint".into(), path, home, false));
     }
 
     if matches!(platform, Platform::Macos | Platform::Windows | Platform::Linux) {
@@ -676,7 +720,7 @@ mod tests {
         // adding audio plugins, applications and Companion modules did not
         // require one: every new destination is somewhere the user can already
         // write.
-        for f in [Format::Vst3, Format::Au, Format::App, Format::Companion] {
+        for f in [Format::Vst3, Format::Au, Format::App, Format::Companion, Format::Powerpoint] {
             assert!(!f.needs_elevation(), "{} should never elevate", f.label());
         }
         assert!(Format::Openfx.needs_elevation());
@@ -712,6 +756,38 @@ mod tests {
         let c = dests.iter().find(|d| d.id == "companion").unwrap();
         assert_eq!(c.path, docs.path().join("Companion Modules"));
         assert!(!c.needs_elevation);
+    }
+
+    #[test]
+    fn the_powerpoint_destination_is_wef_and_ignores_an_override() {
+        // PowerPoint reads its own folder and nothing else, so a custom path in
+        // settings would be an add-in it never sees.
+        let apps = TempDir::new().unwrap();
+        let docs = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let mut ov = BTreeMap::new();
+        ov.insert("powerpoint".to_string(), PathBuf::from("/tmp/elsewhere"));
+        let dests = discover(Platform::Macos, apps.path(), docs.path(), home.path(), &ov);
+        let p = dests.iter().find(|d| d.id == "powerpoint").unwrap();
+        assert_eq!(
+            p.path,
+            home.path().join("Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef")
+        );
+        assert!(!p.custom);
+        assert!(!p.needs_elevation);
+        assert_eq!(
+            p.display_path,
+            "~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef"
+        );
+        // And PowerPoint has not run in this home.
+        assert!(!powerpoint_ready(Platform::Macos, home.path()));
+        std::fs::create_dir_all(home.path().join("Library/Containers/com.microsoft.Powerpoint")).unwrap();
+        assert!(powerpoint_ready(Platform::Macos, home.path()));
+    }
+
+    #[test]
+    fn powerpoint_add_ins_have_no_linux_home() {
+        assert!(powerpoint_dir(Platform::Linux, Path::new("/home/x")).is_none());
     }
 
     #[test]

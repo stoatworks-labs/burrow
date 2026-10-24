@@ -15,9 +15,9 @@ archives per video plugin and knowing three different destination directories, t
 of which need an administrator password — and then something different again for an
 audio plugin, an application and a Companion module.
 
-**Six tabs, five of them populated.** Video plugins, Video tools, Audio,
-Networking & Infrastructure, Self-hosted, and a Device firmware tab that says
-"coming soon" and means it. The tab is a field on each catalogue entry, chosen
+**Seven tabs, six of them populated.** Video plugins, Video tools, Audio,
+Networking & Infrastructure, PowerPoint, Self-hosted, and a Device firmware tab
+that says "coming soon" and means it. The tab is a field on each catalogue entry, chosen
 by the website from the fleet's own `category` data — see §4. **Self-hosted cuts
 across the others**: anything that ships a `docker-compose.yml`, and every
 browser tool, sits there whatever it is for, because how you run a thing decides
@@ -44,7 +44,7 @@ crates/burrow-core/     Catalogue model, host detection, archive handling, disk
                         unit-testable.
 src-tauri/              The shell: network, commands, job runner, demo server,
                         the elevation prompt, and Burrow's own updater.
-src/                    React UI. Six tabs, plus a mock backend.
+src/                    React UI. Seven tabs, plus a mock backend.
 scripts/sync-assets.sh  Gathers the catalogue, demos, thumbnails and helper that
                         ship inside the app.
 scripts/make-latest-json.mjs
@@ -109,6 +109,30 @@ gets as far as being offered — a far narrower test than the name matching used
 everywhere else. Do not reuse that scan for anything that acts on what it
 finds.
 
+⚠️ **A PowerPoint add-in is found by its Id, and that is the second folder Burrow
+reads without owning it.** There is no code to place: an Office add-in runs from
+its own website, and installing one means putting its *manifest* where PowerPoint
+looks — the `wef` folder in PowerPoint's Mac container, or a per-user folder plus
+a `Wef\Developer` registry value on Windows (`officeaddin.rs`). Office knows an
+add-in by the GUID in that manifest and by nothing else, and three things write
+these files under three different names: Burrow, the add-in's own installers and
+the old sideload scripts. So detection opens every `.xml` in `wef`, and install
+and uninstall remove the ones carrying this add-in's `<Id>` — which is exactly
+what the add-ins' own `.pkg` does, so Burrow takes out nothing it would not. A
+file with any other Id, a symlink, or anything over 1 MB is never touched. The
+Id comes from the catalogue's `identifiers` (bundle-ids.json on the website), and
+a download carrying a different one is refused. Allan asked for this on
+2026-10-24 and it is listed under §6 for that reason. Do not widen it to a name
+or a prefix.
+
+**Use the add-ins' own installed names.** `entries` on an add-in's asset is the
+name its installer writes — `stoatworks-font-manager.xml` in `wef`, a folder
+called `Font Manager for PowerPoint` under `%LOCALAPPDATA%\Programs\Stoatworks`
+— so Burrow and the installer see one install, not two. And the manifest's
+`<Version>` is the *manifest's* (Office wants it ≥ 1.0 and caches by it), never
+the release's: an installed add-in is up to date when its bytes match the
+catalogue's `sha256` for the current release, and nothing else says so.
+
 **Never hardcode a bundle name.** downpour ships `Downpour.bundle` *and*
 `Downpour Over.bundle`; orrery, vectrix, idler, coinop, burin and flipbook all ship
 a second bundle too. Names come from the catalogue, which reads them out of each
@@ -170,8 +194,9 @@ build time (`src/pages/catalog.json.ts`) from `projects.json` + `downloads.json`
 the same arrangement as `releases.xml.ts` and `llms.txt.ts` there. It therefore
 cannot advertise a version the download tables disagree with.
 
-**Four kinds and three categories, decided there and not here.** `kind` is
-`plugin`, `app`, `companion` or `web`; `category` is `video`, `audio` or `netinfra`,
+**The kinds and categories are decided there and not here.** `kind` is
+`plugin`, `app`, `companion`, `web`, `firmware` or `addin` (a PowerPoint add-in,
+which has a tab of its own); `category` is `video`, `audio` or `netinfra`,
 folded from the fleet's eight categories by a priority list in that route. When something
 looks filed oddly in the app, the fix is usually its `category` in `projects.json` —
 which the website itself reads too — rather than a special case in Burrow.
@@ -234,7 +259,9 @@ Flag these rather than implementing them quietly:
   manifest — and that last one only when the user asks, or at startup if they
   turned the checkbox on. Nothing here polls.
 - Anything that identifies the user or the machine.
-- Reading the plugin directory rather than named entries.
+- Reading the plugin directory rather than named entries. PowerPoint's `wef`
+  folder is the one agreed exception, matched on an add-in's GUID and nothing
+  looser — see §3.
 - Widening the helper's whitelist, its operation set, or its dependencies.
 - Removing the `connect-src 'none'` the demo server sends.
 
@@ -245,6 +272,8 @@ identically — rather than teaching the one component that runs as root to dele
 things in the directory holding every application on the machine. Windows VST3 goes
 to the per-user location in the VST3 spec for the same reason. There is a test
 pinning it: `no_format_added_for_the_new_categories_can_ask_for_a_password`.
+PowerPoint add-ins added none either: `wef` is in the user's own Library, and
+the Windows registry value is under `HKEY_CURRENT_USER`.
 
 ## 7. Testing
 
@@ -268,7 +297,7 @@ The UI runs in an ordinary browser against a mock backend, which is how the
 awkward states get looked at:
 
 ```
-?tab=whatsnew|video-plugins|video-tools|audio|netinfra|selfhosted|firmware|settings   (`plugins`, `video` = video-plugins)
+?tab=whatsnew|video-plugins|video-tools|audio|netinfra|powerpoint|selfhosted|firmware|settings   (`plugins`, `video` = video-plugins)
 ?installed=tinsel:ffgl@0.2.0,idler:ffgl@?     behind / current / unknown version
 ?ofx=missing|empty|readonly|ok                the OpenFX destination's condition
 ?state=ok|offline|error                       what the last refresh did

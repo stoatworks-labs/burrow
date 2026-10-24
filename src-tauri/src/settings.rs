@@ -103,8 +103,8 @@ pub struct RefreshRecord {
 /// The current settings schema.
 ///
 /// 1 → 2 added the formats that came with the audio, application and Companion
-/// categories. See [`Settings::migrate`].
-pub const SCHEMA: u32 = 2;
+/// categories; 2 → 3 added PowerPoint add-ins. See [`Settings::migrate`].
+pub const SCHEMA: u32 = 3;
 
 fn one() -> u32 {
     1
@@ -184,6 +184,13 @@ impl Settings {
                     self.default_formats.push(f);
                 }
             }
+        }
+        // The same reasoning a second time: a schema-2 file lists every
+        // format that existed when it was written, and without this the
+        // PowerPoint tab would arrive full of add-ins with no Install button
+        // on any of them.
+        if self.schema < 3 && !self.default_formats.contains(&Format::Powerpoint) {
+            self.default_formats.push(Format::Powerpoint);
         }
         self.schema = SCHEMA;
     }
@@ -307,8 +314,25 @@ mod tests {
     fn a_current_settings_file_is_left_alone() {
         let t = TempDir::new().unwrap();
         let p = t.path().join("settings.json");
-        std::fs::write(&p, r#"{"schema":2,"defaultFormats":["ffgl"]}"#).unwrap();
+        std::fs::write(&p, r#"{"schema":3,"defaultFormats":["ffgl"]}"#).unwrap();
         assert_eq!(load(&p).default_formats, vec![Format::Ffgl]);
+    }
+
+    #[test]
+    fn a_settings_file_written_before_powerpoint_add_ins_gains_them_and_nothing_else() {
+        // A schema-2 file that took the audio formats out keeps them out; it
+        // gains only the format that did not exist when it was written.
+        let t = TempDir::new().unwrap();
+        let p = t.path().join("settings.json");
+        std::fs::write(&p, r#"{"schema":2,"defaultFormats":["ffgl","app"]}"#).unwrap();
+        let s = load(&p);
+        assert_eq!(s.schema, SCHEMA);
+        assert_eq!(s.default_formats, vec![Format::Ffgl, Format::App, Format::Powerpoint]);
+    }
+
+    #[test]
+    fn a_new_install_offers_powerpoint_add_ins_by_default() {
+        assert!(Settings::default().default_formats.contains(&Format::Powerpoint));
     }
 
     #[test]
@@ -319,7 +343,7 @@ mod tests {
         // existing user.
         let t = TempDir::new().unwrap();
         let p = t.path().join("settings.json");
-        std::fs::write(&p, r#"{"schema":2,"defaultFormats":["ffgl"]}"#).unwrap();
+        std::fs::write(&p, r#"{"schema":3,"defaultFormats":["ffgl"]}"#).unwrap();
         assert!(!load(&p).check_updates_on_launch);
         assert!(!Settings::default().check_updates_on_launch);
     }
@@ -388,7 +412,7 @@ mod tests {
         let p = t.path().join("settings.json");
         std::fs::write(
             &p,
-            r#"{"schema":2,"defaultFormats":["ffgl"],"somethingNew":{"a":1}}"#,
+            r#"{"schema":3,"defaultFormats":["ffgl"],"somethingNew":{"a":1}}"#,
         )
         .unwrap();
         assert_eq!(load(&p).default_formats, vec![Format::Ffgl]);

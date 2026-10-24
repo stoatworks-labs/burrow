@@ -19,7 +19,7 @@ import { ClaimPanel } from '../components/ClaimPanel'
  * Two of them ask for a password and the rest never do, which is the only
  * distinction worth making here — see the note under the list.
  */
-const INSTALLABLE: FormatId[] = ['ffgl', 'openfx', 'adobe', 'vst3', 'au', 'app', 'companion']
+const INSTALLABLE: FormatId[] = ['ffgl', 'openfx', 'adobe', 'vst3', 'au', 'app', 'companion', 'powerpoint']
 
 export function SettingsTab({
   env,
@@ -145,6 +145,15 @@ export function SettingsTab({
                 this folder, and restart Companion after installing a module: it reads
                 the folder once, at startup. Already have a modules folder? Change this
                 path to it.
+              </div>
+            )}
+            {d.format === 'powerpoint' && (
+              <div className="help">
+                {d.path.includes('com.microsoft.Powerpoint')
+                  ? 'PowerPoint reads add-ins from this folder in its own app container, and from nowhere else, so it cannot be changed. PowerPoint makes the container the first time it runs: until then there is nowhere to put one. '
+                  : 'Each add-in\u2019s manifest is kept in a folder here, and registered with Office for your account. '}
+                PowerPoint picks up a change when it next starts. Burrow finds an add-in by
+                its Id, so one installed by its own installer shows here too.
               </div>
             )}
             {d.format === 'app' && (

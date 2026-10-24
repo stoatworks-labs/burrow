@@ -67,7 +67,11 @@ export function FormatChips({
             <span
               key={slot.destinationId}
               className="chip unknown"
-              title={`Installed (${s.entries.join(', ')}), but nothing on disk says which version. Normal on Windows, where plugins carry no version. Reinstall to be sure it is current.`}
+              title={
+                slot.format === 'powerpoint'
+                  ? `In PowerPoint (${s.entries.join(', ')}), but not the manifest the current release ships — an older install, one sideloaded by hand, or more than one copy. Reinstall to leave one current copy.`
+                  : `Installed (${s.entries.join(', ')}), but nothing on disk says which version. Normal on Windows, where plugins carry no version. Reinstall to be sure it is current.`
+              }
             >
               {label} ? version unknown
             </span>

@@ -23,6 +23,7 @@ pub mod dmg;
 pub mod hashing;
 pub mod ledger;
 pub mod model;
+pub mod officeaddin;
 pub mod quarantine;
 
 pub use model::{Format, InstallState, Platform, VersionSource};

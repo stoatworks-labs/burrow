@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  XML (add-in only) manifest — chosen over the unified manifest because it is
+  the shape with the longest-standing support on PowerPoint for Mac, which is a
+  first-class target here. Hosts: PowerPoint 2016+/Windows, 2019+/Mac, web, M365.
+
+  THIS IS THE PRODUCTION MANIFEST. Every URL points at the hosted build on
+  https://pptx-font-manager-addin.stoatworks-labs.com — the origin wrangler.toml
+  deploys to — so this file is what a user sideloads, verbatim: it is served at
+  /manifest.xml on that origin and attached to every GitHub release. Do not
+  point it at localhost. For development the sideload scripts
+  (scripts/sideload-mac.sh, scripts/sideload-windows.ps1) rewrite the origin to
+  https://localhost:3000 on the way into PowerPoint, and test/manifest.test.ts
+  fails the build if a localhost URL is ever committed here.
+
+  <Version> is the MANIFEST version, not the release version. Office requires it
+  to be >= 1.0 (the validator rejects 0.x outright, tested 2026-09-15), and Office
+  caches manifests by it — so bump it when THIS FILE changes in a way a host must
+  notice (URLs, permissions, ribbon, icons), not on every release. The release
+  version lives in package.json and is shown in the task pane's footer.
+-->
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+  <Id>abc06eaf-2365-4fb4-a75d-6c5591af1cf6</Id>
+  <Version>1.0.0</Version>
+  <ProviderName>Stoatworks</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Font Manager" />
+  <Description DefaultValue="Scan a deck for the fonts it actually uses, see which are installed on this machine, and fetch the missing ones as real downloads, substitutes, or a sidecar bundle." />
+  <IconUrl DefaultValue="https://pptx-font-manager-addin.stoatworks-labs.com/icons/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://pptx-font-manager-addin.stoatworks-labs.com/icons/icon-80.png" />
+  <SupportUrl DefaultValue="https://github.com/stoatworks-labs/pptx-font-manager-addin" />
+  <Hosts>
+    <Host Name="Presentation" />
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://pptx-font-manager-addin.stoatworks-labs.com/taskpane.html" />
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Presentation">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="getStarted.title" />
+            <Description resid="getStarted.desc" />
+            <LearnMoreUrl resid="url.support" />
+          </GetStarted>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="fm.group">
+                <Label resid="group.label" />
+                <Icon>
+                  <bt:Image size="16" resid="icon.16" />
+                  <bt:Image size="32" resid="icon.32" />
+                  <bt:Image size="80" resid="icon.80" />
+                </Icon>
+                <Control xsi:type="Button" id="fm.open">
+                  <Label resid="open.label" />
+                  <Supertip>
+                    <Title resid="open.label" />
+                    <Description resid="open.desc" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon.16" />
+                    <bt:Image size="32" resid="icon.32" />
+                    <bt:Image size="80" resid="icon.80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>fm.taskpane</TaskpaneId>
+                    <SourceLocation resid="url.taskpane" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon.16" DefaultValue="https://pptx-font-manager-addin.stoatworks-labs.com/icons/icon-16.png" />
+        <bt:Image id="icon.32" DefaultValue="https://pptx-font-manager-addin.stoatworks-labs.com/icons/icon-32.png" />
+        <bt:Image id="icon.80" DefaultValue="https://pptx-font-manager-addin.stoatworks-labs.com/icons/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="url.taskpane" DefaultValue="https://pptx-font-manager-addin.stoatworks-labs.com/taskpane.html" />
+        <bt:Url id="url.support" DefaultValue="https://github.com/stoatworks-labs/pptx-font-manager-addin" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="group.label" DefaultValue="Fonts" />
+        <bt:String id="open.label" DefaultValue="Font Manager" />
+        <bt:String id="getStarted.title" DefaultValue="Font Manager is ready" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="open.desc" DefaultValue="Check which of the deck's fonts are installed here, and fetch the missing ones." />
+        <bt:String id="getStarted.desc" DefaultValue="Open the Font Manager task pane from the Home tab to scan this presentation." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

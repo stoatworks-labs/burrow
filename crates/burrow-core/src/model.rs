@@ -34,6 +34,22 @@ pub enum Format {
     /// own settings — Companion has no fixed modules directory to find. See
     /// [`crate::dest::companion_modules_dir`].
     Companion,
+    /// A PowerPoint add-in: an Office add-in manifest, and nothing else.
+    ///
+    /// The odd one out in a third way. There is no code to place at all — the
+    /// add-in runs from its own website inside PowerPoint's webview — so what
+    /// Burrow installs is the manifest that tells PowerPoint where that is, put
+    /// where PowerPoint looks for sideloaded add-ins. On a Mac that is the
+    /// `wef` folder in PowerPoint's container; on Windows, a per-user folder
+    /// and a value under `Wef\Developer` in the registry. Office.js add-ins
+    /// have no other install path outside Microsoft Marketplace and an M365
+    /// admin deployment. See [`crate::officeaddin`].
+    ///
+    /// Named for the host, not for Office, because the host decides the
+    /// destination: a Word add-in would go into Word's container, and one
+    /// format per host keeps a PowerPoint add-in from growing an empty Word
+    /// slot the way [`crate::catalog::Entry::known_formats`] guards against.
+    Powerpoint,
     /// A format this build has never heard of, arriving from a newer
     /// catalogue.
     ///
@@ -61,6 +77,7 @@ impl Format {
         Format::Au,
         Format::App,
         Format::Companion,
+        Format::Powerpoint,
     ];
 
     pub fn is_shipping(self) -> bool {
@@ -77,6 +94,7 @@ impl Format {
             Format::Au => "au",
             Format::App => "app",
             Format::Companion => "companion",
+            Format::Powerpoint => "powerpoint",
             Format::Unknown => "unknown",
         }
     }
@@ -92,6 +110,7 @@ impl Format {
             Format::Au => "Audio Unit",
             Format::App => "Application",
             Format::Companion => "Companion module",
+            Format::Powerpoint => "PowerPoint add-in",
             Format::Unknown => "Unknown",
         }
     }
@@ -136,7 +155,9 @@ impl Format {
             Format::Au => &[".component"],
             Format::App => &[".app", ".exe"],
             Format::Fxplug => &[".fxplug"],
-            Format::Companion | Format::Unknown => &[],
+            // A PowerPoint add-in is never unpacked from anything: the download
+            // *is* the manifest, checked and placed by `officeaddin`.
+            Format::Companion | Format::Powerpoint | Format::Unknown => &[],
         }
     }
 
@@ -204,6 +225,15 @@ pub enum Category {
     /// value is representable so that the day the catalogue starts emitting it,
     /// clients already in the field file it correctly instead of dropping it.
     Firmware,
+    /// PowerPoint add-ins.
+    ///
+    /// ⚠️ A client older than this tab reads `powerpoint` as
+    /// [`Category::Unknown`] and shows the entry on no tab at all. That is
+    /// the right failure here, and the reason the catalogue sends it straight
+    /// in `tab` rather than additively the way `video-tools` arrived: nothing
+    /// older than this build can install an add-in, so a row in a known tab
+    /// would be a row with no button on it.
+    Powerpoint,
     #[serde(other)]
     Unknown,
 }
@@ -215,6 +245,7 @@ impl Category {
         Category::VideoTools,
         Category::Audio,
         Category::Netinfra,
+        Category::Powerpoint,
         Category::SelfHosted,
     ];
 
@@ -227,6 +258,7 @@ impl Category {
             Category::Netinfra => "netinfra",
             Category::SelfHosted => "selfhosted",
             Category::Firmware => "firmware",
+            Category::Powerpoint => "powerpoint",
             Category::Unknown => "unknown",
         }
     }
@@ -241,6 +273,7 @@ impl Category {
             Category::Netinfra => "Networking & Infrastructure",
             Category::SelfHosted => "Self-hosted",
             Category::Firmware => "Device firmware",
+            Category::Powerpoint => "PowerPoint",
             Category::Unknown => "Other",
         }
     }
@@ -404,6 +437,15 @@ pub enum VersionSource {
     /// Burrow's record of what it installed, trusted only when the payload
     /// still hashes to what was recorded.
     Ledger,
+    /// The file on disk is byte for byte the one the current release ships,
+    /// by the catalogue's SHA-256.
+    ///
+    /// For a PowerPoint add-in, whose manifest carries a *manifest* version
+    /// (Office wants it ≥ 1.0 and caches by it) rather than the release's, so
+    /// nothing inside the file says which release it came from. What can be
+    /// said is whether it is the current one, and that is the question a row
+    /// asks.
+    Checksum,
 }
 
 /// What Burrow believes about one (plugin, format) on this machine.
@@ -478,6 +520,18 @@ mod tests {
     }
 
     #[test]
+    fn a_powerpoint_add_in_reads_and_writes_as_its_id_and_never_elevates() {
+        let f: Format = serde_json::from_str("\"powerpoint\"").unwrap();
+        assert_eq!(f, Format::Powerpoint);
+        assert_eq!(serde_json::to_string(&f).unwrap(), format!("\"{}\"", f.id()));
+        assert!(f.is_shipping());
+        assert!(!f.needs_elevation());
+        // Nothing to unpack, so nothing to recognise by suffix.
+        assert!(f.payload_extensions().is_empty());
+        assert!(!f.payload_is_whole_archive(Platform::Macos));
+    }
+
+    #[test]
     fn only_the_system_directory_formats_need_elevation() {
         assert!(!Format::Ffgl.needs_elevation());
         assert!(Format::Openfx.needs_elevation());
@@ -521,6 +575,7 @@ mod tests {
             Category::Netinfra,
             Category::SelfHosted,
             Category::Firmware,
+            Category::Powerpoint,
         ] {
             let quoted = format!("\"{}\"", c.id());
             assert_eq!(serde_json::to_string(&c).unwrap(), quoted, "{c:?} writes as its id");

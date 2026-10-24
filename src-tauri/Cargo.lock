@@ -367,12 +367,14 @@ dependencies = [
  "hex",
  "libc",
  "plist",
+ "quick-xml",
  "semver",
  "serde",
  "serde_json",
  "sha2",
  "tar",
  "walkdir",
+ "winreg",
  "zip 2.4.2",
 ]
 

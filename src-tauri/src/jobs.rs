@@ -34,7 +34,7 @@
 //! What the window hears about it is rate-limited: see [`Reporter`].
 
 use burrow_core::model::{Format, Platform};
-use burrow_core::{archive, commit, dmg, hashing, ledger, quarantine};
+use burrow_core::{archive, commit, dmg, hashing, ledger, officeaddin, quarantine};
 use burrow_plan::Op;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -96,6 +96,11 @@ pub struct PlannedUnit {
     /// named by what the archive holds.
     #[serde(default)]
     pub install_name: Option<String>,
+    /// For a PowerPoint add-in, the Ids it is known by: what an install checks
+    /// the download against, and what an uninstall removes. Empty for every
+    /// other format. See `officeaddin`.
+    #[serde(default)]
+    pub addin_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -305,6 +310,10 @@ fn plan(app: &AppHandle, requests: &[OpRequest]) -> Result<BatchPlan, String> {
     let cat = catalog.as_ref().ok_or("the plugin list has not loaded yet")?;
     let led = state.ledger.lock().map_err(|_| "state is poisoned")?;
     let platform = Platform::current().ok_or("no plugin hosts are supported on this platform")?;
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| format!("could not find your home folder: {e}"))?;
 
     let mut units = Vec::new();
     let mut warnings = Vec::new();
@@ -372,6 +381,28 @@ fn plan(app: &AppHandle, requests: &[OpRequest]) -> Result<BatchPlan, String> {
             }
         };
 
+        // A PowerPoint add-in is one file under one name, and is known by its
+        // Id rather than by that name: both settled here, for install and
+        // uninstall alike, so the run does what the confirmation described.
+        let (entries, addin_ids) = if req.format == Format::Powerpoint {
+            let declared = entry
+                .asset(req.format, platform)
+                .map(|a| a.entries.clone())
+                .unwrap_or_default();
+            let name = officeaddin::install_name(&declared, &entry.slug, &entry.name, platform);
+            let ids = officeaddin::ids_for(&entry.identifiers, &dest.path, &name, platform);
+            if req.action != Action::Uninstall && !burrow_core::dest::powerpoint_ready(platform, &home) {
+                warnings.push(format!(
+                    "PowerPoint hasn’t been opened on this account yet, so {} can’t be installed \
+                     until it has. Open PowerPoint once, quit it, then try again.",
+                    entry.name
+                ));
+            }
+            (vec![name], ids)
+        } else {
+            (entries, Vec::new())
+        };
+
         if entries.is_empty() {
             warnings.push(format!(
                 "Burrow does not know what {}'s {} download contains, so it will \
@@ -409,6 +440,7 @@ fn plan(app: &AppHandle, requests: &[OpRequest]) -> Result<BatchPlan, String> {
             entries,
             needs_elevation: dest.needs_elevation,
             install_name,
+            addin_ids,
         });
     }
 
@@ -446,6 +478,7 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
         (state.cache_dir.clone(), helper_path(&app))
     };
     let platform = Platform::current().ok_or("no plugin hosts are supported on this platform")?;
+    let home = app.path().home_dir().ok();
     let staging_root = cache_dir.join("staging").join(&plan.batch);
     let downloads = cache_dir.join("downloads");
     let _ = std::fs::create_dir_all(&staging_root);
@@ -482,6 +515,15 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
             continue;
         };
 
+        // Said before anything is fetched: an add-in for a PowerPoint that has
+        // never run has nowhere to go, and the download would be for nothing.
+        if unit.format == Format::Powerpoint
+            && !home.as_deref().is_some_and(|h| burrow_core::dest::powerpoint_ready(platform, h))
+        {
+            outcomes.push(fail(unit, &officeaddin::AddinError::PowerPointNeverOpened.to_string()));
+            continue;
+        }
+
         reporter.phase(i, unit, "downloading", unit.size, None);
         // Named for what it is: a macOS application arrives as a disk image, a
         // Companion module as an npm tarball, everything else as a zip. The
@@ -493,6 +535,8 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
             "dmg"
         } else if unit.format == Format::Companion {
             "tgz"
+        } else if unit.format == Format::Powerpoint {
+            "xml"
         } else {
             "zip"
         };
@@ -516,6 +560,29 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
                 continue;
             }
         };
+
+        // A PowerPoint add-in is not unpacked: the download is the manifest.
+        // It is read, checked against the Ids the catalogue lists, and kept as
+        // it is until the commit puts it where PowerPoint looks.
+        if unit.format == Format::Powerpoint {
+            let staged = staging_root.join(format!("{}-{}.xml", unit.slug, unit.format.id()));
+            reporter.phase(i, unit, "verifying", None, None);
+            match stage_addin(&file, &staged, &unit.addin_ids) {
+                Ok(size) => {
+                    reporter.parked(i, unit, "staged", size);
+                    ready.push(Ready {
+                        index: i,
+                        unit: unit.clone(),
+                        staged,
+                        entries: unit.entries.clone(),
+                        size,
+                        sha: Some(sha),
+                    });
+                }
+                Err(e) => outcomes.push(fail(unit, &e)),
+            }
+            continue;
+        }
 
         // Unpacking, checking and de-quarantining are blocking work on a file
         // that is now local: off the runtime, so a download for the next unit
@@ -606,7 +673,9 @@ pub async fn run_batch(app: AppHandle, plan: BatchPlan) -> Result<BatchOutcome, 
         }
     }
 
-    if outcomes.iter().any(|o| o.ok) {
+    // A PowerPoint add-in brings its own sentence about restarting PowerPoint,
+    // so this is only for the rest.
+    if outcomes.iter().any(|o| o.ok && o.format != Format::Powerpoint) {
         notes.push("Restart your host to pick up the change.".into());
     }
 
@@ -681,6 +750,12 @@ fn finish(
     for r in ready {
         if r.unit.needs_elevation {
             elevated.push(r);
+            continue;
+        }
+        if r.unit.format == Format::Powerpoint {
+            let (outcome, said) = apply_addin(app, reporter, batch, &r);
+            outcomes.push(outcome);
+            notes.extend(said);
             continue;
         }
         outcomes.push(apply_unprivileged(app, reporter, batch, &r));
@@ -815,6 +890,160 @@ fn apply_unprivileged(app: &AppHandle, reporter: &Reporter, batch: &str, r: &Rea
             ok(&r.unit)
         }
         Err(e) => fail(&r.unit, &e.to_string()),
+    }
+}
+
+/// Check a downloaded add-in manifest and move it into staging.
+///
+/// Read whole — it is a few kilobytes, and [`officeaddin::MAX_MANIFEST`] stops
+/// a wrong URL from being anything else — then refused unless it is a
+/// PowerPoint add-in carrying one of the Ids the catalogue lists. The download
+/// is gone whichever way this goes, as it is for an archive.
+fn stage_addin(file: &Path, staged: &Path, ids: &[String]) -> Result<u64, String> {
+    let checked = (|| {
+        let size = std::fs::metadata(file).map_err(|e| e.to_string())?.len();
+        if size > officeaddin::MAX_MANIFEST {
+            return Err("the download is far too large to be an add-in manifest".to_string());
+        }
+        let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
+        officeaddin::check(&bytes, ids).map_err(|e| e.to_string())?;
+        if let Some(dir) = staged.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(staged, &bytes).map_err(|e| e.to_string())?;
+        Ok(size)
+    })();
+    let _ = std::fs::remove_file(file);
+    checked
+}
+
+/// Put an add-in into PowerPoint, or take it out, and say what to do next.
+///
+/// Not [`commit::commit_with`]: there is nothing to copy but one small file,
+/// and what decides which files are this add-in is its Id, not the names in a
+/// folder — see `officeaddin`. The ledger is kept the same way as for
+/// everything else, with the hash of the manifest itself, which is what
+/// `officeaddin::reconcile` compares.
+fn apply_addin(app: &AppHandle, reporter: &Reporter, batch: &str, r: &Ready) -> (UnitOutcome, Vec<String>) {
+    let mut notes = Vec::new();
+    let (Some(platform), Ok(home)) = (Platform::current(), app.path().home_dir()) else {
+        return (fail(&r.unit, "could not find your home folder"), notes);
+    };
+    let name = r.entries.first().cloned().unwrap_or_default();
+    let unit = &r.unit;
+
+    if unit.action == Action::Uninstall {
+        reporter.phase(r.index, unit, "removing", None, None);
+        return match remove_addin(platform, &home, unit, &name) {
+            Ok(_) => {
+                if let Ok(mut led) = app.state::<AppState>().ledger.lock() {
+                    led.remove(&unit.slug, unit.format, &unit.destination_id);
+                }
+                notes.push(format!(
+                    "Quit and reopen PowerPoint, and {} will be gone from it.",
+                    unit.name
+                ));
+                (ok(unit), notes)
+            }
+            Err(e) => (fail(unit, &e.to_string()), notes),
+        };
+    }
+
+    reporter.phase(r.index, unit, "committing", Some(r.size), None);
+    let bytes = match std::fs::read(&r.staged) {
+        Ok(b) => b,
+        Err(e) => return (fail(unit, &format!("the staged manifest went missing: {e}")), notes),
+    };
+    match place_addin(platform, &home, unit, &name, &bytes, batch) {
+        Ok(placed) => {
+            if let Ok(mut led) = app.state::<AppState>().ledger.lock() {
+                led.upsert(ledger::LedgerEntry {
+                    slug: unit.slug.clone(),
+                    format: unit.format,
+                    destination_id: unit.destination_id.clone(),
+                    destination: unit.destination.clone(),
+                    entries: vec![name],
+                    version: unit.version.clone().unwrap_or_default(),
+                    installed_at: now_stamp(),
+                    payload_sha256: officeaddin::sha256_hex(&bytes),
+                    claimed: false,
+                });
+            }
+            if !placed.removed.is_empty() {
+                notes.push(format!(
+                    "PowerPoint already had another copy of {} ({}). Burrow took it out, so \
+                     PowerPoint sees one.",
+                    unit.name,
+                    placed.removed.join(", ")
+                ));
+            }
+            if let Some(before) = placed.previous {
+                notes.push(format!(
+                    "{} was registered with Office from {} before. PowerPoint now loads \
+                     Burrow’s copy.",
+                    unit.name,
+                    shown(Path::new(&before))
+                ));
+            }
+            notes.push(if platform == Platform::Macos {
+                format!(
+                    "Quit and reopen PowerPoint, then open {} from Home ▸ Add-ins, under Developer \
+                     Add-ins. PowerPoint for Mac drops a sideloaded add-in’s Home-tab button when it \
+                     quits, so Add-ins is where to find it after that.",
+                    unit.name
+                )
+            } else {
+                format!(
+                    "Restart PowerPoint, then open {} from Home ▸ Add-ins.",
+                    unit.name
+                )
+            });
+            (ok(unit), notes)
+        }
+        Err(e) => (fail(unit, &e.to_string()), notes),
+    }
+}
+
+fn place_addin(
+    platform: Platform,
+    home: &Path,
+    unit: &PlannedUnit,
+    name: &str,
+    bytes: &[u8],
+    batch: &str,
+) -> Result<officeaddin::Placed, officeaddin::AddinError> {
+    match platform {
+        #[cfg(windows)]
+        Platform::Windows => officeaddin::install_windows(
+            &unit.destination,
+            name,
+            bytes,
+            &unit.addin_ids,
+            batch,
+            &mut officeaddin::WefDeveloper,
+        ),
+        _ => officeaddin::install_mac(home, name, bytes, &unit.addin_ids, batch),
+    }
+}
+
+fn remove_addin(
+    platform: Platform,
+    home: &Path,
+    unit: &PlannedUnit,
+    name: &str,
+) -> Result<Vec<String>, officeaddin::AddinError> {
+    match platform {
+        #[cfg(windows)]
+        Platform::Windows => officeaddin::uninstall_windows(
+            &unit.destination,
+            name,
+            &unit.addin_ids,
+            &mut officeaddin::WefDeveloper,
+        ),
+        _ => {
+            let _ = name;
+            officeaddin::uninstall_mac(home, &unit.addin_ids)
+        }
     }
 }
 
@@ -1011,6 +1240,7 @@ mod tests {
                 entries: entries.clone(),
                 needs_elevation: true,
                 install_name: None,
+                addin_ids: Vec::new(),
             },
             staged,
             entries,

@@ -41,6 +41,7 @@ const CATEGORY_TABS: CategoryId[] = [
   'video-tools',
   'audio',
   'netinfra',
+  'powerpoint',
   'selfhosted',
   'firmware',
 ]

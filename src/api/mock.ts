@@ -6,7 +6,7 @@
  * password prompt — is reachable here by adding a parameter to the URL. That
  * makes them reviewable in a browser and capturable as screenshots.
  *
- *   ?tab=whatsnew|video|audio|netinfra|firmware|settings   (`plugins` = video)
+ *   ?tab=whatsnew|video|audio|netinfra|powerpoint|firmware|settings   (`plugins` = video)
  *   ?source=network|cache|baked        where the catalogue came from
  *   ?state=ok|offline|error            what the last refresh did
  *   ?installed=tinsel:ffgl@1.0.1,orrery:ffgl,idler:ffgl@?
@@ -192,6 +192,17 @@ function destinations(): Destination[] {
       custom: false,
     },
     {
+      id: 'powerpoint',
+      format: 'powerpoint',
+      label: 'PowerPoint',
+      path: '~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef',
+      displayPath: '~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef',
+      exists: true,
+      writable: true,
+      needsElevation: false,
+      custom: false,
+    },
+    {
       id: 'companion',
       format: 'companion',
       label: 'Companion modules',
@@ -215,9 +226,18 @@ function stateFor(
   if (!offered) return { state: 'no-build' }
   const entry = has.get(slug)?.get(format)
   if (entry === undefined) return { state: 'not-installed' }
-  if (entry === null) return { state: 'version-unknown', entries: [`${slug}.bundle`] }
+  if (entry === null) {
+    return {
+      state: 'version-unknown',
+      entries: [format === 'powerpoint' ? `${slug}.manifest.xml` : `${slug}.bundle`],
+    }
+  }
   if (entry === 'current' || entry === latest?.replace(/^v/, '')) {
-    return { state: 'up-to-date', version: latest ?? '1.0.0', source: 'info-plist' }
+    return {
+      state: 'up-to-date',
+      version: latest ?? '1.0.0',
+      source: format === 'powerpoint' ? 'checksum' : 'info-plist',
+    }
   }
   return {
     state: 'update-available',
@@ -228,9 +248,9 @@ function stateFor(
 }
 
 let currentSettings: Settings = {
-  schema: 2,
+  schema: 3,
   // Everything that needs no password, as the real defaults are.
-  defaultFormats: ['ffgl', 'vst3', 'au', 'app', 'companion'],
+  defaultFormats: ['ffgl', 'vst3', 'au', 'app', 'companion', 'powerpoint'],
   pluginFormats: {},
   destinations: {},
   catalogUrl: 'https://stoatworks-labs.com/catalog.json',
@@ -271,6 +291,11 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
             name: 'Bitfocus Companion',
             loadsEffects: true,
             note: "Modules go in the folder Companion's Settings → Developer modules path points at. Set that to the folder below and restart Companion.",
+          },
+          {
+            name: 'Microsoft PowerPoint',
+            loadsEffects: true,
+            note: 'Add-ins go into PowerPoint’s own add-in folder and appear when it next starts, under Home ▸ Add-ins ▸ Developer Add-ins.',
           },
         ],
         destinations: destinations(),

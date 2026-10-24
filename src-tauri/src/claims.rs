@@ -110,7 +110,10 @@ fn scan(app: &AppHandle) -> Result<Vec<Claimable>, String> {
 
     let mut out = Vec::new();
     for d in &env.destinations {
-        if !d.exists {
+        // PowerPoint's add-in folder holds manifests, not bundles, and an
+        // add-in is already recognised wherever it came from, by its Id — see
+        // `officeaddin`. There is nothing for claiming to add.
+        if !d.exists || d.format == Format::Powerpoint {
             continue;
         }
         // What this destination already accounts for. Passed in so the scan

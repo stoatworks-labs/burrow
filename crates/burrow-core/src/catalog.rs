@@ -318,6 +318,15 @@ pub struct Asset {
     /// not be.
     #[serde(default)]
     pub extras: Vec<String>,
+    /// GitHub's own SHA-256 of the file, which the catalogue copies from the
+    /// release asset's digest. Absent for an asset uploaded before GitHub
+    /// recorded digests.
+    ///
+    /// Read for one thing so far: whether an installed PowerPoint add-in's
+    /// manifest is the one the current release ships, since the manifest's own
+    /// `<Version>` is not the release's. See [`crate::officeaddin::reconcile`].
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -546,6 +555,40 @@ mod tests {
         );
         let e = &parse(&body).unwrap().entries[0];
         assert_eq!(e.tab(), Category::Unknown);
+    }
+
+    #[test]
+    fn a_powerpoint_add_in_is_filed_under_its_own_tab_and_offered_on_both_platforms() {
+        // The shape catalog.json.ts emits for an add-in: the manifest, with
+        // the name its own installer uses in `entries` and GitHub's digest.
+        let body = r#"{
+          "schema": 1, "generated": "2026-10-24T00:00:00Z",
+          "entries": [{
+            "slug": "pptx-font-manager-addin", "name": "Font Manager for PowerPoint",
+            "repo": "pptx-font-manager-addin", "kind": "addin",
+            "category": "powerpoint", "tab": "powerpoint",
+            "identifiers": ["abc06eaf-2365-4fb4-a75d-6c5591af1cf6"],
+            "version": "v0.2.0",
+            "assets": [
+              { "format": "powerpoint", "platform": "macos", "arch": "universal",
+                "url": "https://example/manifest.xml", "size": 5480,
+                "sha256": "1075c55252cb303ec275bbea8f0d621254678d9e60fd4cea242dbe1b0dd1a985",
+                "entries": ["stoatworks-font-manager.xml"] },
+              { "format": "powerpoint", "platform": "windows", "arch": "universal",
+                "url": "https://example/manifest.xml", "size": 5480,
+                "entries": ["Font Manager for PowerPoint"] }
+            ]
+          }]
+        }"#;
+        let e = &parse(body).unwrap().entries[0];
+        assert_eq!(e.tab(), Category::Powerpoint);
+        assert!(Category::SHOWN.contains(&e.tab()));
+        assert_eq!(e.formats_for(Platform::Macos), vec![Format::Powerpoint]);
+        assert_eq!(e.formats_for(Platform::Windows), vec![Format::Powerpoint]);
+        let mac = e.asset(Format::Powerpoint, Platform::Macos).unwrap();
+        assert_eq!(mac.entries, vec!["stoatworks-font-manager.xml".to_string()]);
+        assert!(mac.sha256.as_deref().is_some_and(|s| s.starts_with("1075c552")));
+        assert!(e.asset(Format::Powerpoint, Platform::Windows).unwrap().sha256.is_none());
     }
 
     #[test]

@@ -7,7 +7,7 @@
 //!
 //! It reads. It writes nothing, creates nothing and downloads nothing.
 
-use burrow_core::{catalog, dest, ledger, model::Platform, InstallState};
+use burrow_core::{catalog, dest, ledger, model::Format, model::Platform, officeaddin, InstallState};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -78,17 +78,33 @@ fn main() {
         for d in destinations.iter().filter(|d| known.contains(&d.format)) {
             let asset = entry.asset(d.format, platform);
             let declared: Vec<String> = asset.map(|a| a.entries.clone()).unwrap_or_default();
-            let r = ledger::reconcile_one(
-                &led,
-                &entry.slug,
-                d.format,
-                &d.id,
-                &d.path,
-                &declared,
-                &entry.identifiers,
-                asset.is_some(),
-                entry.version.as_deref(),
-            );
+            // A PowerPoint add-in is found by its Id, the way the app does it.
+            let r = if d.format == Format::Powerpoint {
+                let name = officeaddin::install_name(&declared, &entry.slug, &entry.name, platform);
+                let ids = officeaddin::ids_for(&entry.identifiers, &d.path, &name, platform);
+                let found = officeaddin::find_installed(platform, &d.path, &ids);
+                officeaddin::reconcile(
+                    &entry.slug,
+                    &d.id,
+                    &found,
+                    None,
+                    asset.is_some(),
+                    entry.version.as_deref(),
+                    asset.and_then(|a| a.sha256.as_deref()),
+                )
+            } else {
+                ledger::reconcile_one(
+                    &led,
+                    &entry.slug,
+                    d.format,
+                    &d.id,
+                    &d.path,
+                    &declared,
+                    &entry.identifiers,
+                    asset.is_some(),
+                    entry.version.as_deref(),
+                )
+            };
 
             let label = match &r.state {
                 InstallState::NotInstalled if r.foreign => "foreign",
