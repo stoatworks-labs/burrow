@@ -981,3 +981,37 @@ App Data request at all. WebKit's usual microphone, camera and listen-event pref
 are all tccd saw. Burrow's own prompt hasn't been seen yet, because that means putting a
 dialog on Allan's screen that only he should answer. Denied, the install fails with a
 sentence saying where to change it.
+
+**The whole path, through the real backend.** The window couldn't be driven: Allan was
+working in a full-screen Space, and an off-Space WKWebView neither repaints nor takes
+clicks (a click on *Look in PowerPoint* never reached settings.json). So a throwaway
+hook, never committed, ran the release build's own commands (`refresh_catalog`,
+`plan_batch`, `run_batch`, `plugin_views`, `environment`) under the real Wry app,
+against the new catalogue served locally and real downloads from GitHub:
+
+- **Scratch home, fake container** holding the old sideload copy (rewritten for
+  localhost), the Exporter's release manifest and a stray `notes.xml`:
+  - Before *Look*, both add-ins read unchecked. After it, Font Manager read *version
+    unknown* (the sideload copy) and the Exporter *up to date v0.1.0 (checksum)*.
+  - Reinstall placed `stoatworks-font-manager.xml` (1075c552…, the release's bytes),
+    took the sideload copy out and said so in a note, and left the other two files
+    byte-identical.
+  - Uninstall took it out, and install put it back. The ledger recorded v0.2.0 with
+    the manifest's hash, and the first action saved `lookInPowerpoint`.
+- **No container:** the plan warned, the unit failed with "Open PowerPoint once, quit it,
+  then install again" before downloading anything, and no `Containers` folder was
+  made.
+- **The real `wef`**, through a scratch home whose container is a symlink to the real
+  one, launched from a shell that already holds the App Data grant:
+  - It found the `.pkg`-installed Font Manager *up to date v0.2.0 (checksum)*, and
+    the Exporter's dev sideload by Id as *version unknown*.
+  - It uninstalled Font Manager and installed it again. The file that's there now is
+    byte-identical to the `.pkg`'s, with the same name, mode and xattrs
+    (`com.apple.provenance` only).
+  - The Exporter's file kept its hash and its 16:48 mtime.
+- **PowerPoint**, quit and relaunched in the background with a new deck, still caches
+  the manifest under `Wef/{…}/Manifests/abc06eaf-…_1.0.0.0` (same bytes). As earlier
+  measured, no Home-tab button after a relaunch. The *Add-ins* popover can't be
+  captured without full-screen control, which Allan wasn't there to approve, so
+  nobody has watched it list the file Burrow placed. It's the same file the `.pkg`
+  placed, and that one was seen working earlier today.

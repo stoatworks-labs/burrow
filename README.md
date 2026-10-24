@@ -231,6 +231,14 @@ What I've verified, on macOS:
   live catalogue: all 32 entries filed there are listed, the 24 browser tools under
   *Runs in a browser* and the eight applications with their install and *View compose*
   buttons. Every one of the catalogue's 173 entries lands on a tab the window shows.
+- PowerPoint add-ins, through the release build's own install code, with the window
+  left out because it couldn't be driven while I was working in another Space. In a
+  scratch home: installing, reinstalling over the old sideload script's copy,
+  uninstalling, and refusing politely when PowerPoint has never been opened. In my
+  real PowerPoint folder: it found the copy Font Manager's own `.pkg` had installed,
+  removed it and put it back byte for byte, and never touched the Exporter's
+  manifest beside it. A launch with nothing installed doesn't touch PowerPoint's
+  container, so macOS has no reason to ask about it.
 - A real update of my own Mac, through v0.4.0 on 19 October. Rebate's FFGL and OpenFX
   builds went to v0.3.1, the OpenFX one through the password prompt into
   `/Library/OFX/Plugins`, where it still verifies and is stapled. LivePremier Plus,
@@ -246,6 +254,11 @@ What I **haven't**:
   Effects, or an audio plugin in a DAW. They land in the right folders; the host
   picking them up is the untested part.
 - No Companion module Burrow placed has been loaded by a real Companion.
+- Nobody has watched PowerPoint list an add-in *Burrow* placed under Developer
+  Add-ins. The file is byte-identical to the one Font Manager's own installer puts
+  there, which does show up, but that's an inference, not a sighting. macOS's
+  prompt for Burrow reading PowerPoint's folder hasn't been seen either, and
+  nothing's been tried on Windows.
 - The quarantine clearing can't be proven from a local build. It needs a
   downloaded, Gatekeeper-quarantined copy of the app itself. The copy that did the
   real update wasn't quarantined, so that run doesn't settle it either.
