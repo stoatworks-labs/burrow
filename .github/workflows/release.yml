@@ -35,7 +35,7 @@ jobs:
           # rustup installs -- universal-apple-darwin is a Tauri bundling
           # target and `rustup target add` on it fails -- while `target` stays
           # what tauri build is given and what names the output directory.
-          - { name: macos-universal, os: macos-14,      target: universal-apple-darwin, rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin', bundles: app }
+          - { name: macos-universal, os: macos-15,      target: universal-apple-darwin, rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin', bundles: app }
           - { name: windows-x86_64, os: windows-latest, target: x86_64-pc-windows-msvc, bundles: nsis }
     steps:
       - uses: actions/checkout@v7
