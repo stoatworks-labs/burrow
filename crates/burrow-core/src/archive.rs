@@ -499,7 +499,10 @@ fn unpack_zip(zip_path: &Path, dest: &Path, on_progress: OnProgress<'_>) -> Resu
         let mut member = zip
             .by_index(i)
             .map_err(|e| ArchiveError::NotAZip(e.to_string()))?;
-        let raw = member.name().to_string();
+        let raw = member
+            .name()
+            .map_err(|e| ArchiveError::NotAZip(e.to_string()))?
+            .into_owned();
         done += member.size();
 
         if let Some(mode) = member.unix_mode() {

@@ -20,7 +20,7 @@ sha2 = "0.10"
 hex = "0.4"
 # deflate only. The fleet's archives are all deflate, and dropping bzip2/zstd/
 # lzma shrinks both the binary and the amount of parser this is exposed to.
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 
 # The Companion modules, and only those, arrive as an npm `.tgz` rather than a
 # zip — that is what `npm pack` produces and what Companion's own developer
