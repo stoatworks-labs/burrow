@@ -11,6 +11,8 @@
 An optional desktop app that installs, updates and removes the
 [Stoatworks](https://stoatworks-labs.com) plugins, tools and Companion modules.
 
+The [project page](https://stoatworks-labs.com/software/burrow/) has the downloads, the [user guide](https://stoatworks-labs.com/software/burrow/guide/) and the video.
+
 It started with the twenty-five video plugins, which are the awkward ones. Most ship in
 two or three formats (FFGL for Resolume, OpenFX for Resolve, Vegas, Nuke and Natron, and an
 After Effects build), and installing one by hand means finding the project page, working out
