@@ -14,7 +14,7 @@
     "baud": 460800,
     "connect": [
       "Wire a 3.3 V USB-serial adapter to the ESP32's castellations: adapter TX to U1 pin 34 (U0RXD), adapter RX to U1 pin 35 (U0TXD), and GND to any GND pad.",
-      "Put the board in download mode (below), press Connect and pick the adapter's port."
+      "Put the board in download mode, then connect and pick the adapter's port."
     ],
     "notes": [
       "The board has no USB socket or header yet, so the first flash goes through the castellations. After that, updates go over the network. An adapter with the usual DTR/RTS auto-reset circuit, wired to EN (R30 pad 1) and IO0 (R31 pad 1), saves holding anything."
@@ -22,7 +22,7 @@
     "bootMode": [
       "Hold IO0 to GND at R31 pad 1 (or U1 pin 25).",
       "Pulse EN to GND at R30 pad 1, or power-cycle the board.",
-      "Release IO0 and press Connect."
+      "Release IO0 and connect."
     ],
     "keeps": "its settings: the port patch and its network setup"
   },

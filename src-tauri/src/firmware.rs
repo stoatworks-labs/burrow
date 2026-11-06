@@ -21,7 +21,7 @@
 //! through a partition is worse than finishing it.
 
 use burrow_core::archive;
-use burrow_core::catalog::Entry;
+use burrow_core::catalog::{Asset, Catalog, Entry};
 use burrow_core::model::Format;
 use burrow_device::esp::{
     chips::DEFAULT_TABLE_OFFSET,
@@ -142,7 +142,11 @@ const NOT_ESP32: &[&str] = &["birddog-play"];
 
 fn firmware_entry(state: &AppState, slug: &str) -> Result<Entry, String> {
     let catalog = lock(&state.catalog)?;
-    let catalog = catalog.as_ref().ok_or("the catalogue has not loaded yet")?;
+    firmware_in(catalog.as_ref().ok_or("the catalogue has not loaded yet")?, slug)
+}
+
+/// The catalogue's firmware entry for `slug`, refused if it is not for an ESP32.
+fn firmware_in(catalog: &Catalog, slug: &str) -> Result<Entry, String> {
     let entry = catalog
         .entries
         .iter()
@@ -163,20 +167,7 @@ fn firmware_entry(state: &AppState, slug: &str) -> Result<Entry, String> {
 /// it goes anywhere; firmware goes straight to a device, so the only check
 /// between the network and the flash is this one.
 async fn fetch_unpacked(state: &AppState, entry: &Entry, emit: &Emit) -> Result<(PathBuf, String, String), String> {
-    let asset = entry
-        .assets
-        .iter()
-        .find(|a| a.format == Format::Firmware)
-        .map(|a| a.asset.clone())
-        .ok_or_else(|| format!("{} has no firmware download in the catalogue", entry.name))?;
-    let want = asset
-        .sha256
-        .clone()
-        .ok_or_else(|| format!("the catalogue gives no SHA-256 for {}, so Burrow will not write it", entry.name))?
-        .to_ascii_lowercase();
-    if want.len() != 64 || !want.bytes().all(|c| c.is_ascii_hexdigit()) {
-        return Err(format!("the catalogue's SHA-256 for {} is not one", entry.name));
-    }
+    let (asset, want) = firmware_asset(entry)?;
     let dir = state.cache_dir.join("firmware");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let zip = dir.join(format!("{}-{}.zip", entry.slug, &want[..12]));
@@ -201,6 +192,41 @@ async fn fetch_unpacked(state: &AppState, entry: &Entry, emit: &Emit) -> Result<
     let (z, u) = (zip.clone(), unpacked.clone());
     off_main(move || archive::unpack_all(&z, &u).map_err(|e| e.to_string())).await?;
     Ok((unpacked, asset.url.clone(), want))
+}
+
+/// An entry's firmware download and the SHA-256 it must have. No digest, no
+/// firmware: this is the only check between the network and the flash.
+fn firmware_asset(entry: &Entry) -> Result<(Asset, String), String> {
+    let asset = entry
+        .assets
+        .iter()
+        .find(|a| a.format == Format::Firmware)
+        .map(|a| a.asset.clone())
+        .ok_or_else(|| format!("{} has no firmware download in the catalogue", entry.name))?;
+    let want = asset
+        .sha256
+        .clone()
+        .ok_or_else(|| format!("the catalogue gives no SHA-256 for {}, so Burrow will not write it", entry.name))?
+        .to_ascii_lowercase();
+    if want.len() != 64 || !want.bytes().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!("the catalogue's SHA-256 for {} is not one", entry.name));
+    }
+    Ok((asset, want))
+}
+
+/// Read an unpacked catalogue release, and refuse it if it is for another
+/// device than the catalogue says.
+fn open_release(entry: &Entry, root: &Path, known: &[DeviceDef]) -> Result<Package, String> {
+    let pkg = open_package_dir(root, known)?;
+    if entry.device.as_deref() != Some(pkg.device.id.as_str()) {
+        return Err(format!(
+            "the catalogue says {} is for {}, and its package is for {}",
+            entry.name,
+            entry.device.as_deref().unwrap_or("nothing"),
+            pkg.device.id
+        ));
+    }
+    Ok(pkg)
 }
 
 /// Every device Burrow knows a definition for: the built-in CANary (for the
@@ -276,18 +302,8 @@ pub async fn esp_release(
         }
     };
     let known = known(&fw);
-    let r = root.clone();
-    let pkg = off_main(move || open_package_dir(&r, &known)).await.inspect_err(|e| emit.phase("failed", Some(e.clone())))?;
-    if entry.device.as_deref() != Some(pkg.device.id.as_str()) {
-        let e = format!(
-            "the catalogue says {} is for {}, and its package is for {}",
-            entry.name,
-            entry.device.as_deref().unwrap_or("nothing"),
-            pkg.device.id
-        );
-        emit.phase("failed", Some(e.clone()));
-        return Err(e);
-    }
+    let (r, e) = (root.clone(), entry.clone());
+    let pkg = off_main(move || open_release(&e, &r, &known)).await.inspect_err(|e| emit.phase("failed", Some(e.clone())))?;
     lock(&fw.packages)?.insert(format!("catalog:{slug}"), Opened { root, pkg: pkg.clone() });
     emit.phase("done", None);
     Ok(EspRelease {
@@ -748,6 +764,60 @@ pub async fn pick_files(app: AppHandle) -> Result<Option<Vec<PathBuf>>, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The live catalogue's firmware, opened the way the tab opens it: the
+    /// entry found by slug, its asset and digest, the download checked against
+    /// that digest, unpacked by burrow-core, read, matched to its device, every
+    /// variant planned, and every direct-download link naming a file that the
+    /// release really has. Ignored: it needs the catalogue and the downloads.
+    ///
+    ///     BURROW_LIVE_CATALOG=<catalog.json> BURROW_LIVE_DOWNLOADS=<dir of release assets> \
+    ///       cargo test the_live_catalogue -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs the live catalogue and its firmware downloads"]
+    fn the_live_catalogue_s_firmware_opens_as_the_tab_opens_it() {
+        let var = |v: &str| PathBuf::from(std::env::var(v).unwrap_or_else(|_| panic!("set {v}")));
+        let (catalog, downloads) = (var("BURROW_LIVE_CATALOG"), var("BURROW_LIVE_DOWNLOADS"));
+        let catalog = burrow_core::catalog::parse(&std::fs::read_to_string(catalog).unwrap()).unwrap();
+        let mut opened = 0;
+        for entry in catalog.entries.iter().filter(|e| e.kind == "firmware" && e.device.is_some()) {
+            let found = firmware_in(&catalog, &entry.slug);
+            if NOT_ESP32.contains(&entry.device.as_deref().unwrap()) {
+                assert!(found.unwrap_err().contains("not for an ESP32 board"), "{}", entry.slug);
+                continue;
+            }
+            let entry = found.unwrap();
+            let (asset, want) = firmware_asset(&entry).unwrap();
+            let name = asset.url.rsplit('/').next().unwrap();
+            let zip = downloads.join(name);
+            let bytes = std::fs::read(&zip).unwrap_or_else(|_| panic!("download {} into BURROW_LIVE_DOWNLOADS", asset.url));
+            assert_eq!(package::sha256_hex(&bytes), want, "{name}");
+            assert_eq!(asset.size, Some(bytes.len() as u64), "{name}");
+            let tmp = tempfile::tempdir().unwrap();
+            archive::unpack_all(&zip, tmp.path()).unwrap();
+            let pkg = open_release(&entry, tmp.path(), &known_devices()).unwrap_or_else(|e| panic!("{}: {e}", entry.slug));
+            for r in &pkg.releases {
+                for v in &r.variants {
+                    let writes = load_variant(tmp.path(), r, v, pkg.device.table_offset()).unwrap();
+                    let ctx = PlanContext {
+                        projects: Some(&pkg.device.projects),
+                        table_offset: pkg.device.table_offset(),
+                        ..PlanContext::new(pkg.device.chip().unwrap(), pkg.device.flash_size)
+                    };
+                    assert_eq!(check_plan(&writes, &ctx), Vec::<String>::new(), "{} {}/{}", entry.slug, r.id, v.id);
+                }
+            }
+            let links = release_links(&pkg.device, &pkg);
+            assert!(!links.is_empty(), "{}: a catalogue release should be tagged", entry.slug);
+            assert_eq!(links[0].url, asset.url, "{}: the zip link is the catalogue's own download", entry.slug);
+            for l in &links {
+                assert!(downloads.join(&l.name).exists(), "{} links to {}, which is not in the release", entry.slug, l.url);
+            }
+            eprintln!("{} {}: {} links, device {}", entry.slug, entry.version.as_deref().unwrap_or("?"), links.len(), pkg.device.id);
+            opened += 1;
+        }
+        assert!(opened > 0, "the catalogue carries no ESP32 firmware");
+    }
 
     #[test]
     fn a_tagged_release_gets_a_link_per_file_and_an_untagged_one_none() {

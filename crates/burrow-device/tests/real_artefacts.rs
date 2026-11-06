@@ -85,10 +85,12 @@ fn every_bundled_release_opens_loads_and_passes_the_gate() {
 fn every_exported_zip_and_whole_flash_image_is_what_burrow_would_make() {
     let firmware = dir("BURROW_FLASHER_FIRMWARE");
     let export = dir("BURROW_FLASHER_EXPORT");
-    let mut seen = 0;
+    let mut variants = 0;
     for id in devices(&firmware) {
         let bundled = open_package_dir(&firmware.join(&id), &known_devices()).unwrap();
+        let mut seen = 0;
         for r in &bundled.releases {
+            // Only the releases that were exported: the bundle keeps older ones.
             let zip = export.join(zip_name(&bundled.device, r));
             if !zip.exists() {
                 continue;
@@ -108,8 +110,11 @@ fn every_exported_zip_and_whole_flash_image_is_what_burrow_would_make() {
                     .map(|c| c.offset)
                     .collect();
                 assert!(!parts.is_empty());
+                variants += 1;
             }
         }
+        // Every device in the bundle, not just one of them.
+        assert!(seen > 0, "no exported release of {id} under BURROW_FLASHER_EXPORT");
     }
-    assert!(seen > 0, "no exported release found under BURROW_FLASHER_EXPORT");
+    eprintln!("{variants} variants matched");
 }

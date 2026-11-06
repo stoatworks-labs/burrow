@@ -262,9 +262,10 @@ Afterwards the board restarts into the new firmware, and the page says what to e
 of it. **If a write fails, the board isn't bricked.** An ESP32's boot ROM can't be
 overwritten: put it in download mode, read it and write it again.
 
-The device notes come from the same files the Stoatworks Flasher uses, so now and then
-they say *press Connect* or *open the console below*, which are the web page's buttons.
-In Burrow, that's *Look for boards* and *Read it*, and there's no console.
+The device notes come from the same files the Stoatworks Flasher uses, so where they say
+*connect*, in Burrow that means *Look for boards* and then *Read it*. Burrow has no serial
+console: where a note asks you to type something into the board's, use any serial
+terminal once the write has finished.
 
 ## Software you installed yourself
 

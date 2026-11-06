@@ -73,6 +73,13 @@ const PACKAGES: Record<string, Package> = {
   'cuckoo-firmware': one(cuckooManifest),
 }
 
+/** The published release zips' SHA-256, as the live catalogue gives them (2026-11-06). */
+const ZIP_SHA256: Record<string, string> = {
+  'canary-firmware': 'ef1c935f160ade7ef2396e33c2784ebabf9a3dd6d349c15323800c9ccf2af95b',
+  'nanode-firmware': '4c08c80fa7ff4e1ecec4d91b43c46032aca81c07e6c501a2cc7181811e25bd2f',
+  'cuckoo-firmware': 'ceb529bfd32d51e0d6a5969a4ed6689beef9d969117fca1739e225e8eeb4bc2a',
+}
+
 function links(p: Package): Link[] {
   const d = p.device
   const out: Link[] = []
@@ -303,7 +310,7 @@ export async function mockFirmware(cmd: string, args?: Record<string, unknown>):
         version: pkg.releases[0].tag ?? null,
         package: pkg,
         zipUrl: `https://github.com/${pkg.device.repo}/releases/download/${pkg.releases[0].tag}/${pkg.device.id}-firmware-${pkg.releases[0].id}.zip`,
-        zipSha256: '68187de72cc85a5feaab371c1423d33af2e83eee59ba9af3228c6679e0f6e5c8',
+        zipSha256: ZIP_SHA256[a.slug],
         links: links(pkg),
       } satisfies EspRelease
     }

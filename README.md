@@ -301,8 +301,10 @@ What I've verified, on macOS:
   bundles opens and passes them, and Burrow's whole-flash image of each of the five
   variants comes out **byte for byte** the same as the page's export script's, and as the
   `.bin` files on the GitHub releases (CANary v0.2.1, nanODE v0.4.2, Cuckoo v0.1.0), whose
-  zips unpack to the same releases. The older CANary release the live plugin list points at
-  today downloads, matches its SHA-256 and plans cleanly. Every screen in the tab, and a failed write, has been driven through the mock
+  zips unpack to the same releases. The live plugin list's three firmware entries were
+  opened the way the tab opens them: downloaded, checked against its SHA-256, unpacked,
+  matched to their device and planned. The older first-schema CANary release, v0.2.0,
+  still opens and plans cleanly. Every screen in the tab, and a failed write, has been driven through the mock
   backend.
 
 What I **haven't**:

@@ -20,12 +20,12 @@
     ],
     "connect": [
       "Plug Cuckoo's USB-C into this computer. That powers it too.",
-      "Press Connect and pick USB JTAG/serial debug unit (Espressif, 303a:1001)."
+      "Connect, and pick USB JTAG/serial debug unit (Espressif, 303a:1001)."
     ],
     "bootMode": [
       "Unplug the USB-C.",
       "Hold TP7 (ESP_BOOT, GPIO9) to ground and plug the USB-C back in.",
-      "Let go of TP7 and press Connect."
+      "Let go of TP7 and connect."
     ],
     "keeps": "its Wi-Fi password"
   },
@@ -40,7 +40,7 @@
           "name": "Bring-up",
           "summary": "The ESP32 image, carrying the RP2354A's bring-up checks for rp flash and its flasher for rp uartboot. What board 1 runs.",
           "recommended": true,
-          "after": "Its access point, Cuckoo-XXXX, comes up within a few seconds. Open the console below and type wifi to see its password.",
+          "after": "Its access point, Cuckoo-XXXX, comes up within a few seconds. Type wifi in its serial console to see the password.",
           "app": {
             "version": "0.1.0 4300e74",
             "project": "cuckoo_ui",
@@ -90,7 +90,7 @@
           "id": "bridge",
           "name": "DDC bridge",
           "summary": "The same ESP32 image, carrying the DDC bridge for rp flash instead of the bring-up checks. Never run on a board.",
-          "after": "Its access point, Cuckoo-XXXX, comes up within a few seconds. Open the console below and type wifi to see its password.",
+          "after": "Its access point, Cuckoo-XXXX, comes up within a few seconds. Type wifi in its serial console to see the password.",
           "app": {
             "version": "0.1.0 4300e74",
             "project": "cuckoo_ui",

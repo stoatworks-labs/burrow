@@ -1065,15 +1065,19 @@ firmware without one, and then checks every part against the manifest's own.
 had only ever been served from the flasher's own site. The flasher's export script
 now writes the release zip and a whole-flash image per variant, published on
 2026-11-06 as `stoatworks-labs/canary` v0.2.1, `nanode-firmware` v0.4.2 and
-`cuckoo-firmware` v0.1.0. Downloaded from GitHub, each zip matched its digest, and
-the cross-check above passes against those downloads as well as the local export.
-`canary` v0.2.0, the first-schema zip the live catalogue still points at, opens
+`cuckoo-firmware` v0.1.0, and the live catalogue carries all three. The zips are
+deflated with an exact-pinned fflate, so the same release is the same bytes on any
+machine. Downloaded from GitHub, each matched the catalogue's digest and size; the
+cross-check above passes against those downloads as well as the local export; and an
+ignored test in `firmware.rs` opens each live catalogue entry the way the tab does.
+`canary` v0.2.0, the first-schema zip the catalogue pointed at before, still opens
 through the first-schema fallback and plans cleanly. The tab offers a release's GitHub downloads as
 links, so nobody needs Burrow, or the page, to fetch it again.
 
-**The device text is written for the page.** `connect`, `bootMode` and `after` in
-each manifest say "press Connect" and "open the console below", which are the
-page's buttons. Burrow shows them as they are rather than keep a second copy.
+**One device text for both.** `connect`, `bootMode` and `after` in each manifest
+first said "press Connect" and "open the console below", which are the page's
+buttons. The flasher reworded them (a721719) to read right in either program, so
+Burrow shows them as they are rather than keep a second copy.
 
 Not done, and said so in the README: **nothing has been written to a board by
 Burrow yet**, and nothing has been read from one. Everything above ran against

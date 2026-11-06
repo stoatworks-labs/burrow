@@ -440,6 +440,12 @@ its inputs live in the flasher's repo:
 BURROW_FLASHER_FIRMWARE=<flasher>/public/firmware BURROW_FLASHER_EXPORT=<dir> \
   cargo test -p burrow-device --test real_artefacts -- --ignored
 
+# The live catalogue's firmware entries, opened the way the tab opens them:
+# found by slug, digest and size checked, unpacked, matched to their device and
+# planned, and every direct-download link naming a file the release has.
+BURROW_LIVE_CATALOG=<catalog.json> BURROW_LIVE_DOWNLOADS=<dir of release assets> \
+  (cd src-tauri && cargo test the_live_catalogue -- --ignored)
+
 # The same steps against a real board, from a terminal, confirming each write.
 cargo run -p burrow-device --example bench -- esp-ports
 cargo run -p burrow-device --example bench -- esp-plan <unzipped release>
