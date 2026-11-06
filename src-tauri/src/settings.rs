@@ -274,6 +274,18 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn firmware_is_never_a_default_format_and_is_dropped_from_a_saved_one() {
+        // Everything that sweeps "the formats you want" — Install all, Update
+        // all, a fresh slot — reads this list. A device write must never be in
+        // it: it has its own tab, its own gate and its own confirmation.
+        assert!(!Settings::default().default_formats.contains(&Format::Firmware));
+        assert!(!Format::Firmware.is_shipping());
+        let mut s: Settings = serde_json::from_str(r#"{"defaultFormats":["ffgl","firmware"]}"#).unwrap_or_default();
+        s.normalise();
+        assert!(!s.default_formats.contains(&Format::Firmware));
+    }
+
+    #[test]
     fn a_missing_file_yields_defaults_rather_than_an_error() {
         let s = load(std::path::Path::new("/nowhere/settings.json"));
         assert!(s.default_formats.contains(&Format::Ffgl));

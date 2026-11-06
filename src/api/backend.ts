@@ -26,6 +26,15 @@ import type {
   UpdateInfo,
   UpdateProgress,
 } from './types'
+import type {
+  Description,
+  EspRelease,
+  FwProgress,
+  OpenedFiles,
+  PlanView,
+  PortInfo,
+  Source,
+} from './firmware'
 import { mockInvoke, mockListen } from './mock'
 
 const hasTauri =
@@ -83,6 +92,21 @@ export const api = {
   checkUpdate: () => invoke<UpdateInfo>('check_update'),
   /** Does not resolve on success: the app restarts into the new version. */
   installUpdate: () => invoke<void>('install_update'),
+
+  // Device firmware. Every one of these acts only when asked: nothing scans
+  // for devices or fetches firmware because the tab was opened.
+  espRelease: (slug: string) => invoke<EspRelease>('esp_release', { slug }),
+  espPorts: (all: boolean) => invoke<PortInfo[]>('esp_ports', { all }),
+  /** Opens the port, which restarts the board. */
+  espDescribe: (port: string, baud: number | null, tableOffset: number | null) =>
+    invoke<Description>('esp_describe', { port, baud, tableOffset }),
+  espForgetUnit: () => invoke<void>('esp_forget_unit'),
+  espOpenFiles: (paths: string[]) => invoke<OpenedFiles>('esp_open_files', { paths }),
+  /** Opens nothing: the plan against the board last read. */
+  espPlan: (source: Source) => invoke<PlanView>('esp_plan', { source }),
+  espWrite: (req: { port: string; source: Source; eraseAll: boolean; confirmReplace: boolean }) =>
+    invoke<void>('esp_write', { req }),
+  pickFiles: () => invoke<string[] | null>('pick_files'),
 }
 
 export const onProgress = (h: (p: Progress) => void) => listenRaw<Progress>('batch-progress', h)
@@ -92,6 +116,10 @@ export const onFinished = (h: (o: BatchOutcome) => void) =>
    not be able to drive the same progress bar. */
 export const onUpdateProgress = (h: (p: UpdateProgress) => void) =>
   listenRaw<UpdateProgress>('update-progress', h)
+/* Its own event too: a device write has nothing to do with a plugin batch,
+   and must not be able to drive the strip that shows one. */
+export const onFirmwareProgress = (h: (p: FwProgress) => void) =>
+  listenRaw<FwProgress>('firmware-progress', h)
 
 /**
  * Bytes, for a person.

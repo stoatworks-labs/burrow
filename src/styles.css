@@ -627,3 +627,92 @@ a { color: var(--accent); }
   font-size: 13px;
   min-width: 62px;
 }
+
+/* ---- device firmware ---------------------------------------------------- */
+
+.firmware .fw-help { color: var(--dim); font-size: 12.5px; margin: 4px 0 6px; }
+.firmware .fw-help code { color: var(--muted); font-size: 12px; }
+.firmware .actions .opt { padding: 0; }
+.firmware .opt .d { margin-left: 2px; color: var(--dim); }
+.fw-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; margin-bottom: 10px; }
+.fw-seg button {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 12px;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  cursor: pointer;
+}
+.fw-seg button + button { border-left: 1px solid var(--border); }
+.fw-seg button[aria-selected='true'] { background: var(--panel-2); color: var(--text); }
+.fw-cards { display: grid; gap: 6px; margin-bottom: 6px; }
+.fw-card {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 11px;
+  cursor: pointer;
+}
+.fw-card.on { border-color: var(--accent); }
+.fw-card.off { cursor: default; opacity: 0.6; }
+.fw-card input { margin-top: 3px; }
+.fw-card .t { font-size: 13.5px; color: var(--text); display: block; }
+.fw-card .ver { margin-left: 7px; }
+.fw-card .d { font-size: 12.5px; color: var(--dim); display: block; }
+.fw-status { font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--border); padding-left: 9px; margin: 4px 0 8px; }
+.fw-links { font-size: 12.5px; color: var(--dim); margin: 8px 0 2px; }
+.fw-select, .fw-offset {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+.fw-offset { width: 130px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.fw-why { font-size: 12.5px; color: var(--dim); }
+.fw-details { font-size: 13px; color: var(--muted); margin: 2px 0 8px; }
+.fw-details summary { cursor: pointer; color: var(--dim); font-size: 12.5px; }
+.fw-details p { margin: 6px 0; }
+.fw-unit {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 9px 11px;
+  margin-top: 10px;
+}
+.fw-unit-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.fw-unit-head code { font-size: 12.5px; color: var(--text); }
+.fw-unit-head .d { color: var(--dim); font-size: 12.5px; }
+.fw-unit-head .spacer { flex: 1; }
+.fw-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 14px;
+  margin: 9px 0 4px;
+  font-size: 13px;
+}
+.fw-facts dt { color: var(--dim); }
+.fw-facts dd { margin: 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fw-facts dd.bad, .progress-text.bad { color: var(--bad); }
+.fw-choose { margin-top: 6px; }
+.fw-done {
+  margin-top: 9px;
+  font-size: 13px;
+  color: var(--good);
+}
+.fw-steps { margin: 4px 0 8px; padding-left: 21px; color: var(--muted); font-size: 13px; }
+.fw-confirm { max-width: 620px; }
+.fw-confirm-body { padding: 4px 16px 4px; font-size: 13.5px; color: var(--muted); }
+.fw-confirm-body p { margin: 8px 0; }
+.fw-confirm-body strong { color: var(--text); }
+.fw-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.fw-parts { border-collapse: collapse; font-size: 12.5px; margin: 6px 0; }
+.fw-parts th { text-align: left; font-weight: 500; color: var(--dim); padding: 2px 16px 4px 0; }
+.fw-parts td { padding: 2px 16px 2px 0; font-variant-numeric: tabular-nums; color: var(--muted); }
+.fw-parts td:first-child { color: var(--text); }
+.fw-parts td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }

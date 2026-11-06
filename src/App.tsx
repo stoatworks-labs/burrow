@@ -581,7 +581,7 @@ export function App() {
           onPlay={setPlaying}
         />
       ) : tab === 'firmware' ? (
-        <Firmware />
+        <Firmware plugins={plugins} onOpen={api.openExternal} />
       ) : tab !== 'settings' ? (
         <Plugins
           category={tab}

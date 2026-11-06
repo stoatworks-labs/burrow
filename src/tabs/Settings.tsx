@@ -305,6 +305,12 @@ export function SettingsTab({
             you press play.
           </p>
           <p>
+            The <em>Device firmware</em> tab adds no host. Its firmware comes from GitHub
+            like everything else, when you choose it, and is written only if its bytes
+            match the SHA-256 the list gives for it. It talks to a board over its serial
+            port, and only when you press <em>Read it</em> or <em>Write it</em>.
+          </p>
+          <p>
             The <em>Send feedback</em> button at the bottom of this window is the one
             exception, and only when you use it: it sends what you type into it, plus
             the app version.

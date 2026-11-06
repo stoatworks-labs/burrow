@@ -29,7 +29,7 @@ It now covers the rest of the fleet the same way, under seven tabs:
 | **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running. |
 | **PowerPoint** | Add-ins that work inside PowerPoint, on the open deck. |
 | **Self-hosted** | The things you run rather than install: the services that ship as containers, and the browser tools. |
-| **Device firmware** | Coming soon. |
+| **Device firmware** | Firmware for our ESP32 hardware (CANary, nanODE, Cuckoo), or an image of your own on any ESP32 board, written over its USB port. See [below](#device-firmware). |
 
 A browser tool has nothing to install, so its row offers **Open** (the copy on the
 website), **Source**, and, where the project ships a `docker-compose.yml`, **Run your
@@ -115,6 +115,10 @@ Checking whether there's a **newer Burrow** adds one request, to Burrow's own Gi
 release, and it happens when you press the button in Settings. There's a checkbox to have
 it ask at startup too, and it's off until you turn it on.
 
+The *Device firmware* tab doesn't add any. Its firmware comes from GitHub like everything
+else, and only when you choose a device. Looking for a board is a button too. Burrow never
+goes looking on its own, because opening an ESP32's serial port restarts it.
+
 The *Send feedback* button at the bottom of the window is the only other thing that sends
 anything. It only does it when you press it, and it only sends what you type into it.
 
@@ -170,6 +174,39 @@ else (downloading, unpacking, checking) happens beforehand, without any elevated
 
 The unprivileged work always runs first, so if you change your mind at the password
 prompt, the plugins that didn't need it are already installed.
+
+## Device firmware
+
+This tab said "coming soon" for a long time, for a good reason: writing firmware isn't the
+same risk as copying a bundle into a folder. There's nothing to stage, nothing to roll back
+to, and a write that stops halfway leaves you holding a board rather than a folder. So every
+write tells you exactly what goes where before it starts, re-reads the board and checks
+again just before the first byte, and can't be cancelled once it's going. Stopping halfway
+through a partition is worse than finishing it.
+
+It's the [Stoatworks Flasher](https://flasher.stoatworks-labs.com) without the browser: the
+same firmware packages, the same checks and the same messages, ported to Rust and tested
+against the page's own releases.
+
+- **Our firmware.** Pick the [CANary](https://stoatworks-labs.com/hardware/canary/),
+  [nanODE](https://stoatworks-labs.com/hardware/lighting/#nanode) or
+  [Cuckoo](https://stoatworks-labs.com/hardware/video/#cuckoo), then a release and a
+  variant. Burrow downloads the release from GitHub once, checks it against the SHA-256 the
+  plugin list gives for it, and keeps it. Each tagged release also has **direct download
+  links**: the release zip, and a whole-flash `.bin` per variant that esptool, or any
+  flasher, writes at 0x0.
+- **A file of your own.** A release zip, a whole-flash image, or the parts of an ESP-IDF
+  build (bootloader, partition table, app). Each file is identified by its contents, not
+  its name, and put where it belongs. Anything Burrow can't place, a filesystem image say,
+  waits for an offset you type: `0x3E0000`, `1M`, or a partition's name.
+
+Press **Look for boards**, then **Read it** beside the port. That restarts the board and
+reads its chip, flash, partition table and what it boots. Burrow refuses to write the wrong
+chip, a board with too little flash, or one with secure boot or flash encryption on. It
+won't quietly overwrite another project's firmware either: you tick a box for that. By
+default only the regions being written are erased, so a board keeps its settings. If a
+write fails, the board isn't bricked, because an ESP32's boot ROM can't be overwritten: put
+it in download mode and write it again.
 
 ## Status
 
@@ -258,7 +295,20 @@ What I've verified, on macOS:
   byte-identical to the release's. The update also left the previous OpenFX Rebate
   behind under a `.burrow-old-` name, which is what v0.4.2 fixes.
 
+- The *Device firmware* tab's code paths, without a board. Its checks are the Stoatworks
+  Flasher's own, ported rule for rule with the page's tests, and run against the real
+  CANary, nanODE and Cuckoo bootloaders, partition tables and apps. Every release the page
+  bundles opens and passes them, and Burrow's whole-flash image of each of the five
+  variants comes out **byte for byte** the same as the page's export script's, and as the
+  `.bin` files on the GitHub releases (CANary v0.2.1, nanODE v0.4.2, Cuckoo v0.1.0), whose
+  zips unpack to the same releases. The older CANary release the live plugin list points at
+  today downloads, matches its SHA-256 and plans cleanly. Every screen in the tab, and a failed write, has been driven through the mock
+  backend.
+
 What I **haven't**:
+
+- **Burrow hasn't written firmware to a board yet, or read one.** Until it has, treat the
+  Device firmware tab as untested on hardware, whatever the tests above say.
 
 - Nobody has watched a plugin Burrow installed load in Resolume, Resolve or After
   Effects, or an audio plugin in a DAW. They land in the right folders; the host

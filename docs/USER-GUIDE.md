@@ -28,6 +28,13 @@ every format goes on your machine.
 > removed through it on a Mac, and PowerPoint listed it afterwards. **Nothing has been
 > tried on Windows yet.**
 >
+> **The Device firmware tab is new, and Burrow hasn't written firmware to a board yet,
+> or even read one.** Not a CANary, a nanODE or a Cuckoo. Its checks are the Stoatworks
+> Flasher's, tested hard against the real images and the page's own releases without a
+> board, and every screen has been driven through a mock in a browser, but that isn't the
+> same thing. Until this line says otherwise, write to a board you can afford to have on
+> the bench for an afternoon.
+>
 > This is an AI-assisted project, directed and reviewed by a human author.
 
 ---
@@ -58,7 +65,7 @@ for:
 | **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running |
 | **PowerPoint** | Add-ins that work inside PowerPoint, on the open deck |
 | **Self-hosted** | Things you run rather than install — containers, and the browser tools |
-| **Device firmware** | Coming soon — nothing in it yet, and it says so |
+| **Device firmware** | Firmware for our ESP32 hardware, or an image of your own on any ESP32 board |
 
 An effect you load into Resolume is a different errand from an application you
 launch, which is why the video ones are two tabs rather than one.
@@ -179,6 +186,85 @@ compose** beside it for when you'd rather run it in a container.
 catalogue, so everything filed here showed on no tab at all, and those eight apps
 were only reachable from *What's new*. If you've had one installed since then,
 this is the first time Burrow has shown it to you.
+
+## Device firmware
+
+This tab writes to boards, not folders, and it behaves differently because of that.
+Nothing happens when you open it: no board is looked for and nothing is downloaded
+until you press a button. Every write shows you exactly what goes where and waits for
+you to say yes. Once it's started it can't be cancelled, because stopping halfway
+through a partition is worse than finishing it.
+
+It's the [Stoatworks Flasher](https://flasher.stoatworks-labs.com) without the browser:
+the same firmware, the same checks, the same messages.
+
+### 1. Choose the firmware
+
+**Our firmware** lists the boards the plugin list carries firmware for: the CANary,
+the nanODE and the Cuckoo. Choose one and Burrow downloads its release from GitHub,
+checks it against the SHA-256 the plugin list gives for it, and keeps it, so the next
+time costs nothing. Then pick a release (the newest is chosen for you) and a variant;
+the one marked *recommended* is the one most people want. Under it are **direct
+download links** for a tagged release: the release zip, and a whole-flash `.bin` per
+variant that esptool or any other flasher writes at 0x0. Take a copy if you'd rather
+not depend on anything.
+
+**A file of your own** takes any of these:
+
+- a **release zip**, from the Stoatworks Flasher or a GitHub release. Every part is
+  checked against its manifest, and you pick the release and variant as above;
+- a **whole-flash image**, from `esptool merge-bin` or one of the `.bin` downloads. It
+  goes at 0x0;
+- the **parts of an ESP-IDF build**: `bootloader.bin`, `partition-table.bin`,
+  `ota_data_initial.bin` and the app, or just the app. Choose them together.
+
+Loose files are identified by what's in them, not by what they're called, and put
+where their kind belongs. One Burrow can't place, a filesystem image say, waits for
+you to type its offset: as hex (`0x3E0000`), as a size (`128K`, `1M`) or as the name
+of a partition on the board (`storage`). A bare number isn't accepted, because
+nobody can tell whether `4063232` was meant in decimal.
+
+### 2. Read the board
+
+The steps for the board you chose are on the page. Plug it in, press **Look for
+boards**, then **Read it** beside its port. **Reading a board restarts it**, because
+opening an ESP32's serial port resets it, so don't do it to one that's running a
+show. You'll see its chip, its MAC address, how much flash it has, its partitions and
+what it boots.
+
+If no port turns up, open *No port listed, or it will not connect?* It has the board's
+own notes and how to put it in download mode, which for most ESP32 boards is: hold
+BOOT, tap RESET, let go of BOOT. A board on a USB-serial adapter (the nanODE, wired to
+its pads) may need that adapter's driver on an older system. Tick *show every serial
+port* if the adapter isn't one Burrow lists by default.
+
+### 3. Write it
+
+The table shows every part, where it goes and what Burrow thinks it is. Burrow won't
+write:
+
+- firmware for another chip, or more of it than the board has flash for;
+- our firmware to a board with less flash than the device needs;
+- anything to a board with secure boot or flash encryption on, because plain firmware
+  wouldn't boot on it;
+- catalogue firmware whose download doesn't match its SHA-256.
+
+If the board boots something that isn't this device's firmware, Burrow says what, and
+you tick a box to replace it. A blank board is how every board starts, so that isn't a
+refusal.
+
+By default only the regions being written are erased, so the board keeps its settings:
+the page says which ones for each device (a CANary's name, port and LAN address; a
+nanODE's port patch). Tick *Erase the whole flash first* to start from factory
+defaults instead.
+
+Afterwards the board restarts into the new firmware, and the page says what to expect
+of it. **If a write fails, the board isn't bricked.** An ESP32's boot ROM can't be
+overwritten: put it in download mode, read it and write it again.
+
+The device notes come from the same files the Stoatworks Flasher uses, so now and then
+they say *press Connect* or *open the console below*, which are the web page's buttons.
+In Burrow, that's *Look for boards* and *Read it*, and there's no console.
 
 ## Software you installed yourself
 
@@ -446,6 +532,10 @@ Checking for a new Burrow is one more request, to Burrow's own GitHub release,
 asking what the current version is. It happens when you press the button, and
 at startup as well if you ticked that box. Nothing about your machine goes with
 the question.
+
+The *Device firmware* tab adds none. Its firmware comes from GitHub like everything
+else, when you choose a board, and Burrow won't write it unless its bytes match the
+SHA-256 the plugin list gives for it.
 
 The **Send feedback** button at the bottom of the window is the exception, and only
 when you press it: it sends what you type, plus the version of Burrow.

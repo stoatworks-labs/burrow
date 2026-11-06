@@ -1021,3 +1021,60 @@ against the new catalogue served locally and real downloads from GitHub:
   Installer.app (18:45 and 18:48), and the App Data prompt came up both times. The
   first run's grant didn't carry over to the second. Whether Burrow's grant lasts
   from one launch to the next hasn't been seen yet.
+
+## 2026-11-06 — the Firmware tab writes to ESP32 boards
+
+The tab that said "coming soon" since 2026-08-25 now writes firmware to any ESP32
+board over its USB serial port: the catalogue's releases for the CANary, nanODE and
+Cuckoo, or a file of the user's own — a release zip, a whole-flash image, or the
+parts of an ESP-IDF build. The webview has no Web Serial, so the device half is
+Rust, in a crate of its own (`burrow-device`), and the browser tool it was ported
+from stays the reference. The rules that came out of it are AGENTS.md §3a; these are
+the decisions.
+
+**First CANary-only, then generic.** The first version (2026-10-20, on
+`claude/device-firmware`) was a port of the CANary Flasher, with the CANary's
+partition layout and chip written into it, next to a BirdDog PLAY restore and
+package builder. Then the flasher became the Stoatworks Flasher, for every ESP32
+board in the fleet, with a package format that carries the device's own description.
+Burrow followed it: the ESP32 half was brought over and made generic, and the PLAY
+half was left on that branch, unmerged, for a change of its own.
+
+**One format, two programs, the same bytes.** The package is the flasher's schema 2
+(`docs/PACKAGE.md` there). Its first schema, a bare `{releases}`, is still read and
+put down to the device whose projects cover every app. Burrow's tests are the
+flasher's tests ported, plus a cross-check against the real thing: every release the
+flasher bundles opens and passes Burrow's gate, and for each of the five variants
+across the three devices, Burrow's merge of the parts equals the whole-flash `.bin`
+the flasher's `scripts/export-release.ts` writes, byte for byte; the exported zips
+unpack with burrow-core's own extractor to the bundled release. No disagreement on
+the format turned up.
+
+**What Burrow adds is only stricter.** Secure boot or flash encryption refused,
+each variant's app descriptor checked against its manifest, the replace tick
+enforced in Rust as well as in the interface, an MD5 of our own per region after
+writing, and an unreadable flash size treated as a refusal rather than as the
+device's size. The messages are the page's, with "Burrow" for "this page".
+
+**Firmware needs a digest; the catalogue carries one for everything.** GitHub
+publishes a SHA-256 for every release asset, so `gen-downloads.py` records it and the
+catalogue carries it as an additive `sha256`. The Firmware tab refuses catalogue
+firmware without one, and then checks every part against the manifest's own.
+
+**Releases had to exist first, because Burrow only downloads from GitHub.** Firmware
+had only ever been served from the flasher's own site. The flasher's export script
+now writes the release zip and a whole-flash image per variant, published on
+2026-11-06 as `stoatworks-labs/canary` v0.2.1, `nanode-firmware` v0.4.2 and
+`cuckoo-firmware` v0.1.0. Downloaded from GitHub, each zip matched its digest, and
+the cross-check above passes against those downloads as well as the local export.
+`canary` v0.2.0, the first-schema zip the live catalogue still points at, opens
+through the first-schema fallback and plans cleanly. The tab offers a release's GitHub downloads as
+links, so nobody needs Burrow, or the page, to fetch it again.
+
+**The device text is written for the page.** `connect`, `bootMode` and `after` in
+each manifest say "press Connect" and "open the console below", which are the
+page's buttons. Burrow shows them as they are rather than keep a second copy.
+
+Not done, and said so in the README: **nothing has been written to a board by
+Burrow yet**, and nothing has been read from one. Everything above ran against
+files, a mock in the browser, and the flasher's own artefacts.

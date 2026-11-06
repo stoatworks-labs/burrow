@@ -15,9 +15,11 @@ archives per video plugin and knowing three different destination directories, t
 of which need an administrator password — and then something different again for an
 audio plugin, an application and a Companion module.
 
-**Seven tabs, six of them populated.** Video plugins, Video tools, Audio,
-Networking & Infrastructure, PowerPoint, Self-hosted, and a Device firmware tab
-that says "coming soon" and means it. The tab is a field on each catalogue entry, chosen
+**Seven tabs.** Video plugins, Video tools, Audio, Networking & Infrastructure,
+PowerPoint, Self-hosted, and Device firmware — which, unlike the others, writes to a
+device rather than to a folder: an ESP32 board (a CANary, nanODE or Cuckoo, or any
+ESP32 with an image of your own) over its USB serial port. That tab has rules of its
+own, in §3a. The tab is a field on each catalogue entry, chosen
 by the website from the fleet's own `category` data — see §4. **Self-hosted cuts
 across the others**: anything that ships a `docker-compose.yml`, and every
 browser tool, sits there whatever it is for, because how you run a thing decides
@@ -28,6 +30,7 @@ three gates in the catalogue route once dropped silently (docs/NOTES.md,
 
 **It is a client, not a service.** There is no account, no telemetry and no
 backend. One HTTPS GET for the plugin list, and downloads straight from GitHub.
+The Firmware tab adds no host: its releases are GitHub downloads like the rest.
 Anything that would change that is a change to the product, not an implementation
 detail — see §6.
 
@@ -42,6 +45,10 @@ crates/burrow-core/     Catalogue model, host detection, archive handling, disk
                         images, quarantine, commit/rollback, the install ledger
                         and reconciliation. Free of Tauri, so it is all
                         unit-testable.
+crates/burrow-device/   Writing firmware to ESP32 boards over their serial port
+                        (espflash): the Stoatworks Flasher's package format,
+                        image identification and gate, ported. No Tauri, no
+                        HTTP, no root. See §3a.
 src-tauri/              The shell: network, commands, job runner, demo server,
                         the elevation prompt, and Burrow's own updater.
 src/                    React UI. Seven tabs, plus a mock backend.
@@ -201,6 +208,82 @@ Documents is, and a string join installs into a folder Resolume never reads.
 root:wheel`, which reads as group-writable and is not, for a user in `staff` and
 `admin` rather than `wheel`. Anything short of creating a file gets this wrong.
 
+## 3a. Device firmware
+
+A device write is not a file install. There is no staging copy to inspect, no
+rename to back out of, and no ledger entry that means anything — the device is
+the record. So the safety is up front, and it is all in `burrow-device`, where
+`cargo test` reaches it without a unit.
+
+**None of it is near the helper.** Writing to a serial port or a USB device needs
+no root on macOS, `burrow-device` is not a dependency of `burrow-helper`, and must
+never become one. The folder-install machinery in `jobs.rs` does not touch a
+device either: `Format::Firmware` exists so the catalogue can carry firmware, and
+is **left out of `Format::SHIPPING`** so the slots, the default formats and
+Install/Update all can never sweep a device in. A test in `settings.rs` pins it.
+
+**Nothing looks for a device unless asked.** Opening an ESP32's serial port resets
+it (USB-Serial-JTAG, and the DTR/RTS pair on a USB-serial bridge, both do), so
+listing ports is a button and reading a board is another, and the tab says reading
+restarts it. A background scan would reset boards nobody pointed Burrow at.
+
+**It is the Stoatworks Flasher's gate, ported.** `burrow-device::esp` is a port of
+the browser flasher's `src/esp/` — `checkPlan`, the image and partition-table
+identification, the package format and its validation — rule for rule and message
+for message, with its tests ported too (`tests/esp.rs`). The format is the
+flasher's `docs/PACKAGE.md`, schema 2: a release zip is `manifest.json` (the
+device's description and one release) and the parts under
+`<release-id>/<variant>/`. **Change the format there first**, then here, and run
+the real-artefact test (§7), which checks Burrow's merge of every bundled release
+against the whole-flash image the flasher's export script writes, byte for byte.
+Where Burrow says "Burrow" the page says "this page"; nothing else in a message
+differs.
+
+What Burrow adds, all of it only stricter: it refuses a board with secure boot or
+flash encryption on (plain firmware would not boot on it), it requires each loaded
+variant's app descriptor to equal the manifest's, it enforces the replace tick
+inside `Unit::write` rather than only in the interface, and it refuses catalogue
+firmware with no `sha256`.
+
+**The gate runs twice.** Once to draw the plan, and again inside `Unit::write`
+against a fresh read of the board, immediately before the first byte — a board
+swapped between the two is a different board. The chip check always runs; the
+project check only for a package (catalogue or opened zip), never for a file of the
+user's own. A board that boots another project is not refused — a blank board is
+how every unit starts — but the plan names it and Write needs a tick.
+
+**Firmware is only written if the catalogue vouches for its bytes.** The asset's
+`sha256` (GitHub's own digest, carried by the catalogue) is required for anything
+the Firmware tab downloads, and every part in the zip must then match its own
+SHA-256 in the manifest. A file the user opened is checked against its own
+manifest if it is a package, and against nothing if it is loose parts: that is
+what "a file of your own" means, and the chip check still runs.
+
+**A write cannot be cancelled.** Stopping half way through a partition is worse
+than finishing it, and an ESP32 recovers from a failed write the same way it takes
+a good one: by being written again from download mode, which its boot ROM always
+offers. The interface says so before the write, not after.
+
+**What is written.** Only the regions a variant carries, so whatever else is on
+the flash (NVS, the device's `keeps`) survives unless the user ticks "erase the
+whole flash first". Flash mode, frequency and size are never patched: espflash
+writes raw bytes. After writing, every region is checked with an MD5 of our own
+against the board's, not espflash's word for it. The board is restarted whether or
+not the write finished. A package for a device with `otadata` gets a blank otadata
+written with it, so the bootloader boots the slot just written.
+
+**Speed.** A session opens at the device's `baud` (nanODE: 460800, for its
+USB-serial adapter on flying leads) or 921600, falling back to 115200.
+
+**Wording.** Public text never names the product the CANary stands in for, its
+model numbers or its control application ("the control application"; "the d&b
+amplifier ecosystem" where compatibility needs saying).
+
+**Not here: the BirdDog PLAY.** The PLAY restore and package builder were written
+on `claude/device-firmware` and are held there, unmerged and untested on a unit.
+They come back as their own change (cherry-pick or re-diff the PLAY files from that
+branch), with their own §3a section, nusb and the extra hosts in §6.
+
 ## 4. The catalogue
 
 Burrow reads `stoatworks-labs.com/catalog.json`, which the **website** generates at
@@ -237,6 +320,19 @@ notes, and what each archive unpacks to. The second is read from the archives'
 central directories over HTTP range requests — 62 KB for all 77 archives, rather
 than 40 MB of downloads.
 
+**Firmware is a fifth kind.** `kind: "firmware"`, with `category` and `tab` both
+`firmware` (so a client from before the tab split files it under the placeholder
+rather than under Audio), a `device` naming which board it is written to
+(`canary`, `nanode`, `cuckoo`), and assets in `format: "firmware"`, one zip
+repeated per published platform with arch `universal` like a Companion module.
+Every asset carries an additive `sha256` from GitHub's digest; firmware is refused
+without one. The zip is the Stoatworks Flasher's release zip (§3a), exported by its
+`scripts/export-release.ts`, so the page and Burrow cannot disagree about a
+release. Its `device.id` must equal the entry's `device`. Because the zip carries
+the device's own description, a new board needs a catalogue entry and a release,
+not a new Burrow. The website emits a firmware entry only for a project with a
+public repo and a `device`.
+
 **A copy of the catalogue ships inside the app.** Not a nicety: it makes a first
 run work offline, it is the baseline that stops "What's new" announcing all
 twenty-four plugins on first launch, and the GitHub fallback cannot *discover*
@@ -272,6 +368,7 @@ Flag these rather than implementing them quietly:
 - Any network request beyond the catalogue, GitHub downloads and the update
   manifest — and that last one only when the user asks, or at startup if they
   turned the checkbox on. Nothing here polls.
+- Looking for devices in the background, or installing a driver.
 - Anything that identifies the user or the machine.
 - Reading the plugin directory rather than named entries. PowerPoint's `wef`
   folder is the one agreed exception, matched on an add-in's GUID and nothing
@@ -292,7 +389,7 @@ the Windows registry value is under `HKEY_CURRENT_USER`.
 ## 7. Testing
 
 ```bash
-cargo test --workspace     # the library crates: no Tauri, every platform
+cargo test --workspace     # the library crates, burrow-device included: no Tauri, every platform
 (cd src-tauri && cargo test)   # the shell: settings, demo server, updater
 npm run build              # type-checks the UI
 
@@ -319,6 +416,35 @@ awkward states get looked at:
 ?update=none|available|blocked|error|fail        a newer Burrow, or not
 ```
 
+The Firmware tab has its own (`src/api/mockFirmware.ts`), over the same manifests
+the Rust tests use:
+
+```
+?device=canary|canary-old|canary-foreign|blank|s3-small|secure|nanode|cuckoo|none
+                                               what Look for boards finds and Read it says
+?files=loose|zip                               what Open a file… picks
+?fw=ok|fail                                    whether a write gets to the end
+?job=slow                                      every step slow enough to look at
+```
+
+`burrow-device`'s tests (`tests/esp.rs`) are the flasher's own tests, ported, plus
+CANary, classic-ESP32 (nanODE) and Cuckoo cases built from the real bootloaders,
+partition tables and app headers in `tests/fixtures/`. One run is not CI, because
+its inputs live in the flasher's repo:
+
+```bash
+# Every bundled release opens, loads and passes the gate; every exported zip
+# unpacks with burrow-core's extractor to the bundled release, and Burrow's merge
+# of each variant equals the exported whole-flash .bin byte for byte.
+#   node scripts/export-release.ts --device <id> --out <dir>   (in the flasher, per device)
+BURROW_FLASHER_FIRMWARE=<flasher>/public/firmware BURROW_FLASHER_EXPORT=<dir> \
+  cargo test -p burrow-device --test real_artefacts -- --ignored
+
+# The same steps against a real board, from a terminal, confirming each write.
+cargo run -p burrow-device --example bench -- esp-ports
+cargo run -p burrow-device --example bench -- esp-plan <unzipped release>
+```
+
 Same idea as av-launcher's `mockInvoke`, and for the same reason: a screenshot of
 "the password prompt was cancelled" should not require cancelling a password
 prompt.
@@ -326,7 +452,9 @@ prompt.
 **What only a real machine can settle:** the authorisation prompt end to end;
 whether a plugin Burrow installed actually appears in Resolume, Resolve and After
 Effects; and quarantine clearing, which needs a *downloaded* copy of the app,
-because a locally built one is never quarantined.
+because a locally built one is never quarantined. And every device write: reading
+and writing a CANary, a nanODE and a Cuckoo, an image of your own, and anything at
+all on Windows and Linux.
 
 ## 8. Releasing, and the update key
 

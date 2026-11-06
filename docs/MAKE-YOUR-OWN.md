@@ -183,9 +183,14 @@ somewhere else entirely, this is the file you rewrite.
 `Category` (plus `SHOWN`) in `model.rs`, `CategoryId` in
 [`src/api/types.ts`](../src/api/types.ts), and `CATEGORY_TABS` in
 [`src/App.tsx`](../src/App.tsx). The *labels* come from the catalogue, so renaming a
-tab needs no rebuild; adding one does. The Firmware tab is a deliberate empty
-placeholder that says so — [`src/tabs/Firmware.tsx`](../src/tabs/Firmware.tsx) is the
-first thing to delete if you do not want it.
+tab needs no rebuild; adding one does. The Firmware tab is the odd one out: it is
+not a list of rows but one page that writes to ESP32 boards over their serial port
+(`crates/burrow-device`). A new ESP32 board needs no code, only a catalogue entry with
+a `device` and a release zip in the Stoatworks Flasher's package format, which carries
+the board's own description. A board that is not an ESP32 needs a writer of its own.
+If you have no boards, delete [`src/tabs/Firmware.tsx`](../src/tabs/Firmware.tsx),
+`src-tauri/src/firmware.rs` and the crate; nothing else depends on them. If you have
+some, AGENTS.md §3a is the list of things to keep.
 
 If you ship applications and nothing else, the honest fork is small: keep
 `Format::App`, delete the rest, and you keep the download, verification,
