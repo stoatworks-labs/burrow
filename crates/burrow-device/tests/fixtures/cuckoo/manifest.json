@@ -1,0 +1,143 @@
+{
+  "schema": 2,
+  "device": {
+    "id": "cuckoo",
+    "name": "Cuckoo",
+    "chip": "ESP32-C3",
+    "flashSize": 4194304,
+    "projects": [
+      "cuckoo_ui"
+    ],
+    "repo": "stoatworks-labs/cuckoo-firmware",
+    "page": "https://stoatworks-labs.com/hardware/video/#cuckoo",
+    "status": "The ESP32-C3 image has run on one board. The RP2354A images it carries have not run yet.",
+    "usb": [
+      {
+        "vendorId": 12346,
+        "productId": 4097,
+        "label": "USB JTAG/serial debug unit"
+      }
+    ],
+    "connect": [
+      "Plug Cuckoo's USB-C into this computer. That powers it too.",
+      "Press Connect and pick USB JTAG/serial debug unit (Espressif, 303a:1001)."
+    ],
+    "bootMode": [
+      "Unplug the USB-C.",
+      "Hold TP7 (ESP_BOOT, GPIO9) to ground and plug the USB-C back in.",
+      "Let go of TP7 and press Connect."
+    ],
+    "keeps": "its Wi-Fi password"
+  },
+  "releases": [
+    {
+      "id": "main-4300e74",
+      "date": "2026-11-06",
+      "commit": "4300e747f8bcf1ef8235f1816bf085bdd0719351",
+      "variants": [
+        {
+          "id": "bringup",
+          "name": "Bring-up",
+          "summary": "The ESP32 image, carrying the RP2354A's bring-up checks for rp flash and its flasher for rp uartboot. What board 1 runs.",
+          "recommended": true,
+          "after": "Its access point, Cuckoo-XXXX, comes up within a few seconds. Open the console below and type wifi to see its password.",
+          "app": {
+            "version": "0.1.0 4300e74",
+            "project": "cuckoo_ui",
+            "time": "15:11:48",
+            "date": "Nov  6 2026",
+            "idfVersion": "v5.5.5"
+          },
+          "parts": [
+            {
+              "name": "bootloader",
+              "offset": 0,
+              "path": "main-4300e74/bringup/bootloader.bin",
+              "size": 18544,
+              "sha256": "b41a267a89e357539d7404e4fb0fb87d67638c2f7a168d66b77370e8d90d0e9d"
+            },
+            {
+              "name": "partition table",
+              "offset": 32768,
+              "path": "main-4300e74/bringup/partition-table.bin",
+              "size": 3072,
+              "sha256": "e20773480e7aa8b3bcc8585d2aded7f21d7919c6201af58db121899b5f7a604f"
+            },
+            {
+              "name": "app",
+              "offset": 65536,
+              "path": "main-4300e74/bringup/cuckoo_ui.bin",
+              "size": 852768,
+              "sha256": "fb9cc46540e77b8af83eb5bd72b830869e80c35745d09dd1bc92c99360f57dc1"
+            },
+            {
+              "name": "rp_ram",
+              "offset": 1900544,
+              "path": "main-4300e74/bringup/rp_ram.img",
+              "size": 11936,
+              "sha256": "cfa5b6affd52a63a77635e2aca4e3ab7b91d8c748485bb7ede8fe88ff7e5356b"
+            },
+            {
+              "name": "rp_fw",
+              "offset": 2490368,
+              "path": "main-4300e74/bringup/rp_fw.img",
+              "size": 55716,
+              "sha256": "28959f2d3827bb9a225a28d2dd667549982eaebaa13672efe4e1bf2231b69e71"
+            }
+          ]
+        },
+        {
+          "id": "bridge",
+          "name": "DDC bridge",
+          "summary": "The same ESP32 image, carrying the DDC bridge for rp flash instead of the bring-up checks. Never run on a board.",
+          "after": "Its access point, Cuckoo-XXXX, comes up within a few seconds. Open the console below and type wifi to see its password.",
+          "app": {
+            "version": "0.1.0 4300e74",
+            "project": "cuckoo_ui",
+            "time": "15:12:06",
+            "date": "Nov  6 2026",
+            "idfVersion": "v5.5.5"
+          },
+          "parts": [
+            {
+              "name": "bootloader",
+              "offset": 0,
+              "path": "main-4300e74/bridge/bootloader.bin",
+              "size": 18544,
+              "sha256": "53aff78f620e1e5b913d329ad0b9b74027ccff29991b74bf2db0d821efd2f243"
+            },
+            {
+              "name": "partition table",
+              "offset": 32768,
+              "path": "main-4300e74/bridge/partition-table.bin",
+              "size": 3072,
+              "sha256": "e20773480e7aa8b3bcc8585d2aded7f21d7919c6201af58db121899b5f7a604f"
+            },
+            {
+              "name": "app",
+              "offset": 65536,
+              "path": "main-4300e74/bridge/cuckoo_ui.bin",
+              "size": 852768,
+              "sha256": "b8b9e86f6b6610f93fd831533eae8422d277afc4f48faa83a3079be0ce443844"
+            },
+            {
+              "name": "rp_ram",
+              "offset": 1900544,
+              "path": "main-4300e74/bridge/rp_ram.img",
+              "size": 11936,
+              "sha256": "cfa5b6affd52a63a77635e2aca4e3ab7b91d8c748485bb7ede8fe88ff7e5356b"
+            },
+            {
+              "name": "rp_fw",
+              "offset": 2490368,
+              "path": "main-4300e74/bridge/rp_fw.img",
+              "size": 41680,
+              "sha256": "b7fe4b415a91a46d2b9c15f0698c5e6ab372a3984426ea4e227d20c434f3d4fa"
+            }
+          ]
+        }
+      ],
+      "tag": "v0.1.0"
+    }
+  ]
+}

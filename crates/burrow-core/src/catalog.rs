@@ -210,6 +210,13 @@ pub struct Entry {
     /// versions.
     #[serde(default)]
     pub versions: Vec<VersionEntry>,
+    /// For firmware, which device it is written to: `canary`, `nanode`,
+    /// `cuckoo`. Every one is an ESP32 board, and its release zip carries the
+    /// device's own description (chip, flash, projects, how to connect it), so
+    /// a device this build has never heard of needs no newer Burrow. The zip's
+    /// `device.id` must equal this, or the release is refused.
+    #[serde(default)]
+    pub device: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -322,9 +329,12 @@ pub struct Asset {
     /// release asset's digest. Absent for an asset uploaded before GitHub
     /// recorded digests.
     ///
-    /// Read for one thing so far: whether an installed PowerPoint add-in's
+    /// Read for two things so far: whether an installed PowerPoint add-in's
     /// manifest is the one the current release ships, since the manifest's own
-    /// `<Version>` is not the release's. See [`crate::officeaddin::reconcile`].
+    /// `<Version>` is not the release's (see [`crate::officeaddin::reconcile`]);
+    /// and firmware, which is refused without it: a write to a device has no
+    /// staging copy to inspect and no rollback, so the bytes are checked against
+    /// the catalogue's word before anything else reads them.
     #[serde(default)]
     pub sha256: Option<String>,
 }

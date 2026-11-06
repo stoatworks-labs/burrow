@@ -42,6 +42,26 @@ Cargo dependencies, resolved and pinned in Cargo.lock.
 
 Async runtimes, protocol codecs, serialisation and GUI toolkits. The exact set and versions for any build are in that repo's Cargo.lock, which is the authoritative list.
 
+### espflash
+
+<https://github.com/esp-rs/espflash>  
+Licence: MIT or Apache-2.0  
+Copyright: the esp-rs contributors
+
+A Cargo dependency, without its command-line half.
+
+Speaks the ESP32 serial protocol for the Device firmware tab: the USB-Serial-JTAG reset, the stub loader, flash writes and the MD5 checks. Burrow decides what may be written; espflash writes it.
+
+### serialport-rs
+
+<https://github.com/serialport/serialport-rs>  
+Licence: MPL-2.0  
+Copyright: the serialport-rs contributors
+
+A Cargo dependency, used unmodified; its source is on crates.io.
+
+Lists and opens the serial port an ESP32 board appears on.
+
 ### The npm ecosystem
 
 <https://www.npmjs.com>  
@@ -65,6 +85,17 @@ implementation searches — `/Library/OFX/Plugins` on macOS and
 `Common Files\OFX\Plugins` on Windows — which is why installing an OpenFX plugin
 needs an administrator password. That behaviour was read out of
 `HostSupport/src/ofxhPluginCache.cpp` rather than assumed.
+
+### The Stoatworks Flasher
+
+<https://github.com/stoatworks-labs/canary-flasher>  
+Licence: MIT  
+Copyright: Allan Sargeant
+
+The Device firmware tab is a port of this browser tool into Rust: its checks, its
+image and partition-table handling and its firmware package format, message for
+message, and tested against the same packages and the whole-flash images it exports.
+It was the CANary Flasher, and its repository still has that name.
 
 ### The plugins themselves
 

@@ -50,6 +50,16 @@ pub enum Format {
     /// format per host keeps a PowerPoint add-in from growing an empty Word
     /// slot the way [`crate::catalog::Entry::known_formats`] guards against.
     Powerpoint,
+    /// Firmware for one of the fleet's devices, written to the device rather
+    /// than placed in a folder.
+    ///
+    /// Representable so the catalogue can carry it, and **deliberately not in
+    /// [`Format::SHIPPING`]**: everything that iterates the shipping formats —
+    /// the slots, the default "wanted" formats, Install all, Update all — must
+    /// never sweep a device in. A device write has its own path, its own gate
+    /// and its own confirmation (`burrow-device`, and the Firmware tab), and
+    /// nothing in the folder-install machinery reaches it.
+    Firmware,
     /// A format this build has never heard of, arriving from a newer
     /// catalogue.
     ///
@@ -95,6 +105,7 @@ impl Format {
             Format::App => "app",
             Format::Companion => "companion",
             Format::Powerpoint => "powerpoint",
+            Format::Firmware => "firmware",
             Format::Unknown => "unknown",
         }
     }
@@ -111,6 +122,7 @@ impl Format {
             Format::App => "Application",
             Format::Companion => "Companion module",
             Format::Powerpoint => "PowerPoint add-in",
+            Format::Firmware => "Device firmware",
             Format::Unknown => "Unknown",
         }
     }
@@ -157,7 +169,7 @@ impl Format {
             Format::Fxplug => &[".fxplug"],
             // A PowerPoint add-in is never unpacked from anything: the download
             // *is* the manifest, checked and placed by `officeaddin`.
-            Format::Companion | Format::Powerpoint | Format::Unknown => &[],
+            Format::Companion | Format::Powerpoint | Format::Firmware | Format::Unknown => &[],
         }
     }
 

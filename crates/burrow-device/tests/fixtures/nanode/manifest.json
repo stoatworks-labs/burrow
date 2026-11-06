@@ -1,0 +1,89 @@
+{
+  "schema": 2,
+  "device": {
+    "id": "nanode",
+    "name": "nanODE",
+    "chip": "ESP32",
+    "flashSize": 8388608,
+    "projects": [
+      "nanode"
+    ],
+    "repo": "stoatworks-labs/nanode-firmware",
+    "page": "https://stoatworks-labs.com/hardware/lighting/#nanode",
+    "status": "Builds clean and passes its host tests. It has never run on a board, because no nanODE has been built yet.",
+    "baud": 460800,
+    "connect": [
+      "Wire a 3.3 V USB-serial adapter to the ESP32's castellations: adapter TX to U1 pin 34 (U0RXD), adapter RX to U1 pin 35 (U0TXD), and GND to any GND pad.",
+      "Put the board in download mode (below), press Connect and pick the adapter's port."
+    ],
+    "notes": [
+      "The board has no USB socket or header yet, so the first flash goes through the castellations. After that, updates go over the network. An adapter with the usual DTR/RTS auto-reset circuit, wired to EN (R30 pad 1) and IO0 (R31 pad 1), saves holding anything."
+    ],
+    "bootMode": [
+      "Hold IO0 to GND at R31 pad 1 (or U1 pin 25).",
+      "Pulse EN to GND at R30 pad 1, or power-cycle the board.",
+      "Release IO0 and press Connect."
+    ],
+    "keeps": "its settings: the port patch and its network setup"
+  },
+  "releases": [
+    {
+      "id": "main-622a72a",
+      "date": "2026-11-06",
+      "commit": "622a72a0134847aa67d6d7b2d917fff4617f7ec4",
+      "variants": [
+        {
+          "id": "standard",
+          "name": "Standard",
+          "summary": "Art-Net and sACN in, four DMX512 universes out, with the web console in its LittleFS storage partition.",
+          "recommended": true,
+          "app": {
+            "version": "main-622a72a",
+            "project": "nanode",
+            "time": "15:10:50",
+            "date": "Nov  6 2026",
+            "idfVersion": "v5.5.5"
+          },
+          "parts": [
+            {
+              "name": "bootloader",
+              "offset": 4096,
+              "path": "main-622a72a/standard/bootloader.bin",
+              "size": 26128,
+              "sha256": "482d6543840ccfa3f40096439b9ca7e13949fb7d753cf57641b088c2ea84a3bf"
+            },
+            {
+              "name": "partition table",
+              "offset": 32768,
+              "path": "main-622a72a/standard/partition-table.bin",
+              "size": 3072,
+              "sha256": "f52712eeda72298ff73912820504f239b012696c0b9e15a84355fb61b6959c86"
+            },
+            {
+              "name": "otadata",
+              "offset": 61440,
+              "path": "main-622a72a/standard/ota_data_initial.bin",
+              "size": 8192,
+              "sha256": "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
+            },
+            {
+              "name": "app",
+              "offset": 131072,
+              "path": "main-622a72a/standard/nanode.bin",
+              "size": 1249632,
+              "sha256": "7a00b2cefc65531336f6e83eae3c666f4a0fff82d4754ec9b1e82c0dc982edf5"
+            },
+            {
+              "name": "storage",
+              "offset": 4063232,
+              "path": "main-622a72a/standard/storage.bin",
+              "size": 4194304,
+              "sha256": "344c6959b46aacb7316be7dee094fc314f7944c9a7fb9b0aa5960b2470092139"
+            }
+          ]
+        }
+      ],
+      "tag": "v0.4.2"
+    }
+  ]
+}

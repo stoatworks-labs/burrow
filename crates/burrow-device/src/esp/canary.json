@@ -1,0 +1,20 @@
+{
+  "id": "canary",
+  "name": "CANary",
+  "chip": "ESP32-S3",
+  "flashSize": 8388608,
+  "projects": ["canary", "dbcanary"],
+  "repo": "stoatworks-labs/canary",
+  "page": "https://stoatworks-labs.com/hardware/canary/",
+  "status": "main-60a871f is the last release proven on a board. The newer ones differ only in their names and haven't been on a unit yet.",
+  "usb": [{ "vendorId": 12346, "productId": 4097, "label": "USB JTAG/serial debug unit" }],
+  "connect": [
+    "Plug the unit's USB-C port into this computer. That powers it too.",
+    "Press Connect and pick USB JTAG/serial debug unit (Espressif, 303a:1001)."
+  ],
+  "notes": [
+    "A unit running the USB network firmware turns its USB-C port into a network adapter 8 seconds after it boots, and from then on there is no serial port to find. Press Connect within those 8 seconds of plugging it in, or put it in download mode."
+  ],
+  "bootMode": ["Hold BOOT (SW302).", "Tap EN (SW301).", "Release BOOT and press Connect."],
+  "keeps": "its settings (name, port, LAN address) and its stored crash log"
+}
