@@ -8,13 +8,17 @@
 #                  serde and libc — and must never depend on more.
 #   burrow-core    everything else that does not need Tauri, so the logic most
 #                  worth testing is testable without a GUI.
+#   burrow-device  writing firmware to devices over USB. Kept out of
+#                  burrow-core because a serial stack and a USB stack are not
+#                  what a plugin reconciler should carry, and out of the
+#                  helper because a device write needs no root.
 #
 # src-tauri is deliberately NOT a member: Tauri's build script and the
 # webkit/objc link steps make a workspace build of the library crates slower
 # and platform-dependent for no benefit. It depends on these by path.
 [workspace]
 resolver = "2"
-members = ["crates/burrow-plan", "crates/burrow-core", "crates/burrow-helper"]
+members = ["crates/burrow-plan", "crates/burrow-core", "crates/burrow-helper", "crates/burrow-device"]
 
 # Applied to every member. A profile in a non-root member is silently ignored by
 # cargo, so the helper was not actually getting lto or strip until this moved

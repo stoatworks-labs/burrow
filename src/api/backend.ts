@@ -26,6 +26,18 @@ import type {
   UpdateInfo,
   UpdateProgress,
 } from './types'
+import type {
+  BuildRequest,
+  BuiltInfo,
+  CanaryRelease,
+  Description,
+  FlashOutcome,
+  FwProgress,
+  ImageSummary,
+  KitOffers,
+  PlayUnit,
+  PortInfo,
+} from './firmware'
 import { mockInvoke, mockListen } from './mock'
 
 const hasTauri =
@@ -83,6 +95,42 @@ export const api = {
   checkUpdate: () => invoke<UpdateInfo>('check_update'),
   /** Does not resolve on success: the app restarts into the new version. */
   installUpdate: () => invoke<void>('install_update'),
+
+  // Device firmware. Every one of these acts only when asked: nothing scans
+  // for devices or fetches firmware because the tab was opened.
+  canaryRelease: () => invoke<CanaryRelease>('canary_release'),
+  canaryPorts: (all: boolean) => invoke<PortInfo[]>('canary_ports', { all }),
+  canaryDescribe: (port: string) => invoke<Description>('canary_describe', { port }),
+  canaryWrite: (req: {
+    port: string
+    variant: string | null
+    ownFiles: string[]
+    eraseAll: boolean
+    allowForeign: boolean
+  }) => invoke<void>('canary_write', { req }),
+  playDevices: () => invoke<PlayUnit[]>('play_devices'),
+  playInspectImage: (path: string) => invoke<ImageSummary>('play_inspect_image', { path }),
+  playKit: () => invoke<KitOffers>('play_kit'),
+  playBuild: (req: BuildRequest) => invoke<BuiltInfo>('play_build', { req }),
+  playSave: (id: string, path: string) => invoke<void>('play_save', { id, path }),
+  /** True when the unit answered again after taking the package. */
+  playSend: (id: string, address: string, password: string) =>
+    invoke<boolean>('play_send', { id, address, password }),
+  playFlash: (req: {
+    key: string
+    image: string
+    injectBuilt: string | null
+    injectFile: string | null
+    verify: boolean
+  }) => invoke<FlashOutcome>('play_flash', { req }),
+  playWritePartitions: (req: {
+    key: string
+    files: { partition: string; path: string }[]
+    allowProtected: boolean
+    verify: boolean
+  }) => invoke<FlashOutcome>('play_write_partitions', { req }),
+  pickFiles: (purpose: string) => invoke<string[] | null>('pick_files', { purpose }),
+  pickSave: (name: string) => invoke<string | null>('pick_save', { name }),
 }
 
 export const onProgress = (h: (p: Progress) => void) => listenRaw<Progress>('batch-progress', h)
@@ -92,6 +140,10 @@ export const onFinished = (h: (o: BatchOutcome) => void) =>
    not be able to drive the same progress bar. */
 export const onUpdateProgress = (h: (p: UpdateProgress) => void) =>
   listenRaw<UpdateProgress>('update-progress', h)
+/* Its own event too: a device write has nothing to do with a plugin batch,
+   and must not be able to drive the strip that shows one. */
+export const onFirmwareProgress = (h: (p: FwProgress) => void) =>
+  listenRaw<FwProgress>('firmware-progress', h)
 
 /**
  * Bytes, for a person.

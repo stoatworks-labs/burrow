@@ -183,9 +183,12 @@ somewhere else entirely, this is the file you rewrite.
 `Category` (plus `SHOWN`) in `model.rs`, `CategoryId` in
 [`src/api/types.ts`](../src/api/types.ts), and `CATEGORY_TABS` in
 [`src/App.tsx`](../src/App.tsx). The *labels* come from the catalogue, so renaming a
-tab needs no rebuild; adding one does. The Firmware tab is a deliberate empty
-placeholder that says so — [`src/tabs/Firmware.tsx`](../src/tabs/Firmware.tsx) is the
-first thing to delete if you do not want it.
+tab needs no rebuild; adding one does. The Firmware tab is the odd one out: it is
+not a list of rows but a page per device, because each device's writing code is
+compiled in (`crates/burrow-device`) and nothing about it can come from data. If you
+have no devices, delete [`src/tabs/Firmware.tsx`](../src/tabs/Firmware.tsx),
+`src-tauri/src/firmware.rs` and the crate; nothing else depends on them. If you have
+one, AGENTS.md §3a is the list of things to keep.
 
 If you ship applications and nothing else, the honest fork is small: keep
 `Format::App`, delete the rest, and you keep the download, verification,

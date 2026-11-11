@@ -210,6 +210,12 @@ pub struct Entry {
     /// versions.
     #[serde(default)]
     pub versions: Vec<VersionEntry>,
+    /// For firmware, which device it is written to: `canary` or
+    /// `birddog-play`. The writing code is compiled in per device, so a device
+    /// this build has never heard of is shown and not offered — the answer is a
+    /// newer Burrow, not a guess at a protocol.
+    #[serde(default)]
+    pub device: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -322,9 +328,13 @@ pub struct Asset {
     /// release asset's digest. Absent for an asset uploaded before GitHub
     /// recorded digests.
     ///
-    /// Read for one thing so far: whether an installed PowerPoint add-in's
-    /// manifest is the one the current release ships, since the manifest's own
-    /// `<Version>` is not the release's. See [`crate::officeaddin::reconcile`].
+    /// Read for two things. Firmware is refused without it: a write to a
+    /// device has no staging copy to inspect and no rollback, so the bytes are
+    /// checked against the catalogue's word before anything else reads them.
+    /// And whether an installed PowerPoint add-in's manifest is the one the
+    /// current release ships, since the manifest's own `<Version>` is not the
+    /// release's. See [`crate::officeaddin::reconcile`]. For a folder install
+    /// it is checked when present.
     #[serde(default)]
     pub sha256: Option<String>,
 }
