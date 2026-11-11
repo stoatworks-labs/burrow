@@ -120,6 +120,9 @@ export interface KitOffers {
   playExfat: boolean
   cam: boolean
   gateway: boolean
+  omt: boolean
+  output: boolean
+  stagetimer: boolean
   mediamtxVersion: string
 }
 
@@ -133,6 +136,12 @@ export interface BuildRequest {
   camUi: boolean
   gateway: boolean
   gatewayUi: boolean
+  omt: boolean
+  omtUi: boolean
+  output: boolean
+  outputUi: boolean
+  stagetimer: boolean
+  stagetimerUi: boolean
   reboot: boolean
   modules: string[]
   tailscaleFile?: string | null

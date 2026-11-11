@@ -1083,3 +1083,40 @@ against the new catalogue served locally and real downloads from GitHub:
   Installer.app (18:45 and 18:48), and the App Data prompt came up both times. The
   first run's grant didn't carry over to the second. Whether Burrow's grant lasts
   from one launch to the next hasn't been seen yet.
+
+## 2026-11-11 — the PLAY package builder catches up with the patcher
+
+The Firmware tab sat on `claude/device-firmware` for three weeks, and in that time the
+patcher grew three options: the OMT receiver (10-30), HDMI formats and area of
+interest (11-02) and Stagetimer (11-10). The branch is merged now, and `kit.rs` packs
+all three. Each sits after the gateway, in fw.js's `PACKAGE` order. `bd-omt/` carries
+`bdomt`, `libvmx.so` (both 0755) and `LICENSE.libvmx` (0644). `bd-out/` carries `bdout`
+and `libbdout.so` (0755). `bd-stage/` carries `bdstage` (0755) and the Noto Sans
+licence, which the kit calls `OFL.noto-sans.txt` and the package calls `OFL.txt`
+(0644). `build.conf` gains `WITH_OMT`, `WITH_OUTPUT` and `WITH_STAGETIMER`, each with
+its `_UI` flag, which is 1 only with the option itself. OMT and Output are each two
+binaries or nothing: the kit offers them only when both are there, as the page does.
+The fallback reserved module names gain `omt output out stagetimer stage`. A real
+kit carries its own list, which wins.
+
+**The crosscheck now builds whole packages from a real kit.** Before, it compared
+one hand-made four-member tar, which proved the tar layer and nothing about the
+table. Given a kit, `examples/crosscheck.rs` builds three packages from it. One has
+every option on, one has every option on without its birdUI tab, and one has
+everything off. They use stand-in Tailscale and MediaMTX tarballs and a module.
+`crosscheck-play.mjs` packs the same inputs with the patcher's own `fw.js`, walking
+`PACKAGE` in its order. Against a kit made from patcher `8fad864`, all three are the
+same byte for byte. That includes the 61 MB every-option tar, which has 44 members.
+Two checks show it can fail. With one mode wrong in `kit.rs` (OFL.txt as 0755), it
+reports DIFFERENT. Given a copy of `fw.js` with an extra option in `OPTIONS`, it
+refuses: an option Burrow does not build stops the run instead of passing
+unnoticed. The system `tar` reads the result too, and every extracted payload `cmp`s
+equal to the kit's asset.
+
+**What the app will offer depends on the kit, and the published one is old.** The
+catalogue's `play-patcher-kit` is still v0.3.0, uploaded 2026-10-20, before any of
+the three options existed. Until the patcher publishes a newer kit, the three
+ticks say "not in this kit". The request now sends only what the kit offers.
+Before, a tick that showed unticked could still send `true` and fail the build.
+
+None of this has run on a PLAY. Neither has anything else the Firmware tab does.

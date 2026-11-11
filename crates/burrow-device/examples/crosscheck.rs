@@ -3,9 +3,15 @@
 //! modules and compare the bytes. Not a test: it needs node and the two web
 //! repos, so it is run by hand when either side changes.
 //!
-//!     cargo run -p burrow-device --example crosscheck -- <out-dir>
+//!     cargo run -p burrow-device --example crosscheck -- <out-dir> [<kit-dir>]
+//!
+//! With a kit (the patcher's release kit, unzipped: kit.json and assets/), it
+//! also builds whole packages from it, every option on and every option off,
+//! and writes the stand-in Tailscale, MediaMTX and module tarballs it used, so
+//! the page's code can pack the same inputs.
 
-use burrow_device::play::fw::Tar;
+use burrow_device::play::fw::{self, Tar};
+use burrow_device::play::kit::{self, Kit, Options};
 use burrow_device::play::{gpt, inject, rkfw, source::MemSource};
 use flate2::read::GzDecoder;
 use std::io::Read;
@@ -52,5 +58,75 @@ fn main() {
     t.file("./userdata/tailscale/tailscaled", &vec![0x5a; 1000], 0o755).unwrap();
     t.file("./modules/hello/install", b"#!/bin/sh\n", 0o755).unwrap();
     std::fs::write(out.join("rust-package.tar"), t.finish()).unwrap();
+
+    if let Some(dir) = std::env::args().nth(2) {
+        kit_packages(&out, &PathBuf::from(dir));
+    }
     println!("{}", out.display());
+}
+
+fn arm64(tag: u8, len: usize) -> Vec<u8> {
+    let mut e = vec![0x7f, b'E', b'L', b'F', 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0xb7, 0];
+    e.extend(std::iter::repeat_n(tag, len));
+    e
+}
+
+/// Whole packages from a real kit. Tailscale and MediaMTX are fetched, never
+/// shipped, so stand-ins with their real layout take their place; both sides
+/// unpack the same bytes.
+fn kit_packages(out: &std::path::Path, dir: &std::path::Path) {
+    let kit = Kit::load(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
+
+    let mut ts = Tar::new();
+    ts.file("tailscale_1.90.0_arm64/tailscaled", &arm64(0x71, 70_000), 0o755).unwrap();
+    ts.file("tailscale_1.90.0_arm64/tailscale", &arm64(0x72, 30_000), 0o755).unwrap();
+    ts.file("tailscale_1.90.0_arm64/systemd/tailscaled.service", b"[Unit]\n", 0o644).unwrap();
+    let ts = fw::gzip(&ts.finish());
+    let mut mtx = Tar::new();
+    mtx.file("mediamtx", &arm64(0x6d, 90_000), 0o755).unwrap();
+    mtx.file("mediamtx.yml", b"logLevel: info\n", 0o644).unwrap();
+    mtx.file("LICENSE", b"MIT License\n", 0o644).unwrap();
+    let mtx = fw::gzip(&mtx.finish());
+    let mut module = Tar::new();
+    module.file("hello/module.conf", b"NAME=hello\nVERSION=1.0\nDESCRIPTION=says hi\n", 0o644).unwrap();
+    module.file("hello/install", b"#!/bin/sh\necho hi\n", 0o755).unwrap();
+    module.file("hello/payload/bin", &arm64(0x68, 4_000), 0o755).unwrap();
+    let module = fw::gzip(&module.finish());
+    std::fs::write(out.join("kit-tailscale.tgz"), &ts).unwrap();
+    std::fs::write(out.join("kit-mediamtx.tgz"), &mtx).unwrap();
+    std::fs::write(out.join("kit-module.tgz"), &module).unwrap();
+    let modules = [fw::read_module(&module, "hello.tgz", &kit.reserved(), kit.module_max_bytes()).unwrap()];
+
+    let key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample you@laptop".to_string();
+    let all = |tabs: bool| Options {
+        ssh_key: key.clone(),
+        tag: "crosscheck".into(),
+        tailscale: true,
+        kvm: true,
+        play: true,
+        cam: true,
+        cam_ui: tabs,
+        gateway: true,
+        gateway_ui: tabs,
+        omt: true,
+        omt_ui: tabs,
+        output: true,
+        output_ui: tabs,
+        stagetimer: true,
+        stagetimer_ui: tabs,
+        reboot: true,
+    };
+    let none = Options { ssh_key: key.clone(), tag: "crosscheck".into(), ..Default::default() };
+    for (name, o, with_modules) in [("all", all(true), true), ("all-no-tabs", all(false), false), ("none", none, false)] {
+        let fetched = kit::Fetched { tailscale_tgz: Some(ts.clone()), mediamtx_tgz: Some(mtx.clone()) };
+        let mods: &[fw::Module] = if with_modules { &modules } else { &[] };
+        let built = kit::build(&kit, &o, fetched, mods).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let tar = fw::gunzip_bounded(&built.fw, 1 << 30).unwrap();
+        assert_eq!(fw::sha256_hex(&tar), built.tar_sha256);
+        std::fs::write(out.join(format!("rust-kit-{name}.tar")), &tar).unwrap();
+        let mut req = serde_json::to_value(&o).unwrap();
+        req["modules"] = serde_json::json!(if with_modules { vec!["kit-module.tgz"] } else { vec![] });
+        std::fs::write(out.join(format!("kit-{name}.json")), serde_json::to_string_pretty(&req).unwrap()).unwrap();
+        eprintln!("kit package {name}: {} members, {} bytes of tar", fw::tar_entries(&tar).unwrap().len(), tar.len());
+    }
 }

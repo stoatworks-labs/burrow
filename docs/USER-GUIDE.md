@@ -228,8 +228,11 @@ needs a box ticking.
 **Set up a package** fetches the patcher kit (about 30 MB, from GitHub), and then it's
 the [PLAY Patcher](https://birddog-play-patcher.stoatworks-labs.com) without the
 browser: paste an SSH public key, tick what you want (Tailscale, the NDI KVM
-endpoint, the USB media player, the UVC converter, the streaming gateway), add your
-own modules if you have any, and **Build the package**. Tailscale comes from
+endpoint, the USB media player, the UVC converter, the streaming gateway, the OMT
+receiver, HDMI formats and area of interest, Stagetimer), add your own modules if you
+have any, and **Build the package**. An option the kit you downloaded doesn't carry
+says so and stays unticked. The streaming gateway, the OMT receiver, HDMI formats and
+Stagetimer haven't run on a PLAY yet; each can also add a tab to BirdUI. Tailscale comes from
 Tailscale's own download server and is checked against the SHA-256 they publish. The
 streaming gateway's MediaMTX comes from its GitHub release, checked the same way.
 

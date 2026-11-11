@@ -307,8 +307,9 @@ pub fn extract_mediamtx(tgz: &[u8]) -> Result<(Vec<u8>, Option<Vec<u8>>), String
 pub const MODULE_PREFIX: &str = "./modules/";
 /// Names whose /userdata/bd-<name> or unit would collide with a built-in
 /// payload. The kit carries the installer's own list; this is the fallback.
-pub const RESERVED_MODULE_NAMES: [&str; 11] = [
-    "tailscale", "tailscale-ui", "kvm", "cam", "cam-api", "play", "probe", "modules", "gateway", "gw", "mtx",
+pub const RESERVED_MODULE_NAMES: [&str; 16] = [
+    "tailscale", "tailscale-ui", "kvm", "cam", "cam-api", "play", "probe", "modules", "gateway", "gw", "mtx", "omt",
+    "output", "out", "stagetimer", "stage",
 ];
 pub const MODULE_MAX_BYTES: u64 = 256 * 1024 * 1024;
 
@@ -536,6 +537,12 @@ pub struct Flags {
     pub cam_ui: bool,
     pub gateway: bool,
     pub gateway_ui: bool,
+    pub omt: bool,
+    pub omt_ui: bool,
+    pub output: bool,
+    pub output_ui: bool,
+    pub stagetimer: bool,
+    pub stagetimer_ui: bool,
     pub modules: bool,
     pub reboot: bool,
 }
@@ -543,7 +550,7 @@ pub struct Flags {
 pub fn build_conf(f: &Flags) -> String {
     let b = |v: bool| if v { 1 } else { 0 };
     format!(
-        "BUILD_TAG={}\nWITH_TAILSCALE={}\nWITH_TAILSCALE_UI={}\nWITH_KVM={}\nWITH_PLAY={}\nWITH_CAM={}\nWITH_CAM_UI={}\nWITH_GATEWAY={}\nWITH_GATEWAY_UI={}\nWITH_MODULES={}\nDO_REBOOT={}\n",
+        "BUILD_TAG={}\nWITH_TAILSCALE={}\nWITH_TAILSCALE_UI={}\nWITH_KVM={}\nWITH_PLAY={}\nWITH_CAM={}\nWITH_CAM_UI={}\nWITH_GATEWAY={}\nWITH_GATEWAY_UI={}\nWITH_OMT={}\nWITH_OMT_UI={}\nWITH_OUTPUT={}\nWITH_OUTPUT_UI={}\nWITH_STAGETIMER={}\nWITH_STAGETIMER_UI={}\nWITH_MODULES={}\nDO_REBOOT={}\n",
         f.tag,
         b(f.tailscale),
         b(f.tailscale && f.tailscale_ui),
@@ -553,6 +560,12 @@ pub fn build_conf(f: &Flags) -> String {
         b(f.cam && f.cam_ui),
         b(f.gateway),
         b(f.gateway && f.gateway_ui),
+        b(f.omt),
+        b(f.omt && f.omt_ui),
+        b(f.output),
+        b(f.output && f.output_ui),
+        b(f.stagetimer),
+        b(f.stagetimer && f.stagetimer_ui),
         b(f.modules),
         b(f.reboot),
     )

@@ -44,7 +44,17 @@ fn the_play_kit_loads_and_packs_every_option_it_offers() {
     let root = dir("BURROW_PLAY_KIT_DIR");
     let kit = Kit::load(&root).unwrap();
     let offers = kit.offers();
-    assert!(offers.kvm && offers.play && offers.cam && offers.gateway && offers.tailscale_ui, "{offers:?}");
+    assert!(
+        offers.kvm
+            && offers.play
+            && offers.cam
+            && offers.gateway
+            && offers.omt
+            && offers.output
+            && offers.stagetimer
+            && offers.tailscale_ui,
+        "{offers:?}"
+    );
 
     // Tailscale and MediaMTX are fetched, not shipped; stand-ins with the
     // right shape stand in for them here.
@@ -71,6 +81,12 @@ fn the_play_kit_loads_and_packs_every_option_it_offers() {
         cam_ui: true,
         gateway: true,
         gateway_ui: true,
+        omt: true,
+        omt_ui: true,
+        output: true,
+        output_ui: true,
+        stagetimer: true,
+        stagetimer_ui: true,
         reboot: true,
     };
     let built = kit::build(&kit, &o, fetched, &[]).unwrap();
@@ -94,6 +110,13 @@ fn the_play_kit_loads_and_packs_every_option_it_offers() {
         "./userdata/bd-gw/LICENSE.mediamtx",
         "./userdata/bd-gw/bdgw",
         "./userdata/bd-gw/run.sh",
+        "./userdata/bd-omt/bdomt",
+        "./userdata/bd-omt/libvmx.so",
+        "./userdata/bd-omt/LICENSE.libvmx",
+        "./userdata/bd-out/bdout",
+        "./userdata/bd-out/libbdout.so",
+        "./userdata/bd-stage/bdstage",
+        "./userdata/bd-stage/OFL.txt",
     ] {
         assert!(names.iter().any(|n| n == want), "{want} is missing from the package: {names:?}");
     }

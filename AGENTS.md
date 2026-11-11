@@ -350,6 +350,13 @@ not written by Burrow stay out. What is inside the two zips is fixed:
   `kit.json` (format, version, the MediaMTX pin, where Tailscale comes from, the
   reserved module names), the patcher's own `assets/` with its `manifest.json`,
   and `NOTICES/`. Burrow packs the .fw member for member as the page's `app.js`.
+  The member table is **not** in the kit: it is the patcher's `PACKAGE` and
+  `OPTIONS` in `public/fw.js`, ported by hand into `play/kit.rs` (members, order,
+  modes) and `play/fw.rs` (the `build.conf` flags and the reserved module names).
+  Every time that table grows, Burrow has to be told: port the option in fw.js's
+  order, then run the crosscheck with a kit made from the same patcher commit
+  (§7). The crosscheck refuses an option it does not know, so a missed one
+  fails there rather than in the field.
 
 **A copy of the catalogue ships inside the app.** Not a nicety: it makes a first
 run work offline, it is the baseline that stops "What's new" announcing all
@@ -450,9 +457,12 @@ parts, restore a whole PLAY image (with a real mke2fs-made ext2 rootfs) into a
 `e2fsck -fn` where e2fsprogs is installed. Two runs that are not CI:
 
 ```bash
-# The PLAY ports against the web tools' own modules, byte for byte.
-cargo run -p burrow-device --example crosscheck -- /tmp/xc
-node scripts/crosscheck-play.mjs /tmp/xc <birddog-play-flasher> <birddog-play-patcher>
+# The PLAY ports against the web tools' own modules, byte for byte. <kit> is
+# the patcher's scripts/make-kit.sh output, unzipped, from the same commit as
+# <birddog-play-patcher>; with it, whole packages (every option on, on without
+# their birdUI tabs, and off) are built from the kit by both sides.
+cargo run -p burrow-device --example crosscheck -- /tmp/xc <kit>
+node scripts/crosscheck-play.mjs /tmp/xc <birddog-play-flasher> <birddog-play-patcher> <kit>
 
 # Against the release zips Burrow will really download, unpacked.
 BURROW_CANARY_DIR=… BURROW_PLAY_KIT_DIR=… \

@@ -488,6 +488,12 @@ fn arm64(tag: u8) -> Vec<u8> {
 }
 
 fn fake_kit() -> (tempfile::TempDir, Kit) {
+    fake_kit_without(&[])
+}
+
+/// A kit as build-assets.sh writes one, with the assets named in `missing`
+/// left out and `null` in the manifest, as they are when a binary was not built.
+fn fake_kit_without(missing: &[&str]) -> (tempfile::TempDir, Kit) {
     let dir = tempfile::tempdir().unwrap();
     let assets = dir.path().join("assets");
     std::fs::create_dir_all(&assets).unwrap();
@@ -499,9 +505,20 @@ fn fake_kit() -> (tempfile::TempDir, Kit) {
         ("bdts", "bdts-linux-arm64", arm64(2)),
         ("bdplay", "bdplay-linux-arm64", arm64(3)),
         ("exfat", "mount.exfat-fuse", arm64(4)),
+        ("bdomt", "bdomt-linux-arm64", arm64(5)),
+        ("libvmx", "libvmx.so", arm64(6)),
+        ("libvmxLicense", "LICENSE.libvmx", b"MIT License\n\nlibvmx\n".to_vec()),
+        ("bdout", "bdout-linux-arm64", arm64(10)),
+        ("libbdout", "libbdout.so", arm64(11)),
+        ("bdstage", "bdstage-linux-arm64", arm64(12)),
+        ("stageFontLicense", "OFL.noto-sans.txt", b"SIL OPEN FONT LICENSE Version 1.1\n".to_vec()),
     ];
+    let files: Vec<_> = files.into_iter().filter(|(key, _, _)| !missing.contains(key)).collect();
     let mut manifest = serde_json::Map::new();
     manifest.insert("generated".into(), "2026-10-20T00:00:00Z".into());
+    for absent in missing {
+        manifest.insert((*absent).into(), serde_json::Value::Null);
+    }
     for (key, file, data) in &files {
         std::fs::write(assets.join(file), data).unwrap();
         manifest.insert((*key).into(), serde_json::json!({ "size": data.len(), "sha256": fw::sha256_hex(data) }));
@@ -587,8 +604,116 @@ fn a_package_is_packed_member_for_member_as_the_page_packs_it() {
     let conf = fw::tar_entries(&tar).unwrap().into_iter().find(|e| e.name == "./build.conf").unwrap();
     assert_eq!(
         String::from_utf8(conf.data).unwrap(),
-        "BUILD_TAG=show-night-\nWITH_TAILSCALE=1\nWITH_TAILSCALE_UI=1\nWITH_KVM=1\nWITH_PLAY=1\nWITH_CAM=0\nWITH_CAM_UI=0\nWITH_GATEWAY=0\nWITH_GATEWAY_UI=0\nWITH_MODULES=1\nDO_REBOOT=1\n"
+        "BUILD_TAG=show-night-\nWITH_TAILSCALE=1\nWITH_TAILSCALE_UI=1\nWITH_KVM=1\nWITH_PLAY=1\nWITH_CAM=0\nWITH_CAM_UI=0\nWITH_GATEWAY=0\nWITH_GATEWAY_UI=0\nWITH_OMT=0\nWITH_OMT_UI=0\nWITH_OUTPUT=0\nWITH_OUTPUT_UI=0\nWITH_STAGETIMER=0\nWITH_STAGETIMER_UI=0\nWITH_MODULES=1\nDO_REBOOT=1\n"
     );
+}
+
+fn members(built: &kit::Built) -> (Vec<(String, u32)>, Vec<fw::Entry>) {
+    let tar = fw::gunzip_bounded(&built.fw, 64 << 20).unwrap();
+    let entries = fw::tar_entries(&tar).unwrap();
+    (entries.iter().map(|e| (e.name.clone(), e.mode)).collect(), entries)
+}
+
+#[test]
+fn omt_output_and_stagetimer_are_packed_as_the_page_packs_them() {
+    let (dir, kit) = fake_kit();
+    let offers = kit.offers();
+    assert!(offers.omt && offers.output && offers.stagetimer, "{offers:?}");
+    let o = Options {
+        ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample you@laptop".into(),
+        tag: "three".into(),
+        tailscale: false,
+        omt: true,
+        omt_ui: true,
+        output: true,
+        output_ui: false,
+        stagetimer: true,
+        stagetimer_ui: true,
+        ..Default::default()
+    };
+    let built = kit::build(&kit, &o, kit::Fetched::default(), &[]).unwrap();
+    let (got, entries) = members(&built);
+    // fw.js's PACKAGE order: OMT, then Output, then Stagetimer, after the gateway.
+    let want: Vec<(&str, u32)> = vec![
+        ("./update", 0o755),
+        ("./probe.sh", 0o755),
+        ("./authorized_keys", 0o600),
+        ("./build.conf", 0o644),
+        ("./userdata/", 0o755),
+        ("./userdata/bd-omt/", 0o755),
+        ("./userdata/bd-omt/bdomt", 0o755),
+        ("./userdata/bd-omt/libvmx.so", 0o755),
+        ("./userdata/bd-omt/LICENSE.libvmx", 0o644),
+        ("./userdata/bd-out/", 0o755),
+        ("./userdata/bd-out/bdout", 0o755),
+        ("./userdata/bd-out/libbdout.so", 0o755),
+        ("./userdata/bd-stage/", 0o755),
+        ("./userdata/bd-stage/bdstage", 0o755),
+        ("./userdata/bd-stage/OFL.txt", 0o644),
+    ];
+    assert_eq!(got, want.iter().map(|(n, m)| (n.to_string(), *m)).collect::<Vec<_>>());
+    let data = |name: &str| entries.iter().find(|e| e.name == name).unwrap().data.clone();
+    assert_eq!(
+        String::from_utf8(data("./build.conf")).unwrap(),
+        "BUILD_TAG=three\nWITH_TAILSCALE=0\nWITH_TAILSCALE_UI=0\nWITH_KVM=0\nWITH_PLAY=0\nWITH_CAM=0\nWITH_CAM_UI=0\nWITH_GATEWAY=0\nWITH_GATEWAY_UI=0\nWITH_OMT=1\nWITH_OMT_UI=1\nWITH_OUTPUT=1\nWITH_OUTPUT_UI=0\nWITH_STAGETIMER=1\nWITH_STAGETIMER_UI=1\nWITH_MODULES=0\nDO_REBOOT=0\n"
+    );
+    // The licence goes in under the page's name for it, not the kit's.
+    assert_eq!(data("./userdata/bd-stage/OFL.txt"), std::fs::read(dir.path().join("assets/OFL.noto-sans.txt")).unwrap());
+    assert_eq!(data("./userdata/bd-omt/LICENSE.libvmx"), std::fs::read(dir.path().join("assets/LICENSE.libvmx")).unwrap());
+}
+
+#[test]
+fn a_birdui_tab_is_only_asked_for_with_its_option() {
+    let (_dir, kit) = fake_kit();
+    let o = Options {
+        ssh_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample you@laptop".into(),
+        omt_ui: true,
+        output_ui: true,
+        stagetimer_ui: true,
+        ..Default::default()
+    };
+    let built = kit::build(&kit, &o, kit::Fetched::default(), &[]).unwrap();
+    let (got, entries) = members(&built);
+    assert!(!got.iter().any(|(n, _)| n.starts_with("./userdata/")), "{got:?}");
+    let conf = String::from_utf8(entries.iter().find(|e| e.name == "./build.conf").unwrap().data.clone()).unwrap();
+    for flag in ["WITH_OMT_UI=0", "WITH_OUTPUT_UI=0", "WITH_STAGETIMER_UI=0"] {
+        assert!(conf.lines().any(|l| l == flag), "{flag} in {conf}");
+    }
+}
+
+#[test]
+fn an_option_missing_half_its_binaries_is_not_offered_and_not_built() {
+    let key = || "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample you@laptop".to_string();
+    type Offered = fn(&kit::KitOffers) -> bool;
+    let cases: [(&str, &str, Offered, Options); 3] = [
+        ("libvmx", "no OMT receiver", |k| k.omt, Options { ssh_key: key(), omt: true, ..Default::default() }),
+        ("libbdout", "no HDMI formats", |k| k.output, Options { ssh_key: key(), output: true, ..Default::default() }),
+        ("bdstage", "no Stagetimer", |k| k.stagetimer, Options { ssh_key: key(), stagetimer: true, ..Default::default() }),
+    ];
+    for (missing, what, offered, o) in cases {
+        let (_dir, kit) = fake_kit_without(&[missing]);
+        assert!(!offered(&kit.offers()), "{missing}: {:?}", kit.offers());
+        let err = kit::build(&kit, &o, kit::Fetched::default(), &[]).err().unwrap();
+        assert!(err.contains(what), "{missing}: {err}");
+    }
+}
+
+#[test]
+fn the_reserved_module_names_are_the_pages() {
+    // fw.js's RESERVED_MODULE_NAMES, in its order.
+    assert_eq!(
+        fw::RESERVED_MODULE_NAMES,
+        [
+            "tailscale", "tailscale-ui", "kvm", "cam", "cam-api", "play", "probe", "modules", "gateway", "gw", "mtx", "omt",
+            "output", "out", "stagetimer", "stage",
+        ]
+    );
+    for name in ["omt", "output", "out", "stagetimer", "stage"] {
+        let conf = format!("NAME={name}\nVERSION=1\n");
+        let tgz = module_tgz(&[("module.conf", conf.as_bytes(), 0o644), ("install", b"#!/bin/sh\n", 0o755)]);
+        let err = fw::read_module(&tgz, name, &reserved(), fw::MODULE_MAX_BYTES).unwrap_err();
+        assert!(err.contains("collides"), "{name}: {err}");
+    }
 }
 
 #[test]

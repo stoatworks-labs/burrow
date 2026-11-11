@@ -7,6 +7,11 @@
 //! member, so a package from Burrow and one from the page differ only where the
 //! inputs do.
 //!
+//! The member table is the page's `PACKAGE` in `public/fw.js`, and its options
+//! are that file's `OPTIONS`: when either grows, this file has to as well, in
+//! the same order. `scripts/crosscheck-play.mjs` builds a package from a real
+//! kit with the page's own code and compares the bytes.
+//!
 //! Tailscale and MediaMTX are not in the kit. The shell fetches them (Tailscale
 //! from pkgs.tailscale.com against its .sha256 sidecar, MediaMTX from its
 //! pinned GitHub release against checksums.sha256) or the user supplies them,
@@ -82,6 +87,20 @@ pub struct AssetManifest {
     #[serde(default)]
     pub gw_api_run: Option<AssetMeta>,
     #[serde(default)]
+    pub bdomt: Option<AssetMeta>,
+    #[serde(default)]
+    pub libvmx: Option<AssetMeta>,
+    #[serde(default)]
+    pub libvmx_license: Option<AssetMeta>,
+    #[serde(default)]
+    pub bdout: Option<AssetMeta>,
+    #[serde(default)]
+    pub libbdout: Option<AssetMeta>,
+    #[serde(default)]
+    pub bdstage: Option<AssetMeta>,
+    #[serde(default)]
+    pub stage_font_license: Option<AssetMeta>,
+    #[serde(default)]
     pub bdplay: Option<AssetMeta>,
     #[serde(default)]
     pub bdpdf: Option<AssetMeta>,
@@ -114,6 +133,9 @@ pub struct KitOffers {
     pub play_exfat: bool,
     pub cam: bool,
     pub gateway: bool,
+    pub omt: bool,
+    pub output: bool,
+    pub stagetimer: bool,
     pub mediamtx_version: String,
 }
 
@@ -144,6 +166,9 @@ impl Kit {
             play_exfat: a.exfat.is_some(),
             cam: a.bdcam.is_some(),
             gateway: a.bdgw.is_some(),
+            omt: a.bdomt.is_some() && a.libvmx.is_some(),
+            output: a.bdout.is_some() && a.libbdout.is_some(),
+            stagetimer: a.bdstage.is_some(),
             mediamtx_version: self.json.mediamtx.version.clone(),
         }
     }
@@ -191,6 +216,12 @@ pub struct Options {
     pub cam_ui: bool,
     pub gateway: bool,
     pub gateway_ui: bool,
+    pub omt: bool,
+    pub omt_ui: bool,
+    pub output: bool,
+    pub output_ui: bool,
+    pub stagetimer: bool,
+    pub stagetimer_ui: bool,
     pub reboot: bool,
 }
 
@@ -232,6 +263,14 @@ pub fn build(kit: &Kit, o: &Options, fetched: Fetched, modules: &[Module]) -> Re
         cam_ui: o.cam && a.bdcam.is_some() && o.cam_ui,
         gateway: o.gateway && a.bdgw.is_some(),
         gateway_ui: o.gateway && a.bdgw.is_some() && o.gateway_ui,
+        // Each of these is two binaries or none: a receiver without its
+        // decoder, or a shim without its service, is not an option.
+        omt: o.omt && a.bdomt.is_some() && a.libvmx.is_some(),
+        omt_ui: o.omt && a.bdomt.is_some() && a.libvmx.is_some() && o.omt_ui,
+        output: o.output && a.bdout.is_some() && a.libbdout.is_some(),
+        output_ui: o.output && a.bdout.is_some() && a.libbdout.is_some() && o.output_ui,
+        stagetimer: o.stagetimer && a.bdstage.is_some(),
+        stagetimer_ui: o.stagetimer && a.bdstage.is_some() && o.stagetimer_ui,
         modules: !modules.is_empty(),
         reboot: o.reboot,
     };
@@ -240,6 +279,9 @@ pub fn build(kit: &Kit, o: &Options, fetched: Fetched, modules: &[Module]) -> Re
         (o.play, flags.play, "USB media player"),
         (o.cam, flags.cam, "UVC converter"),
         (o.gateway, flags.gateway, "streaming gateway"),
+        (o.omt, flags.omt, "OMT receiver"),
+        (o.output, flags.output, "HDMI formats and area of interest"),
+        (o.stagetimer, flags.stagetimer, "Stagetimer"),
     ] {
         if asked && !have {
             return Err(format!("this kit has no {what}"));
@@ -316,6 +358,31 @@ pub fn build(kit: &Kit, o: &Options, fetched: Fetched, modules: &[Module]) -> Re
             kit.json.mediamtx.version,
             if flags.gateway_ui { "yes" } else { "no" }
         ));
+    }
+
+    if flags.omt {
+        tar.file("./userdata/bd-omt/bdomt", &kit.asset("bdomt-linux-arm64", a.bdomt.as_ref())?, 0o755)?;
+        tar.file("./userdata/bd-omt/libvmx.so", &kit.asset("libvmx.so", a.libvmx.as_ref())?, 0o755)?;
+        // libvmx's MIT notice travels beside the library it covers.
+        tar.file("./userdata/bd-omt/LICENSE.libvmx", &kit.asset("LICENSE.libvmx", a.libvmx_license.as_ref())?, 0o644)?;
+        log.push(format!("OMT receiver: yes, web UI tab {}", if flags.omt_ui { "yes" } else { "no" }));
+    }
+
+    if flags.output {
+        tar.file("./userdata/bd-out/bdout", &kit.asset("bdout-linux-arm64", a.bdout.as_ref())?, 0o755)?;
+        tar.file("./userdata/bd-out/libbdout.so", &kit.asset("libbdout.so", a.libbdout.as_ref())?, 0o755)?;
+        log.push(format!(
+            "HDMI formats and area of interest: yes, web UI tab {}; the decoder restarts so the shim loads",
+            if flags.output_ui { "yes" } else { "no" }
+        ));
+    }
+
+    if flags.stagetimer {
+        tar.file("./userdata/bd-stage/bdstage", &kit.asset("bdstage-linux-arm64", a.bdstage.as_ref())?, 0o755)?;
+        // The SIL Open Font Licence of the Noto Sans built into bdstage. The kit
+        // names it for the font; the package names it as the page does.
+        tar.file("./userdata/bd-stage/OFL.txt", &kit.asset("OFL.noto-sans.txt", a.stage_font_license.as_ref())?, 0o644)?;
+        log.push(format!("Stagetimer: yes, web UI tab {}", if flags.stagetimer_ui { "yes" } else { "no" }));
     }
 
     let mut seen = BTreeMap::new();

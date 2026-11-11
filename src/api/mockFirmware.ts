@@ -222,6 +222,9 @@ const KIT: KitOffers = {
   playExfat: true,
   cam: true,
   gateway: true,
+  omt: true,
+  output: true,
+  stagetimer: true,
   mediamtxVersion: 'v1.21.0',
 }
 
@@ -302,7 +305,12 @@ export async function mockFirmware(cmd: string, args: Record<string, unknown> | 
           req.kvm ? 'NDI KVM: yes' : '',
           req.play ? 'USB media player: yes' : '',
           req.cam ? `UVC converter: yes, web UI tab ${req.camUi ? 'yes' : 'no'}` : '',
-          req.gateway ? 'streaming gateway: MediaMTX v1.21.0, web UI tab yes' : '',
+          req.gateway ? `streaming gateway: MediaMTX v1.21.0, web UI tab ${req.gatewayUi ? 'yes' : 'no'}` : '',
+          req.omt ? `OMT receiver: yes, web UI tab ${req.omtUi ? 'yes' : 'no'}` : '',
+          req.output
+            ? `HDMI formats and area of interest: yes, web UI tab ${req.outputUi ? 'yes' : 'no'}; the decoder restarts so the shim loads`
+            : '',
+          req.stagetimer ? `Stagetimer: yes, web UI tab ${req.stagetimerUi ? 'yes' : 'no'}` : '',
           ...(req.modules as string[]).map(m => `module ${m.split('/').pop()?.replace(/\.t?gz$/, '')} 1.0: 4 files, 3.1 KB`),
         ].filter(Boolean),
       }

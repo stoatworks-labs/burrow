@@ -588,6 +588,12 @@ function PackageSection({
     camUi: true,
     gateway: false,
     gatewayUi: true,
+    omt: false,
+    omtUi: true,
+    output: false,
+    outputUi: true,
+    stagetimer: false,
+    stagetimerUi: true,
     reboot: true,
   })
   const [modules, setModules] = useState<string[]>([])
@@ -610,7 +616,21 @@ function PackageSection({
     setSaved(null)
     setSent(null)
     try {
-      onBuilt(await job('play-build', () => api.playBuild({ sshKey: key, tag, modules, ...opt })))
+      // A tick shows unticked when the kit lacks its option, but its state can
+      // still be on; what is sent is what is shown.
+      const o = offers
+        ? {
+            ...opt,
+            kvm: opt.kvm && offers.kvm,
+            play: opt.play && offers.play,
+            cam: opt.cam && offers.cam,
+            gateway: opt.gateway && offers.gateway,
+            omt: opt.omt && offers.omt,
+            output: opt.output && offers.output,
+            stagetimer: opt.stagetimer && offers.stagetimer,
+          }
+        : opt
+      onBuilt(await job('play-build', () => api.playBuild({ sshKey: key, tag, modules, ...o })))
     } catch (e) {
       setError(String(e))
     }
@@ -663,8 +683,8 @@ function PackageSection({
           </div>
           <div className="hook">
             A package BirdUI&rsquo;s System Update installs: SSH, Tailscale, the NDI KVM endpoint, the
-            USB media player, the UVC converter and the streaming gateway. It carries no vendor key
-            and needs none.
+            USB media player, the UVC converter, the streaming gateway, the OMT receiver, HDMI formats
+            and area of interest, and Stagetimer. It carries no vendor key and needs none.
           </div>
           {!entry && <div className="section-empty">The catalogue carries no patcher kit yet.</div>}
           {entry && !offers && (
@@ -731,6 +751,51 @@ function PackageSection({
                 <div className="fw-indent">
                   <Tick checked={opt.gatewayUi} onChange={set('gatewayUi')}>
                     with a tab in BirdUI
+                  </Tick>
+                </div>
+              )}
+              <Tick checked={opt.omt && offers.omt} onChange={set('omt')}>
+                OMT receiver{' '}
+                <span className="d">
+                  {offers.omt
+                    ? '— an Open Media Transport source on the HDMI output, with its sound. Not yet run on a PLAY.'
+                    : '— not in this kit'}
+                </span>
+              </Tick>
+              {opt.omt && offers.omt && (
+                <div className="fw-indent">
+                  <Tick checked={opt.omtUi} onChange={set('omtUi')}>
+                    with a tab in BirdUI
+                  </Tick>
+                </div>
+              )}
+              <Tick checked={opt.output && offers.output} onChange={set('output')}>
+                HDMI formats and area of interest{' '}
+                <span className="d">
+                  {offers.output
+                    ? '— the HDMI format you choose, and part of the picture anywhere on the screen. The PLAY’s decoder restarts so its shim loads. Not yet run on a PLAY.'
+                    : '— not in this kit'}
+                </span>
+              </Tick>
+              {opt.output && offers.output && (
+                <div className="fw-indent">
+                  <Tick checked={opt.outputUi} onChange={set('outputUi')}>
+                    with a tab in BirdUI
+                  </Tick>
+                </div>
+              )}
+              <Tick checked={opt.stagetimer && offers.stagetimer} onChange={set('stagetimer')}>
+                Stagetimer{' '}
+                <span className="d">
+                  {offers.stagetimer
+                    ? '— a stagetimer.io room on the HDMI output. Not yet run on a PLAY.'
+                    : '— not in this kit'}
+                </span>
+              </Tick>
+              {opt.stagetimer && offers.stagetimer && (
+                <div className="fw-indent">
+                  <Tick checked={opt.stagetimerUi} onChange={set('stagetimerUi')}>
+                    with a tab in BirdUI, where the room is entered
                   </Tick>
                 </div>
               )}
