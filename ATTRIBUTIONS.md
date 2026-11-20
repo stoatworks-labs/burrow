@@ -60,7 +60,7 @@ Copyright: the serialport-rs contributors
 
 A Cargo dependency, used unmodified; its source is on crates.io.
 
-Lists and opens the serial port a CANary appears on.
+Lists and opens the serial port an ESP32 board appears on.
 
 ### nusb
 
@@ -107,7 +107,7 @@ maskrom vendor request, the CBW opcodes, the padding rules, the GPT built from
 `parameter.txt`) were read out of its source by the browser PLAY Flasher, and Burrow's
 Rust is a port of that flasher's own code.
 
-### The CANary Flasher, PLAY Flasher and PLAY Patcher
+### The Stoatworks Flasher, PLAY Flasher and PLAY Patcher
 
 <https://github.com/stoatworks-labs/canary-flasher>  
 <https://github.com/stoatworks-labs/birddog-play-flasher>  
@@ -115,9 +115,13 @@ Rust is a port of that flasher's own code.
 Licence: MIT  
 Copyright: Allan Sargeant
 
-The Device firmware tab is a port of these three browser tools into Rust: their
-checks, their image and partition handling, and their package format, kept byte for
-byte compatible and tested against them.
+The Device firmware tab is a port of these three browser tools into Rust. For an
+ESP32 board, the Stoatworks Flasher's checks, its image and partition-table handling
+and its firmware package format, message for message, tested against the same
+packages and the whole-flash images it exports; it was the CANary Flasher, and its
+repository still has that name. For a PLAY, the PLAY Flasher's and PLAY Patcher's
+image and partition handling and package format, kept byte for byte compatible and
+tested against them.
 
 ### What a PLAY package carries
 

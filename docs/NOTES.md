@@ -1084,6 +1084,69 @@ against the new catalogue served locally and real downloads from GitHub:
   first run's grant didn't carry over to the second. Whether Burrow's grant lasts
   from one launch to the next hasn't been seen yet.
 
+## 2026-11-06 — the Firmware tab writes to ESP32 boards
+
+The tab that said "coming soon" since 2026-08-25 now writes firmware to any ESP32
+board over its USB serial port: the catalogue's releases for the CANary, nanODE and
+Cuckoo, or a file of the user's own — a release zip, a whole-flash image, or the
+parts of an ESP-IDF build. The webview has no Web Serial, so the device half is
+Rust, in a crate of its own (`burrow-device`), and the browser tool it was ported
+from stays the reference. The rules that came out of it are AGENTS.md §3a; these are
+the decisions.
+
+**First CANary-only, then generic.** The first version (2026-10-20, on
+`claude/device-firmware`) was a port of the CANary Flasher, with the CANary's
+partition layout and chip written into it, next to a BirdDog PLAY restore and
+package builder. Then the flasher became the Stoatworks Flasher, for every ESP32
+board in the fleet, with a package format that carries the device's own description.
+Burrow followed it: the ESP32 half was brought over and made generic, and the PLAY
+half was left on that branch, unmerged, for a change of its own. (It came back
+another way: main merged the whole branch on 2026-11-11, and the two halves met on
+2026-11-20.)
+
+**One format, two programs, the same bytes.** The package is the flasher's schema 2
+(`docs/PACKAGE.md` there). Its first schema, a bare `{releases}`, is still read and
+put down to the device whose projects cover every app. Burrow's tests are the
+flasher's tests ported, plus a cross-check against the real thing: every release the
+flasher bundles opens and passes Burrow's gate, and for each of the five variants
+across the three devices, Burrow's merge of the parts equals the whole-flash `.bin`
+the flasher's `scripts/export-release.ts` writes, byte for byte; the exported zips
+unpack with burrow-core's own extractor to the bundled release. No disagreement on
+the format turned up.
+
+**What Burrow adds is only stricter.** Secure boot or flash encryption refused,
+each variant's app descriptor checked against its manifest, the replace tick
+enforced in Rust as well as in the interface, an MD5 of our own per region after
+writing, and an unreadable flash size treated as a refusal rather than as the
+device's size. The messages are the page's, with "Burrow" for "this page".
+
+**Firmware needs a digest; the catalogue carries one for everything.** GitHub
+publishes a SHA-256 for every release asset, so `gen-downloads.py` records it and the
+catalogue carries it as an additive `sha256`. The Firmware tab refuses catalogue
+firmware without one, and then checks every part against the manifest's own.
+
+**Releases had to exist first, because Burrow only downloads from GitHub.** Firmware
+had only ever been served from the flasher's own site. The flasher's export script
+now writes the release zip and a whole-flash image per variant, published on
+2026-11-06 as `stoatworks-labs/canary` v0.2.1, `nanode-firmware` v0.4.2 and
+`cuckoo-firmware` v0.1.0, and the live catalogue carries all three. The zips are
+deflated with an exact-pinned fflate, so the same release is the same bytes on any
+machine. Downloaded from GitHub, each matched the catalogue's digest and size; the
+cross-check above passes against those downloads as well as the local export; and an
+ignored test in `firmware.rs` opens each live catalogue entry the way the tab does.
+`canary` v0.2.0, the first-schema zip the catalogue pointed at before, still opens
+through the first-schema fallback and plans cleanly. The tab offers a release's GitHub
+downloads as links, so nobody needs Burrow, or the page, to fetch it again.
+
+**One device text for both.** `connect`, `bootMode` and `after` in each manifest
+first said "press Connect" and "open the console below", which are the page's
+buttons. The flasher reworded them (a721719) to read right in either program, so
+Burrow shows them as they are rather than keep a second copy.
+
+Not done, and said so in the README: **nothing has been written to a board by
+Burrow yet**, and nothing has been read from one. Everything above ran against
+files, a mock in the browser, and the flasher's own artefacts.
+
 ## 2026-11-11 — the PLAY package builder catches up with the patcher
 
 The Firmware tab sat on `claude/device-firmware` for three weeks, and in that time the
@@ -1120,3 +1183,50 @@ ticks say "not in this kit". The request now sends only what the kit offers.
 Before, a tick that showed unticked could still send `true` and fail the build.
 
 None of this has run on a PLAY. Neither has anything else the Firmware tab does.
+
+## 2026-11-20 — the two halves of the Firmware tab meet
+
+Two versions of the tab had grown apart. `claude/esp-flasher` (2026-11-06, above)
+made the ESP32 half generic and left the PLAY out. Main merged
+`claude/device-firmware` on 2026-11-11, which brought the PLAY half with the
+CANary-only ESP32 half it was written next to, and then gave the PLAY builder three
+options. The branch is merged into main now, and the tab has both: the three ESP32
+steps at the top, the PLAY package and recovery sections below.
+
+**The ESP32 half is the branch's, the PLAY half is main's, untouched.** Main's
+CANary-only code (`esp/release.rs` and the CANary section of the tab) is gone, and
+nothing on the PLAY side used it. `play/*`, its tests and fixtures, the crosscheck
+and 17f84ca's three options are as they were on main, byte for byte. `bench.rs` and
+`real_artefacts.rs` carry both sets.
+
+**The catalogue routes by `device`.** Every `kind: "firmware"` entry is an ESP32
+release except the ids in `NOT_ESP32`, which is only `birddog-play`. The ESP32 steps
+refuse those with a pointer to the PLAY sections, and the PLAY steps find the kit by
+its device (`device_in`). A new test in `firmware.rs` builds a catalogue with the
+CANary, the Cuckoo and the PLAY kit and checks that each goes one way only, and that
+the PLAY lookup for a device with no entry is an error. On screen, the PLAY kit's
+card in step 1 says it is not an ESP32 board and links down to the PLAY sections.
+
+**One state, one busy flag.** The shell keeps one `FirmwareState`: the branch's
+packages, loose files and unit, plus main's built package. Every command that talks
+to a device takes the same `Busy` guard, so an ESP32 write and a PLAY flash cannot
+overlap, and both report through the one `firmware-progress` event. The file picker
+is main's, keyed by purpose; the branch's `canary-build` purpose is `firmware` now.
+The branch's plan-source enum became `EspSource`, because the PLAY half already has
+a `Source` trait. In the tab, the shared progress line stays quiet when an ESP32
+write fails, because that failure has its own recovery message.
+
+**Git's own merge left a trap.** Both sides had added the same settings test in
+different places, and git kept both without a conflict. It surfaced as E0428 at
+compile time. Main's `settings.rs` stands.
+
+Checked: ci.yml's steps run locally (workspace tests, clippy with `-D warnings`, the
+npm build, and `cargo check` and `cargo test` in src-tauri with the helper staged).
+In the mock, both flows work end to end: an ESP32 write and a failed one, loose files
+and a zip of one's own, then a PLAY package built, saved, and used by an erase and
+write, partitions written, and maskrom. The real-artefact tests split. Both ESP32
+ones pass against the flasher's bundle at `abf066d` and a fresh export of it. The
+PLAY kit one fails against the published kit v0.3.0, because that kit predates the
+three options the test asks for. The test and `kit.rs` are main's unchanged, so it
+fails the same way there, and it waits for a newer kit. Nothing was written to or
+read from a device.

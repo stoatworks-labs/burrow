@@ -5,40 +5,57 @@ import {
   FW_PHASE_LABEL,
   hex,
   type BuiltInfo,
-  type CanaryRelease,
   type Description,
+  type DeviceDef,
+  type EspRelease,
   type FlashOutcome,
   type FwProgress,
   type ImageSummary,
   type KitOffers,
+  type Link,
+  type OpenedFiles,
+  type Package,
+  type PlanView,
   type PlayUnit,
   type PortInfo,
+  type Release,
+  type Source,
+  type Variant,
 } from '../api/firmware'
 
 /**
- * Device firmware: a CANary over its own USB port, a BirdDog PLAY over
+ * Device firmware: any ESP32 board over its serial port, a BirdDog PLAY over
  * Rockchip USB, and the PLAY's update packages.
+ *
+ * An ESP32 board takes three steps, Firmware, Board and Write: the catalogue's
+ * firmware for the fleet's hardware (CANary, nanODE, Cuckoo …), or a file of
+ * your own — a release zip, a whole-flash image, or the parts of an ESP-IDF
+ * build. The same packages and the same gate as the Stoatworks Flasher in a
+ * browser: burrow-device is a port of the page's checks, message for message.
+ * The PLAY has a section of its own below them: building an update package
+ * from the patcher kit, and restoring a unit from a factory image.
  *
  * ## Nothing happens until it is asked for
  *
- * Opening this tab fetches nothing and touches no device. Looking at a CANary
- * reboots it (opening its USB port resets the S3), and probing a PLAY claims it,
- * so each is a button, never a side effect of looking at the tab. Firmware and
- * the patcher kit are downloaded when a step needs them.
+ * Opening this tab fetches nothing and touches no device. Reading a board
+ * restarts it (opening an ESP32's port resets it), and probing a PLAY claims
+ * it, so each is a button, never a side effect of looking at the tab. A
+ * release is downloaded when it is chosen, once: the cached copy is used while
+ * its SHA-256 still matches. The patcher kit is downloaded when a package is
+ * set up.
  *
  * ## A write says what it will do, then cannot be stopped
  *
  * Every write goes through a confirmation listing what lands where, and Rust
  * re-reads the unit and runs the same gate again immediately before the first
  * byte. Once it starts there is no Cancel: stopping half way through a
- * partition is worse than finishing it, and both devices recover from a failed
- * write the same way they recover from a good one — by being written again.
+ * partition is worse than finishing it, and both kinds of device recover from
+ * a failed write the same way they take a good one — by being written again,
+ * an ESP32 from download mode, a PLAY from recovery mode.
  */
 export function Firmware({ plugins, onOpen }: { plugins: PluginView[]; onOpen: (url: string) => void }) {
-  const entries = plugins.filter(p => p.tab === 'firmware' || p.kind === 'firmware')
-  const canary = entries.find(e => e.device === 'canary') ?? null
+  const entries = plugins.filter(p => p.kind === 'firmware' && p.device)
   const kit = entries.find(e => e.device === 'birddog-play') ?? null
-  const unknown = entries.filter(e => e.device !== 'canary' && e.device !== 'birddog-play')
 
   const [progress, setProgress] = useState<Record<string, FwProgress>>({})
   const [busy, setBusy] = useState(false)
@@ -50,7 +67,11 @@ export function Firmware({ plugins, onOpen }: { plugins: PluginView[]; onOpen: (
     return () => off?.()
   }, [])
 
-  /** Run one device job; clears its last progress first so a new one starts clean. */
+  /**
+   * Run one device job; clears its last progress first so a new one starts
+   * clean. One flag for both halves, because Rust runs one device job at a
+   * time whichever device it is.
+   */
   async function job<T>(name: string, body: () => Promise<T>): Promise<T> {
     setProgress(prev => {
       const next = { ...prev }
@@ -67,32 +88,9 @@ export function Firmware({ plugins, onOpen }: { plugins: PluginView[]; onOpen: (
 
   return (
     <div className="firmware">
-      <CanarySection entry={canary} progress={progress} busy={busy} job={job} onOpen={onOpen} />
+      <EspBoards entries={entries} progress={progress} busy={busy} job={job} onOpen={onOpen} />
       <PackageSection entry={kit} progress={progress} busy={busy} job={job} built={built} onBuilt={setBuilt} />
       <RecoverySection progress={progress} busy={busy} job={job} built={built} />
-
-      {unknown.length > 0 && (
-        <section>
-          <div className="section-head">
-            <h2>Other devices</h2>
-            <span className="n">{unknown.length}</span>
-          </div>
-          {unknown.map(e => (
-            <div className="row" key={e.slug}>
-              <div className="body">
-                <div className="title">
-                  <h3>{e.name}</h3>
-                  {e.version && <span className="ver">{e.version}</span>}
-                </div>
-                <div className="hook">{e.hook || e.summary}</div>
-                <div className="section-empty">
-                  This Burrow does not know how to write to this device. A newer one will.
-                </div>
-              </div>
-            </div>
-          ))}
-        </section>
-      )}
 
       <p className="fw-small">
         Not affiliated with, endorsed by, or supported by BirdDog. BirdDog is a trademark of its
@@ -106,13 +104,380 @@ export function Firmware({ plugins, onOpen }: { plugins: PluginView[]; onOpen: (
 type Job = <T>(name: string, body: () => Promise<T>) => Promise<T>
 
 // ---------------------------------------------------------------------------
+// ESP32 boards: 1 · Firmware, 2 · Board, 3 · Write
+// ---------------------------------------------------------------------------
+
+function EspBoards({
+  entries,
+  progress,
+  busy,
+  job,
+  onOpen,
+}: {
+  entries: PluginView[]
+  progress: Record<string, FwProgress>
+  busy: boolean
+  job: Job
+  onOpen: (url: string) => void
+}) {
+  const [mode, setMode] = useState<'ours' | 'file'>('ours')
+  const [error, setError] = useState<string | null>(null)
+
+  // Our firmware
+  const [slug, setSlug] = useState<string | null>(null)
+  const [releases, setReleases] = useState<Record<string, EspRelease>>({})
+  const [pick, setPick] = useState<Pick | null>(null)
+
+  // A file of your own
+  const [opened, setOpened] = useState<OpenedFiles | null>(null)
+  const [filePick, setFilePick] = useState<Pick | null>(null)
+  const [typed, setTyped] = useState<string[]>([])
+
+  // The board
+  const [all, setAll] = useState(false)
+  const [ports, setPorts] = useState<PortInfo[] | null>(null)
+  const [unit, setUnit] = useState<Description | null>(null)
+
+  // The write
+  const [plan, setPlan] = useState<PlanView | null>(null)
+  const [replace, setReplace] = useState(false)
+  const [eraseAll, setEraseAll] = useState(false)
+  const [confirm, setConfirm] = useState(false)
+  const [outcome, setOutcome] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const current = slug ? releases[slug] : undefined
+  const pkg: Package | null =
+    mode === 'ours' ? current?.package ?? null : opened?.kind === 'package' ? opened.package : null
+  /** The device whose instructions apply: the chosen one, or the one an opened zip is for. */
+  const help: DeviceDef | null = pkg?.device ?? null
+
+  const source: Source | null = useMemo(() => {
+    if (mode === 'ours') return slug && pick && current ? { kind: 'catalog', slug, ...pick } : null
+    if (opened?.kind === 'package') return filePick ? { kind: 'package', ...filePick } : null
+    if (opened?.kind === 'loose') return { kind: 'files', typed }
+    return null
+  }, [mode, slug, pick, current, opened, filePick, typed])
+
+  const sourceKey = JSON.stringify(source)
+  useEffect(() => {
+    if (!source) {
+      setPlan(null)
+      return
+    }
+    let stale = false
+    api
+      .espPlan(source)
+      .then(p => !stale && setPlan(p))
+      .catch(e => {
+        if (stale) return
+        setPlan(null)
+        setError(said(e))
+      })
+    return () => {
+      stale = true
+    }
+    // The plan depends on the source, compared by value, and on the board last
+    // read, which Rust keeps and plans against.
+  }, [sourceKey, unit])
+
+  // A tick to replace one board's firmware is not a tick for the next board, or
+  // for other firmware: it is cleared whenever what it answers changes.
+  useEffect(() => setReplace(false), [plan?.replace, unit])
+
+  async function chooseEntry(e: PluginView) {
+    setSlug(e.slug)
+    setError(null)
+    setOutcome(null)
+    if (releases[e.slug]) {
+      setPick(defaultPick(releases[e.slug].package))
+      return
+    }
+    setPick(null)
+    try {
+      const r = await job(`release:${e.slug}`, () => api.espRelease(e.slug))
+      setReleases(prev => ({ ...prev, [e.slug]: r }))
+      setPick(defaultPick(r.package))
+    } catch (err) {
+      setError(said(err))
+    }
+  }
+
+  async function openFiles() {
+    setError(null)
+    setOutcome(null)
+    const paths = await api.pickFiles('firmware')
+    if (!paths?.length) return
+    setOpened(null)
+    setFilePick(null)
+    setTyped([])
+    try {
+      const o = await job('open', () => api.espOpenFiles(paths))
+      setOpened(o)
+      if (o.kind === 'package') setFilePick(defaultPick(o.package))
+      else setTyped(o.files.map(() => ''))
+    } catch (err) {
+      setError(said(err))
+    }
+  }
+
+  async function look() {
+    setError(null)
+    try {
+      setPorts(await api.espPorts(all))
+    } catch (e) {
+      setError(said(e))
+    }
+  }
+
+  async function read(port: PortInfo) {
+    setError(null)
+    setOutcome(null)
+    setUnit(null)
+    try {
+      const d = await job('describe', () => api.espDescribe(port.name, help?.baud ?? null, help?.tableOffset ?? null))
+      setUnit(d)
+      // A board already running one of our devices' firmware picks that device.
+      const project = d.running?.app?.project
+      if (mode === 'ours' && project) {
+        const match = Object.values(releases).find(r => r.package.device.projects.includes(project))
+        if (match && match.slug !== slug) {
+          setSlug(match.slug)
+          setPick(defaultPick(match.package))
+        }
+      }
+    } catch (e) {
+      setError(`Could not talk to the board: ${said(e)}. See “No port listed, or it will not connect?” above.`)
+    }
+  }
+
+  async function forget() {
+    await api.espForgetUnit()
+    setUnit(null)
+  }
+
+  async function write() {
+    if (!unit || !source || !plan) return
+    setConfirm(false)
+    setError(null)
+    setOutcome(null)
+    const after = plan.want.after
+    const t0 = performance.now()
+    try {
+      await job('esp-write', () => api.espWrite({ port: unit.port, source, eraseAll, confirmReplace: replace }))
+      const secs = ((performance.now() - t0) / 1000).toFixed(1)
+      setOutcome({ ok: true, text: `Done in ${secs} s. The board has restarted into the new firmware.${after ? ' ' + after : ''}` })
+    } catch (e) {
+      const steps = (help?.bootMode ?? DEFAULT_BOOT).join(' ').replace(/\.?\s*$/, '')
+      setOutcome({
+        ok: false,
+        text: `Writing stopped: ${said(e)}. The board is recoverable: ${steps}, then read it and write it again.`,
+      })
+    }
+    // Rust forgets the board after a write, whatever happened: what was read
+    // before is not what is on it now.
+    setUnit(null)
+  }
+
+  // Rust runs the same gate again before the first byte; this only decides
+  // whether the button is offered. A plan with problems has said why in red
+  // above the button, so the hint beside it stays quiet rather than repeat it.
+  const refused = !plan || Boolean(plan.error) || plan.problems.length > 0
+  const why = !unit
+    ? 'Read a board first.'
+    : !plan
+      ? 'Choose firmware.'
+      : !refused && plan.replace && !replace
+        ? 'Tick the box to replace the firmware it runs.'
+        : ''
+  const offered = Boolean(unit) && !refused && (!plan?.replace || replace)
+
+  return (
+    <>
+      <section>
+        <div className="section-head">
+          <h2>1 · Firmware</h2>
+        </div>
+        <div className="row">
+          <div className="body">
+            <div className="fw-seg" role="tablist">
+              <button role="tab" aria-selected={mode === 'ours'} onClick={() => setMode('ours')}>
+                Our firmware
+              </button>
+              <button role="tab" aria-selected={mode === 'file'} onClick={() => setMode('file')}>
+                A file of your own
+              </button>
+            </div>
+            {mode === 'ours' ? (
+              <Ours
+                entries={entries}
+                slug={slug}
+                current={current}
+                pick={pick}
+                busy={busy}
+                progress={progress}
+                onChoose={chooseEntry}
+                onPick={setPick}
+                onOpen={onOpen}
+              />
+            ) : (
+              <OwnFile
+                opened={opened}
+                pick={filePick}
+                typed={typed}
+                places={plan?.places ?? []}
+                busy={busy}
+                onOpenFiles={openFiles}
+                onPick={setFilePick}
+                onType={setTyped}
+                onOpen={onOpen}
+              />
+            )}
+            <Err text={error} />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div className="section-head">
+          <h2>2 · Board</h2>
+          {ports && <span className="n">{ports.length}</span>}
+        </div>
+        <div className="row">
+          <div className="body">
+            <BoardHelp d={help} />
+            <div className="actions">
+              <button className="btn primary" disabled={busy} onClick={look}>
+                Look for boards
+              </button>
+              <Tick checked={all} onChange={setAll}>
+                show every serial port
+              </Tick>
+            </div>
+            {ports && ports.length === 0 && (
+              <div className="section-empty">
+                No board on a serial port Burrow lists. Tick “show every serial port”, or put it in
+                download mode and look again.
+              </div>
+            )}
+            {ports?.map(p => (
+              <div className="fw-unit" key={p.name}>
+                <div className="fw-unit-head">
+                  <code>{p.name}</code>
+                  <span className="d">{portLabel(p)}</span>
+                  <span className="spacer" />
+                  {unit?.port === p.name && (
+                    <button className="btn quiet" disabled={busy} onClick={forget}>
+                      Forget it
+                    </button>
+                  )}
+                  <button className="btn" disabled={busy} onClick={() => read(p)}>
+                    {unit?.port === p.name ? 'Read it again' : 'Read it'}
+                  </button>
+                </div>
+                {unit?.port === p.name && <Facts d={unit} plan={plan} />}
+              </div>
+            ))}
+            <JobLine p={progress['describe']} quietWhenFailed />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div className="section-head">
+          <h2>3 · Write</h2>
+        </div>
+        <div className="row">
+          <div className="body">
+            <PlanTable plan={plan} />
+            {plan?.error && <Err text={plan.error} />}
+            {plan && !plan.error && plan.problems.length > 0 && (
+              <Err text={`Will not write this: ${plan.problems.join('; ')}.`} />
+            )}
+            {plan && !plan.error && plan.problems.length === 0 && plan.notes.length > 0 && (
+              <div className="fw-help">{plan.notes.join(' ')}</div>
+            )}
+            {plan?.replace && (
+              <Tick checked={replace} onChange={setReplace}>
+                {plan.replace}
+              </Tick>
+            )}
+            <Tick checked={eraseAll} onChange={setEraseAll}>
+              Erase the whole flash first <span className="d">— {eraseHint(help)}</span>
+            </Tick>
+            <div className="actions">
+              <button className="btn primary" disabled={busy || !offered} onClick={() => setConfirm(true)}>
+                Write it&hellip;
+              </button>
+              {!busy && why && <span className="fw-why">{why}</span>}
+            </div>
+            <JobLine p={progress['esp-write']} quietWhenFailed />
+            {outcome && (outcome.ok ? <div className="fw-done">{outcome.text}</div> : <Err text={outcome.text} />)}
+          </div>
+        </div>
+      </section>
+
+      {confirm && unit && plan && (
+        <WriteConfirm
+          unit={unit}
+          plan={plan}
+          eraseAll={eraseAll}
+          help={help}
+          onCancel={() => setConfirm(false)}
+          onConfirm={write}
+        />
+      )}
+    </>
+  )
+}
+
+type Pick = { release: string; variant: string }
+
+/**
+ * Catalogue devices that are not ESP32 boards: listed among the ESP32
+ * firmware, never offered there, and pointed at their own section. The live
+ * catalogue carries the BirdDog PLAY's patcher kit as firmware; the PLAY's
+ * steps below read it. firmware.rs refuses the same ids on the ESP32 path.
+ */
+const NOT_ESP32 = ['birddog-play']
+
+/** A command's refusal. Tauri rejects with the Rust error's text; anything else is an Error. */
+function said(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
+function defaultPick(p: Package): Pick | null {
+  const r = p.releases[0]
+  if (!r) return null
+  const v = r.variants.find(x => x.recommended) ?? r.variants[0]
+  return v ? { release: r.id, variant: v.id } : null
+}
+
+const DEFAULT_CONNECT = [
+  'Plug the board’s USB port into this computer.',
+  'Press Look for boards, then Read it beside its port.',
+]
+const DEFAULT_BOOT = ['Hold BOOT (sometimes IO0).', 'Tap EN or RESET.', 'Release BOOT and read it again.']
+
+function eraseHint(d: DeviceDef | null): string {
+  return d?.keeps
+    ? `off, it keeps ${d.keeps}. On, it comes back on factory defaults: for a board whose settings or update state you do not trust.`
+    : 'off, only the parts being written are erased, so settings stored on the board survive. On, the whole flash is erased first, as from the factory.'
+}
+
+function portLabel(p: PortInfo): string {
+  const id = p.vid !== null ? ` (${p.vid.toString(16).padStart(4, '0')}:${(p.pid ?? 0).toString(16).padStart(4, '0')})` : ''
+  return `${p.usbSerialJtag ? 'Espressif USB' : p.product ?? 'serial port'}${id}`
+}
+
+// ---------------------------------------------------------------------------
 // shared pieces
 // ---------------------------------------------------------------------------
 
-function JobLine({ p }: { p: FwProgress | undefined }) {
+function JobLine({ p, quietWhenFailed = false }: { p: FwProgress | undefined; quietWhenFailed?: boolean }) {
   // A finished job says so in its own words beside it; a bare "Done" under that
-  // would only repeat it.
-  if (!p || p.phase === 'done') return null
+  // would only repeat it. The ESP32 steps say why a job stopped in their own
+  // words too, so they pass quietWhenFailed; the PLAY's sections show it here.
+  if (!p || p.phase === 'done' || (quietWhenFailed && p.phase === 'failed')) return null
   const frac = p.total ? Math.min(1, p.done / p.total) : null
   const counting = p.phase !== 'failed'
   const label =
@@ -193,354 +558,422 @@ function Err({ text }: { text: string | null }) {
 
 const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p
 
-// ---------------------------------------------------------------------------
-// CANary
-// ---------------------------------------------------------------------------
-
-function CanarySection({
-  entry,
-  progress,
-  busy,
-  job,
-  onOpen,
-}: {
-  entry: PluginView | null
-  progress: Record<string, FwProgress>
-  busy: boolean
-  job: Job
-  onOpen: (url: string) => void
-}) {
-  const [all, setAll] = useState(false)
-  const [ports, setPorts] = useState<PortInfo[] | null>(null)
-  const [release, setRelease] = useState<CanaryRelease | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function look() {
-    setError(null)
-    try {
-      setPorts(await api.canaryPorts(all))
-    } catch (e) {
-      setError(String(e))
-    }
-  }
-
-  async function loadRelease(): Promise<CanaryRelease | null> {
-    if (release) return release
-    try {
-      const r = await job('canary-release', () => api.canaryRelease())
-      setRelease(r)
-      return r
-    } catch (e) {
-      setError(String(e))
-      return null
-    }
-  }
-
+function Links({ links, onOpen }: { links: Link[]; onOpen: (url: string) => void }) {
+  if (!links.length) return null
   return (
-    <section>
-      <div className="section-head">
-        <h2>CANary</h2>
-        {ports && <span className="n">{ports.length}</span>}
-      </div>
-      <div className="row">
-        <div className="body">
-          <div className="title">
-            <h3>CANary firmware</h3>
-            {entry?.version && <span className="ver">{entry.version}</span>}
-            {release && <span className="chip">{release.id}</span>}
-          </div>
-          <div className="hook">
-            {entry?.hook ||
-              'The open IP-to-CAN converter for the d&b amplifier ecosystem, written over its own USB-C port.'}
-          </div>
-          {!entry && (
-            <div className="section-empty">
-              The catalogue carries no CANary firmware yet, so only your own build can be written.
-            </div>
-          )}
-          <div className="fw-help">
-            Plug the unit in by its USB-C port. Looking at it restarts it: opening that port resets
-            the ESP32-S3, so do this when it is not on a show.
-          </div>
-          <div className="actions">
-            <button className="btn primary" disabled={busy} onClick={look}>
-              Look for a unit
-            </button>
-            <Tick checked={all} onChange={setAll}>
-              show every serial port
-            </Tick>
-            {entry?.releaseUrl && (
-              <button className="btn quiet" onClick={() => onOpen(entry.releaseUrl!)}>
-                Release notes
-              </button>
-            )}
-          </div>
-          <Err text={error} />
-          {ports && ports.length === 0 && (
-            <div className="section-empty">
-              No CANary on USB. A unit running the USB network firmware stops being a serial port 8
-              seconds after it starts: plug it in and look within those 8 seconds, or hold BOOT, tap
-              EN, release BOOT, and look again.
-            </div>
-          )}
-          {ports?.map(p => (
-            <CanaryUnit
-              key={p.name}
-              port={p}
-              entry={entry}
-              release={release}
-              loadRelease={loadRelease}
-              busy={busy}
-              job={job}
-            />
-          ))}
-          <JobLine p={progress['canary-release']} />
-          <JobLine p={progress['canary-write']} />
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function CanaryUnit({
-  port,
-  entry,
-  release,
-  loadRelease,
-  busy,
-  job,
-}: {
-  port: PortInfo
-  entry: PluginView | null
-  release: CanaryRelease | null
-  loadRelease: () => Promise<CanaryRelease | null>
-  busy: boolean
-  job: Job
-}) {
-  const [d, setD] = useState<Description | null>(null)
-  const [variant, setVariant] = useState<string | null>(null)
-  const [keep, setKeep] = useState(true)
-  const [confirm, setConfirm] = useState<'release' | 'own' | null>(null)
-  const [own, setOwn] = useState<string[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<string | null>(null)
-
-  async function read() {
-    setError(null)
-    setDone(null)
-    try {
-      setD(await job('canary-describe', () => api.canaryDescribe(port.name)))
-      if (entry) {
-        const r = await loadRelease()
-        if (r && !variant) setVariant((r.variants.find(v => v.recommended) ?? r.variants[0])?.id ?? null)
-      }
-    } catch (e) {
-      setError(String(e))
-    }
-  }
-
-  async function chooseOwn() {
-    const files = await api.pickFiles('canary-build')
-    if (files?.length) {
-      setOwn(files)
-      setConfirm('own')
-    }
-  }
-
-  async function write(req: { variant: string | null; ownFiles: string[]; allowForeign: boolean }) {
-    setConfirm(null)
-    setError(null)
-    setDone(null)
-    try {
-      await job('canary-write', () => api.canaryWrite({ port: port.name, eraseAll: !keep, ...req }))
-      const v = release?.variants.find(x => x.id === req.variant)
-      setDone(
-        v?.id === 'usb-network'
-          ? 'Written and restarted. In 8 seconds its USB-C port becomes a network adapter; the settings page is at http://192.168.7.1/.'
-          : 'Written and restarted into the new firmware.',
-      )
-      setD(null)
-    } catch (e) {
-      setError(`${e}. The unit is recoverable: hold BOOT, tap EN, look again and write it again.`)
-    }
-  }
-
-  const running = d?.running?.app
-  const ours = running && ['canary', 'dbcanary'].includes(running.project)
-  const chosen = release?.variants.find(v => v.id === variant) ?? null
-  const current = chosen && running && running.version === chosen.app.version
-
-  return (
-    <div className="fw-unit">
-      <div className="fw-unit-head">
-        <code>{port.name}</code>
-        <span className="d">{port.usbSerialJtag ? 'ESP32-S3 USB' : port.product ?? 'serial port'}</span>
-        <span className="spacer" />
-        <button className="btn" disabled={busy} onClick={read}>
-          {d ? 'Read it again' : 'Read it'}
-        </button>
-      </div>
-
-      {d && (
-        <dl className="fw-facts">
-          <dt>Chip</dt>
-          <dd className={d.facts.chip === 'ESP32-S3' ? '' : 'bad'}>{d.facts.chip}</dd>
-          <dt>MAC</dt>
-          <dd>{d.mac ?? 'unknown'}</dd>
-          <dt>Flash</dt>
-          <dd>{d.flashLabel}</dd>
-          <dt>Boots</dt>
-          <dd>
-            {running
-              ? `${running.project} ${running.version}, built ${running.date}, from ota_${d.running!.slot}`
-              : d.running
-                ? `ota_${d.running.slot}, which holds no app image`
-                : 'nothing Burrow can read — a blank board looks like this'}
-            {current && <span className="chip ok">current</span>}
-          </dd>
-        </dl>
-      )}
-      {d?.problems.map(p => <Err key={p} text={`Will not write to this unit: ${p}.`} />)}
-
-      {d && d.problems.length === 0 && (
-        <div className="fw-choose">
-          {release ? (
-            release.variants.map(v => (
-              <label className="opt" key={v.id}>
-                <input type="radio" name={`variant-${port.name}`} checked={variant === v.id} onChange={() => setVariant(v.id)} />
-                <span>
-                  <span className="t">
-                    {v.name} {v.recommended && <span className="chip">recommended</span>}
-                  </span>
-                  <span className="d"> — {v.summary}</span>
-                </span>
-              </label>
-            ))
-          ) : (
-            entry && <div className="section-empty">Fetching the release&hellip;</div>
-          )}
-          <Tick checked={keep} onChange={setKeep}>
-            Keep this unit&rsquo;s settings{' '}
-            <span className="d">— its name, port and LAN address. Off erases the whole flash and it comes back on factory settings.</span>
-          </Tick>
-          <div className="actions">
-            {release && (
-              <button className="btn primary" disabled={busy || !chosen} onClick={() => setConfirm('release')}>
-                Write {release.id}&hellip;
-              </button>
-            )}
-            <button className="btn quiet" disabled={busy} onClick={chooseOwn}>
-              Write your own build&hellip;
-            </button>
-          </div>
-        </div>
-      )}
-      <Err text={error} />
-      {done && <div className="fw-done">{done}</div>}
-
-      {confirm === 'release' && chosen && release && (
-        <WriteConfirm
-          title={`Write ${release.id} (${chosen.name}) to ${port.name}`}
-          rows={chosen.parts.map(p => [p.name, hex(p.offset), humanSize(p.size)])}
-          d={d!}
-          ours={Boolean(ours)}
-          keep={keep}
-          usbNetwork={chosen.id === 'usb-network'}
-          foreignTick={false}
-          onCancel={() => setConfirm(null)}
-          onConfirm={allowForeign => write({ variant: chosen.id, ownFiles: [], allowForeign })}
-        />
-      )}
-      {confirm === 'own' && (
-        <WriteConfirm
-          title={`Write your own build to ${port.name}`}
-          rows={own.map(f => [fileName(f), 'by its contents', ''])}
-          d={d!}
-          ours={Boolean(ours)}
-          keep={keep}
-          usbNetwork={false}
-          foreignTick
-          onCancel={() => setConfirm(null)}
-          onConfirm={allowForeign => write({ variant: null, ownFiles: own, allowForeign })}
-        />
-      )}
+    <div className="fw-links">
+      Download:{' '}
+      {links.map((l, i) => (
+        <span key={l.url}>
+          {i > 0 && ' · '}
+          <a
+            href={l.url}
+            title={l.name}
+            onClick={e => {
+              e.preventDefault()
+              onOpen(l.url)
+            }}
+          >
+            {l.label}
+          </a>
+        </span>
+      ))}
     </div>
   )
 }
 
+/** Release select (when there is more than one) and the variant cards. */
+function ReleasePick({
+  pkg,
+  pick,
+  name,
+  onPick,
+}: {
+  pkg: Package
+  pick: Pick | null
+  name: string
+  onPick: (p: Pick) => void
+}) {
+  const r: Release = pkg.releases.find(x => x.id === pick?.release) ?? pkg.releases[0]
+  return (
+    <div className="fw-choose">
+      {pkg.releases.length > 1 && (
+        <select
+          className="fw-select"
+          value={r.id}
+          onChange={e => {
+            const nr = pkg.releases.find(x => x.id === e.target.value)!
+            const v = nr.variants.find(x => x.recommended) ?? nr.variants[0]
+            onPick({ release: nr.id, variant: v.id })
+          }}
+        >
+          {pkg.releases.map((x, i) => (
+            <option key={x.id} value={x.id}>
+              {x.id} · {x.date}
+              {x.tag ? ` · ${x.tag}` : ''}
+              {i === 0 ? ' (latest)' : ''}
+            </option>
+          ))}
+        </select>
+      )}
+      <div className="fw-help">
+        {r.id}
+        {r.tag ? ` (${r.tag})` : ''}, built {r.date} from {pkg.device.name} {r.commit.slice(0, 7)} with ESP-IDF{' '}
+        {r.variants[0]?.app.idfVersion}.{r.notes ? ` ${r.notes}` : ''}
+      </div>
+      {r.variants.map((v: Variant) => (
+        <label className="opt" key={v.id}>
+          <input
+            type="radio"
+            name={name}
+            checked={pick?.release === r.id && pick?.variant === v.id}
+            onChange={() => onPick({ release: r.id, variant: v.id })}
+          />
+          <span>
+            <span className="t">
+              {v.name} {v.recommended && <span className="chip">recommended</span>}
+            </span>
+            <span className="d"> — {v.summary}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 1 · firmware
+// ---------------------------------------------------------------------------
+
+function Ours({
+  entries,
+  slug,
+  current,
+  pick,
+  busy,
+  progress,
+  onChoose,
+  onPick,
+  onOpen,
+}: {
+  entries: PluginView[]
+  slug: string | null
+  current: EspRelease | undefined
+  pick: Pick | null
+  busy: boolean
+  progress: Record<string, FwProgress>
+  onChoose: (e: PluginView) => void
+  onPick: (p: Pick) => void
+  onOpen: (url: string) => void
+}) {
+  if (entries.length === 0) {
+    return (
+      <div className="section-empty">
+        The catalogue carries no firmware yet. A file of your own still works.
+      </div>
+    )
+  }
+  const d = current?.package.device
+  return (
+    <>
+      <div className="fw-cards">
+        {entries.map(e => {
+          const other = NOT_ESP32.includes(e.device!)
+          return (
+            <label className={`fw-card${e.slug === slug ? ' on' : ''}${other ? ' off' : ''}`} key={e.slug}>
+              <input
+                type="radio"
+                name="fw-device"
+                checked={e.slug === slug}
+                disabled={busy || other}
+                onChange={() => onChoose(e)}
+              />
+              <span>
+                <span className="t">
+                  {e.name}
+                  {e.version && <span className="ver">{e.version}</span>}
+                </span>
+                <span className="d">
+                  {other ? (
+                    <>
+                      Not an ESP32 board: its update package and recovery flash are under{' '}
+                      <a
+                        href="#fw-play"
+                        onClick={ev => {
+                          ev.preventDefault()
+                          document.getElementById('fw-play')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                        }}
+                      >
+                        BirdDog PLAY
+                      </a>{' '}
+                      below.
+                    </>
+                  ) : (
+                    e.hook || e.summary
+                  )}
+                </span>
+              </span>
+            </label>
+          )
+        })}
+      </div>
+      {slug && <JobLine p={progress[`release:${slug}`]} />}
+      {d && current && (
+        <>
+          <div className="fw-help">
+            {d.chip}, {d.flashSize / 1048576} MB flash.{' '}
+            {d.page && (
+              <a
+                href={d.page}
+                onClick={e => {
+                  e.preventDefault()
+                  onOpen(d.page!)
+                }}
+              >
+                About the {d.name}
+              </a>
+            )}
+          </div>
+          {d.status && <div className="fw-status">{d.status}</div>}
+          <ReleasePick pkg={current.package} pick={pick} name="fw-variant" onPick={onPick} />
+          <Links links={current.links} onOpen={onOpen} />
+        </>
+      )}
+    </>
+  )
+}
+
+function OwnFile({
+  opened,
+  pick,
+  typed,
+  places,
+  busy,
+  onOpenFiles,
+  onPick,
+  onType,
+  onOpen,
+}: {
+  opened: OpenedFiles | null
+  pick: Pick | null
+  typed: string[]
+  places: { name: string; placed: string | null }[]
+  busy: boolean
+  onOpenFiles: () => void
+  onPick: (p: Pick) => void
+  onType: (t: string[]) => void
+  onOpen: (url: string) => void
+}) {
+  return (
+    <>
+      <div className="actions">
+        <button className="btn primary" disabled={busy} onClick={onOpenFiles}>
+          Open a file&hellip;
+        </button>
+      </div>
+      <div className="fw-help">
+        Any of these: a <b>release zip</b> from the Stoatworks Flasher or GitHub; a <b>whole-flash
+        image</b> (esptool <code>merge-bin</code>, or one of the <code>.bin</code> downloads), which goes
+        at 0x0; or the <b>parts of an ESP-IDF build</b> — <code>bootloader.bin</code>,{' '}
+        <code>partition-table.bin</code>, <code>ota_data_initial.bin</code> and the app, or just the app.
+        Each file is identified by its contents, not its name, and put where its kind belongs.
+        Anything else, a filesystem image say, waits for an offset you type: <code>0x3E0000</code>,{' '}
+        <code>1M</code>, or a partition&rsquo;s name.
+      </div>
+      {opened?.kind === 'package' && (
+        <>
+          <div className="fw-help">
+            A {opened.package.device.name} firmware package ({opened.package.device.chip}). Every part
+            matched its checksum.
+          </div>
+          <ReleasePick pkg={opened.package} pick={pick} name="fw-file-variant" onPick={onPick} />
+          <Links links={opened.links} onOpen={onOpen} />
+        </>
+      )}
+      {opened?.kind === 'loose' && (
+        <table className="fw-parts fw-loose">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>What it is</th>
+              <th>Offset</th>
+            </tr>
+          </thead>
+          <tbody>
+            {opened.files.map((f, i) => (
+              <tr key={f.name + i}>
+                <td>{f.name}</td>
+                <td>{f.what}</td>
+                <td>
+                  <input
+                    className="fw-offset"
+                    type="text"
+                    spellCheck={false}
+                    value={typed[i] ?? ''}
+                    placeholder={places[i]?.placed ?? 'offset?'}
+                    onChange={e => {
+                      const next = [...typed]
+                      next[i] = e.target.value
+                      onType(next)
+                    }}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 2 · board
+// ---------------------------------------------------------------------------
+
+function BoardHelp({ d }: { d: DeviceDef | null }) {
+  const connect = d?.connect?.length ? d.connect : DEFAULT_CONNECT
+  const boot = d?.bootMode?.length ? d.bootMode : DEFAULT_BOOT
+  return (
+    <>
+      <ol className="fw-steps">
+        {connect.map(s => (
+          <li key={s}>{s}</li>
+        ))}
+      </ol>
+      <div className="fw-help">
+        Reading a board restarts it: opening an ESP32&rsquo;s serial port resets it. Do it when it is
+        not on a show.
+      </div>
+      <details className="fw-details">
+        <summary>No port listed, or it will not connect?</summary>
+        {d?.notes?.map(n => (
+          <p key={n}>{n}</p>
+        ))}
+        <p>Put it in download mode, where the board waits until it is written or reset:</p>
+        <ol className="fw-steps">
+          {boot.map(s => (
+            <li key={s}>{s}</li>
+          ))}
+        </ol>
+        <p>
+          A board with a USB-to-serial chip (CP2102, CH340) may need that chip&rsquo;s driver on older
+          systems. Tick “show every serial port” if it is on a chip Burrow does not list by default.
+        </p>
+      </details>
+    </>
+  )
+}
+
+function Facts({ d, plan }: { d: Description; plan: PlanView | null }) {
+  const want = plan && !plan.error ? plan.want : null
+  const chipOk = !want?.chip || want.chip === d.facts.chipName
+  const flashOk = !want?.minFlash || (d.facts.flashBytes ?? 0) >= want.minFlash
+  const r = d.running
+  return (
+    <>
+      <dl className="fw-facts">
+        <dt>Chip</dt>
+        <dd className={chipOk ? '' : 'bad'}>{d.facts.chipName}</dd>
+        <dt>MAC</dt>
+        <dd>{d.mac ?? 'unknown'}</dd>
+        <dt>Flash</dt>
+        <dd className={flashOk ? '' : 'bad'}>
+          {d.facts.flashLabel}
+          {!flashOk && want && ` (${want.device ?? 'this firmware'} needs ${want.minFlash! / 1048576}MB)`}
+        </dd>
+        <dt>Partitions</dt>
+        <dd>{d.table ? d.table.map(p => p.label).join(', ') : 'none (blank, or a layout Burrow cannot read)'}</dd>
+        <dt>Boots</dt>
+        <dd>
+          {!r
+            ? 'unknown'
+            : r.app
+              ? `${r.app.project} ${r.app.version} from ${r.partition}, built ${r.app.date}`
+              : `${r.partition}, which holds no app image`}
+        </dd>
+      </dl>
+      {d.problems.map(p => (
+        <Err key={p} text={`Will not write to this board: ${p}.`} />
+      ))}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 3 · write
+// ---------------------------------------------------------------------------
+
+function PlanTable({ plan }: { plan: PlanView | null }) {
+  if (!plan || plan.error || plan.rows.length === 0) {
+    return plan ? null : <div className="section-empty">Choose firmware, and what would be written shows here.</div>
+  }
+  return (
+    <table className="fw-parts">
+      <thead>
+        <tr>
+          <th>Part</th>
+          <th>Offset</th>
+          <th>Size</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {plan.rows.map(r => (
+          <tr key={r.name + r.offset}>
+            <td>{r.name}</td>
+            <td className="mono">{r.hex}</td>
+            <td className="mono">{humanSize(r.size)}</td>
+            <td>{r.what}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 function WriteConfirm({
-  title,
-  rows,
-  d,
-  ours,
-  keep,
-  usbNetwork,
-  foreignTick,
+  unit,
+  plan,
+  eraseAll,
+  help,
   onConfirm,
   onCancel,
 }: {
-  title: string
-  rows: string[][]
-  d: Description
-  ours: boolean
-  keep: boolean
-  usbNetwork: boolean
-  /** Own builds only: let an app that is not a CANary build through. */
-  foreignTick: boolean
-  onConfirm: (allowForeign: boolean) => void
+  unit: Description
+  plan: PlanView
+  eraseAll: boolean
+  help: DeviceDef | null
+  onConfirm: () => void
   onCancel: () => void
 }) {
-  const [replace, setReplace] = useState(false)
-  const [foreign, setForeign] = useState(false)
-  const app = d.running?.app
+  const what = plan.want.device ?? 'your own build'
+  const boot = (help?.bootMode ?? DEFAULT_BOOT).join(' ')
   return (
-    <Confirm title={title} action="Write it" ready={ours || replace} onConfirm={() => onConfirm(foreign)} onCancel={onCancel}>
+    <Confirm title={`Write ${what} to ${unit.port}`} action="Write it" ready onConfirm={onConfirm} onCancel={onCancel}>
       <table className="fw-parts">
         <tbody>
-          {rows.map(r => (
-            <tr key={r[0]}>
-              {r.map((c, i) => (
-                <td key={i}>{c}</td>
-              ))}
+          {plan.rows.map(r => (
+            <tr key={r.name + r.offset}>
+              <td>{r.name}</td>
+              <td>{r.hex}</td>
+              <td>{humanSize(r.size)}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <p>
-        {!keep
-          ? 'The whole flash is erased first. It comes back on factory settings.'
-          : ours
-            ? 'Only those regions are written. Its settings — name, port, LAN address — and its stored crash log stay.'
-            : 'Only those regions are written, and whatever else is on its flash stays. For a board that was not a CANary, turning off “Keep this unit’s settings” to erase it first is usually the better idea.'}
+        {eraseAll
+          ? 'The whole flash is erased first. It comes back on factory defaults.'
+          : help?.keeps
+            ? `Only those regions are written. It keeps ${help.keeps}.`
+            : 'Only those regions are written, and whatever else is on its flash stays.'}
       </p>
-      {usbNetwork && (
-        <p>
-          After 8 seconds its USB-C port becomes a network adapter and stops being a serial port.
-          To write it again later, hold BOOT and tap EN first.
-        </p>
-      )}
-      {!ours && (
-        <>
-          <Err
-            text={
-              app
-                ? `This unit boots ${app.project} ${app.version}, which is not CANary firmware.`
-                : 'This unit boots nothing Burrow can read. A blank board looks like this; so does one that is not a CANary.'
-            }
-          />
-          <Tick checked={replace} onChange={setReplace}>
-            Replace what is on it
-          </Tick>
-        </>
-      )}
-      {foreignTick && (
-        <Tick checked={foreign} onChange={setForeign}>
-          Allow an app that is not a CANary build <span className="d">— for your own experiments, never a default</span>
-        </Tick>
-      )}
+      {plan.replace && <p>{plan.replace}</p>}
+      {plan.want.after && <p>Afterwards: {plan.want.after}</p>}
       <p className="fw-help">
-        Once it starts the write cannot be stopped. If it fails part way the unit is not bricked: the
-        ESP32-S3&rsquo;s boot ROM cannot be overwritten, so hold BOOT, tap EN and write it again.
+        Once it starts the write cannot be stopped. If it fails part way the board is not bricked:
+        an ESP32&rsquo;s boot ROM cannot be overwritten. {boot} Then read it and write it again.
       </p>
     </Confirm>
   )
@@ -671,7 +1104,7 @@ function PackageSection({
   const live = progress['play-build'] ?? progress['play-kit']
 
   return (
-    <section>
+    <section id="fw-play">
       <div className="section-head">
         <h2>BirdDog PLAY</h2>
       </div>

@@ -311,8 +311,10 @@ export function SettingsTab({
             it against the SHA-256 they publish. Sending a package to a PLAY talks to that
             PLAY, at the address you typed, with the BirdUI password you typed &mdash; plain
             HTTP, because that is all BirdUI speaks &mdash; and the password is kept nowhere.
-            Firmware itself comes from GitHub, and is written only if its bytes match the
-            SHA-256 the list gives for it.
+            Firmware itself comes from GitHub like everything else, when you choose it, and
+            is written only if its bytes match the SHA-256 the list gives for it. The tab
+            talks to an ESP32 board over its serial port only when you press <em>Read it</em>{' '}
+            or <em>Write it</em>, and to a PLAY over USB only when you look for one or write it.
           </p>
           <p>
             The <em>Send feedback</em> button at the bottom of this window is the one

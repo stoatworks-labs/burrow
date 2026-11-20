@@ -29,14 +29,17 @@ import type {
 import type {
   BuildRequest,
   BuiltInfo,
-  CanaryRelease,
   Description,
+  EspRelease,
   FlashOutcome,
   FwProgress,
   ImageSummary,
   KitOffers,
+  OpenedFiles,
+  PlanView,
   PlayUnit,
   PortInfo,
+  Source,
 } from './firmware'
 import { mockInvoke, mockListen } from './mock'
 
@@ -98,16 +101,17 @@ export const api = {
 
   // Device firmware. Every one of these acts only when asked: nothing scans
   // for devices or fetches firmware because the tab was opened.
-  canaryRelease: () => invoke<CanaryRelease>('canary_release'),
-  canaryPorts: (all: boolean) => invoke<PortInfo[]>('canary_ports', { all }),
-  canaryDescribe: (port: string) => invoke<Description>('canary_describe', { port }),
-  canaryWrite: (req: {
-    port: string
-    variant: string | null
-    ownFiles: string[]
-    eraseAll: boolean
-    allowForeign: boolean
-  }) => invoke<void>('canary_write', { req }),
+  espRelease: (slug: string) => invoke<EspRelease>('esp_release', { slug }),
+  espPorts: (all: boolean) => invoke<PortInfo[]>('esp_ports', { all }),
+  /** Opens the port, which restarts the board. */
+  espDescribe: (port: string, baud: number | null, tableOffset: number | null) =>
+    invoke<Description>('esp_describe', { port, baud, tableOffset }),
+  espForgetUnit: () => invoke<void>('esp_forget_unit'),
+  espOpenFiles: (paths: string[]) => invoke<OpenedFiles>('esp_open_files', { paths }),
+  /** Opens nothing: the plan against the board last read. */
+  espPlan: (source: Source) => invoke<PlanView>('esp_plan', { source }),
+  espWrite: (req: { port: string; source: Source; eraseAll: boolean; confirmReplace: boolean }) =>
+    invoke<void>('esp_write', { req }),
   playDevices: () => invoke<PlayUnit[]>('play_devices'),
   playInspectImage: (path: string) => invoke<ImageSummary>('play_inspect_image', { path }),
   playKit: () => invoke<KitOffers>('play_kit'),
@@ -129,6 +133,7 @@ export const api = {
     allowProtected: boolean
     verify: boolean
   }) => invoke<FlashOutcome>('play_write_partitions', { req }),
+  /** `firmware` for an ESP32 zip or images; `image`, `package`, `module`, `partition` for the PLAY. */
   pickFiles: (purpose: string) => invoke<string[] | null>('pick_files', { purpose }),
   pickSave: (name: string) => invoke<string | null>('pick_save', { name }),
 }

@@ -17,9 +17,10 @@ audio plugin, an application and a Companion module.
 
 **Seven tabs.** Video plugins, Video tools, Audio, Networking & Infrastructure,
 PowerPoint, Self-hosted, and Device firmware — which, unlike the other six,
-writes to a device rather than to a folder: a CANary over its USB serial port, a
-BirdDog PLAY over Rockchip USB, and the PLAY's update packages. That tab has rules
-of its own, in §3a. The tab is a field on each catalogue entry, chosen
+writes to a device rather than to a folder: an ESP32 board (a CANary, nanODE or
+Cuckoo, or any ESP32 with an image of your own) over its USB serial port, a BirdDog
+PLAY over Rockchip USB, and the PLAY's update packages. That tab has rules of its
+own, in §3a. The tab is a field on each catalogue entry, chosen
 by the website from the fleet's own `category` data — see §4. **Self-hosted cuts
 across the others**: anything that ships a `docker-compose.yml`, and every
 browser tool, sits there whatever it is for, because how you run a thing decides
@@ -45,10 +46,12 @@ crates/burrow-core/     Catalogue model, host detection, archive handling, disk
                         images, quarantine, commit/rollback, the install ledger
                         and reconciliation. Free of Tauri, so it is all
                         unit-testable.
-crates/burrow-device/   Writing firmware to devices: the CANary (ESP32-S3, via
-                        espflash) and the PLAY (Rockchip USB, via nusb), the
-                        gates in front of both, and the PLAY's package builder.
-                        No Tauri, no HTTP, no root. See §3a.
+crates/burrow-device/   Writing firmware to devices: any ESP32 board over its
+                        serial port (espflash; the Stoatworks Flasher's package
+                        format, image identification and gate, ported) and the
+                        PLAY (Rockchip USB, via nusb), the gates in front of
+                        both, and the PLAY's package builder. No Tauri, no
+                        HTTP, no root. See §3a.
 src-tauri/              The shell: network, commands, job runner, demo server,
                         the elevation prompt, and Burrow's own updater.
 src/                    React UI. Seven tabs, plus a mock backend.
@@ -222,39 +225,67 @@ device either: `Format::Firmware` exists so the catalogue can carry firmware, an
 is **left out of `Format::SHIPPING`** so the slots, the default formats and
 Install/Update all can never sweep a device in. A test in `settings.rs` pins it.
 
-**Nothing looks for a device unless asked.** Opening a CANary's port resets the
-ESP32-S3 (USB-Serial-JTAG does that), and probing a PLAY claims it. Both are
-buttons; neither is something to do to a unit nobody pointed Burrow at, and a
-background scan would be both.
-
-**The gate runs twice.** Once when the confirmation is drawn, and again inside
-`Unit::write` against a fresh read of the unit, immediately before the first byte
-— a board swapped between the two is a different board. The CANary's gate is the
-CANary Flasher's `checkPlan`, rule for rule and message for message (its tests are
-ported too), plus what the page left to its README: an 8 MB part, the slot read
-from the unit's *own* partition table, and a refusal when secure boot or flash
-encryption is on. A unit that boots something other than CANary firmware is not
-refused — a blank board is how every CANary starts — but the confirmation names it
-and needs a tick.
+**Nothing looks for a device unless asked.** Opening an ESP32's serial port resets
+it (USB-Serial-JTAG, and the DTR/RTS pair on a USB-serial bridge, both do), and
+probing a PLAY claims it. So listing ports, reading a board and looking for a PLAY
+are buttons, and the tab says reading a board restarts it. A background scan would
+reset or claim units nobody pointed Burrow at.
 
 **Firmware is only written if the catalogue vouches for its bytes.** The asset's
 `sha256` (GitHub's own digest, carried by the catalogue) is required for anything
-the Firmware tab downloads. A plugin can be inspected in staging; firmware goes to
-the device, so this is the check.
+the Firmware tab downloads, the PLAY's patcher kit included. Every part in an
+ESP32 release zip must then match its own SHA-256 in the manifest. A file the user
+opened is checked against its own manifest if it is a package, and against nothing
+if it is loose parts: that is what "a file of your own" means, and the chip check
+still runs.
 
 **A write cannot be cancelled.** Stopping half way through a partition is worse
-than finishing it, and both devices recover from a failed write the same way they
-recover from a good one: by being written again. The interface says so before the
-write, not after.
+than finishing it, and both kinds of device recover from a failed write the same
+way they take a good one: by being written again — an ESP32 from download mode,
+which its boot ROM always offers, a PLAY from recovery mode. The interface says so
+before the write, not after.
 
-**CANary.** Only the four regions a release carries are written, so NVS (the
-unit's name, port and LAN address), phy_init, ota_1 and the coredump survive
-unless the user turns off "Keep this unit's settings", which erases the lot.
-Flash mode, frequency and size are never patched (espflash writes raw bytes; the
-check below would catch it if that ever changed). After writing, every region is
-checked with an MD5 of our own against the unit's — not espflash's word for it.
-The unit is restarted whether or not the write finished. The USB network variant
-turns the port into a network adapter 8 s after boot; the next write needs BOOT+EN.
+**The catalogue routes by `device`.** `birddog-play` (the `NOT_ESP32` list, in
+`firmware.rs` and in the tab) goes to the PLAY's steps: `play_kit` finds it by
+device id, and the ESP32 path refuses it before downloading anything. Every other
+device is an ESP32 board, whose release zip describes it. A third kind of device
+needs a writer of its own and its id added to both lists.
+
+**ESP32 boards: the Stoatworks Flasher's gate, ported.** `burrow-device::esp` is a
+port of the browser flasher's `src/esp/` — `checkPlan`, the image and
+partition-table identification, the package format and its validation — rule for
+rule and message for message, with its tests ported too (`tests/esp.rs`). The
+format is the flasher's `docs/PACKAGE.md`, schema 2: a release zip is
+`manifest.json` (the device's description and one release) and the parts under
+`<release-id>/<variant>/`. **Change the format there first**, then here, and run
+the real-artefact test (§7), which checks Burrow's merge of every bundled release
+against the whole-flash image the flasher's export script writes, byte for byte.
+Where Burrow says "Burrow" the page says "this page"; nothing else in a message
+differs.
+
+What Burrow adds, all of it only stricter: it refuses a board with secure boot or
+flash encryption on (plain firmware would not boot on it), it requires each loaded
+variant's app descriptor to equal the manifest's, it enforces the replace tick
+inside `Unit::write` rather than only in the interface, and it refuses catalogue
+firmware with no `sha256`.
+
+**The gate runs twice.** Once to draw the plan, and again inside `Unit::write`
+against a fresh read of the board, immediately before the first byte — a board
+swapped between the two is a different board. The chip check always runs; the
+project check only for a package (catalogue or opened zip), never for a file of the
+user's own. A board that boots another project is not refused — a blank board is
+how every unit starts — but the plan names it and Write needs a tick.
+
+**What is written.** Only the regions a variant carries, so whatever else is on
+the flash (NVS, the device's `keeps`) survives unless the user ticks "erase the
+whole flash first". Flash mode, frequency and size are never patched: espflash
+writes raw bytes. After writing, every region is checked with an MD5 of our own
+against the board's, not espflash's word for it. The board is restarted whether or
+not the write finished. A package for a device with `otadata` gets a blank otadata
+written with it, so the bootloader boots the slot just written.
+
+**Speed.** A session opens at the device's `baud` (nanODE: 460800, for its
+USB-serial adapter on flying leads) or 921600, falling back to 115200.
 
 **PLAY.** The factory image and the loader inside it are BirdDog's, and only ever
 come from the user's own file: Burrow never ships or downloads either, and a
@@ -334,21 +365,23 @@ than 40 MB of downloads.
 
 **Firmware is a fifth kind.** `kind: "firmware"`, with `category` and `tab` both
 `firmware` (so a client from before the tab split files it under the placeholder
-rather than under Audio), a `device` naming which device it is written to
-(`canary`, `birddog-play`; an unknown one is shown and not offered), and assets in
-`format: "firmware"`, one zip repeated per published platform with arch `universal`
-like a Companion module. Every asset now carries an additive `sha256` from GitHub's
-digest; firmware is refused without one. The website emits a firmware entry only
-for a project with a public repo and a `device`, so the firmware projects that are
-not written by Burrow stay out. What is inside the two zips is fixed:
+rather than under Audio), a `device` naming which device it is written to (an
+ESP32 board — `canary`, `nanode`, `cuckoo` — or `birddog-play`), and assets in
+`format: "firmware"`, one zip repeated per published platform with arch
+`universal` like a Companion module. Every asset carries an additive `sha256` from
+GitHub's digest; firmware is refused without one. The website emits a firmware
+entry only for a project with a public repo and a `device`, so the firmware
+projects that are not written by Burrow stay out. What is inside the zip depends
+on the device:
 
-- **CANary** (`stoatworks-labs/canary` releases): `manifest.json` in the CANary
-  Flasher's own shape with one release, and the parts under
-  `<release-id>/<variant>/`. Exported from the flasher's `public/firmware/`, so
-  the page and Burrow cannot disagree about a release.
-- **PLAY patcher kit** (`stoatworks-labs/birddog-play-patcher` releases):
-  `kit.json` (format, version, the MediaMTX pin, where Tailscale comes from, the
-  reserved module names), the patcher's own `assets/` with its `manifest.json`,
+- **An ESP32 board**: the Stoatworks Flasher's release zip (§3a), exported by its
+  `scripts/export-release.ts`, so the page and Burrow cannot disagree about a
+  release. Its `device.id` must equal the entry's `device`. Because the zip
+  carries the device's own description, a new board needs a catalogue entry and a
+  release, not a new Burrow.
+- **The PLAY patcher kit** (`birddog-play`, `stoatworks-labs/birddog-play-patcher`
+  releases): `kit.json` (format, version, the MediaMTX pin, where Tailscale comes
+  from, the reserved module names), the patcher's own `assets/` with its `manifest.json`,
   and `NOTICES/`. Burrow packs the .fw member for member as the page's `app.js`.
   The member table is **not** in the kit: it is the patcher's `PACKAGE` and
   `OPTIONS` in `public/fw.js`, ported by hand into `play/kit.rs` (members, order,
@@ -444,19 +477,39 @@ awkward states get looked at:
 ?update=none|available|blocked|error|fail        a newer Burrow, or not
 ```
 
-The Firmware tab has its own (`src/api/mockFirmware.ts`):
+The Firmware tab has its own (`src/api/mockFirmware.ts`), over the same manifests
+the Rust tests use for the ESP32 boards:
 
 ```
-?device=both|none|canary|canary-old|canary-foreign|blank|s3-small|play-maskrom|play-loader|play-win-nodriver
+?device=both|none|canary|canary-old|canary-foreign|blank|s3-small|secure|nanode|cuckoo|
+        play-maskrom|play-loader|play-win-nodriver
+                                               what Look for boards and Look for a PLAY
+                                               find, and what Read it says (both = a
+                                               CANary and a PLAY in loader mode)
+?files=loose|zip                               what Open a file… picks
 ?fw=ok|fail                                    whether a write gets to the end
+?job=slow                                      every step slow enough to look at
 ```
 
-`burrow-device`'s tests run the CANary gate against the real `main-ff4110d`
-parts, restore a whole PLAY image (with a real mke2fs-made ext2 rootfs) into a
-`Vec` standing in for the eMMC, and check the injected filesystem with
-`e2fsck -fn` where e2fsprogs is installed. Two runs that are not CI:
+`burrow-device`'s tests: `tests/esp.rs` is the flasher's own tests, ported, plus
+CANary, classic-ESP32 (nanODE) and Cuckoo cases built from the real bootloaders,
+partition tables and app headers in `tests/fixtures/`; `tests/play.rs` restores a
+whole PLAY image (with a real mke2fs-made ext2 rootfs) into a `Vec` standing in for
+the eMMC, and checks the injected filesystem with `e2fsck -fn` where e2fsprogs is
+installed. The runs that are not CI, because their inputs live in other repos:
 
 ```bash
+# Every bundled ESP32 release opens, loads and passes the gate; every exported zip
+# unpacks with burrow-core's extractor to the bundled release, and Burrow's merge
+# of each variant equals the exported whole-flash .bin byte for byte.
+#   node scripts/export-release.ts --device <id> --out <dir>   (in the flasher, per device)
+BURROW_FLASHER_FIRMWARE=<flasher>/public/firmware BURROW_FLASHER_EXPORT=<dir> \
+  cargo test -p burrow-device --test real_artefacts -- --ignored every_
+
+# The PLAY patcher kit Burrow will really download, unpacked, packs every option.
+BURROW_PLAY_KIT_DIR=<unzipped kit> \
+  cargo test -p burrow-device --test real_artefacts -- --ignored the_play_kit
+
 # The PLAY ports against the web tools' own modules, byte for byte. <kit> is
 # the patcher's scripts/make-kit.sh output, unzipped, from the same commit as
 # <birddog-play-patcher>; with it, whole packages (every option on, on without
@@ -464,9 +517,17 @@ parts, restore a whole PLAY image (with a real mke2fs-made ext2 rootfs) into a
 cargo run -p burrow-device --example crosscheck -- /tmp/xc <kit>
 node scripts/crosscheck-play.mjs /tmp/xc <birddog-play-flasher> <birddog-play-patcher> <kit>
 
-# Against the release zips Burrow will really download, unpacked.
-BURROW_CANARY_DIR=… BURROW_PLAY_KIT_DIR=… \
-  cargo test -p burrow-device --test real_artefacts -- --ignored
+# The live catalogue's firmware entries, opened the way the tab opens them:
+# found by slug, digest and size checked, unpacked, matched to their device and
+# planned, and every direct-download link naming a file the release has. The
+# PLAY's kit is refused by that path and found by the PLAY's.
+BURROW_LIVE_CATALOG=<catalog.json> BURROW_LIVE_DOWNLOADS=<dir of release assets> \
+  (cd src-tauri && cargo test the_live_catalogue -- --ignored)
+
+# The same steps against a real device, from a terminal, confirming each write.
+cargo run -p burrow-device --example bench -- esp-ports
+cargo run -p burrow-device --example bench -- esp-plan <unzipped release>
+cargo run -p burrow-device --example bench -- play-list
 ```
 
 Same idea as av-launcher's `mockInvoke`, and for the same reason: a screenshot of
@@ -476,9 +537,10 @@ prompt.
 **What only a real machine can settle:** the authorisation prompt end to end;
 whether a plugin Burrow installed actually appears in Resolume, Resolve and After
 Effects; and quarantine clearing, which needs a *downloaded* copy of the app,
-because a locally built one is never quarantined. And every device write: a CANary
-on the bench, a PLAY in loader mode and in maskrom, a package sent to BirdUI, an
-injected package installing on first boot, and anything at all on Windows.
+because a locally built one is never quarantined. And every device write: reading
+and writing a CANary, a nanODE and a Cuckoo, an image of your own, a PLAY in loader
+mode and in maskrom, a package sent to BirdUI, an injected package installing on
+first boot, and anything at all on Windows and Linux.
 
 ## 8. Releasing, and the update key
 

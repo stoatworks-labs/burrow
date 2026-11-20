@@ -1,11 +1,11 @@
 [package]
 name = "burrow-device"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 # espflash 4.6 needs 1.95. The other crates still say 1.85 because nothing in
 # them needs more; the app as a whole needs whatever its newest member does.
 rust-version = "1.95"
-description = "Writing firmware to the fleet's devices: a CANary over USB serial, a BirdDog PLAY over Rockchip USB, and the PLAY's update packages."
+description = "Writing firmware to the fleet's devices: any ESP32 board over its serial port, from schema-2 firmware packages or an image of your own; a BirdDog PLAY over Rockchip USB, and the PLAY's update packages."
 license = "MIT"
 
 # A crate of its own, not part of burrow-core, for the same reason burrow-plan is
@@ -46,3 +46,7 @@ flate2 = "1"
 
 [dev-dependencies]
 tempfile = "3"
+# The real-artefact test unpacks the Stoatworks Flasher's release zips with the
+# extractor the shell uses, so a zip it cannot read fails here first. Tests
+# only: the crate itself never depends on burrow-core.
+burrow-core = { path = "../burrow-core" }

@@ -1,9 +1,13 @@
-//! A CANary: an ESP32-S3 written over its own USB port.
+//! Any ESP32 written over its serial port: a CANary, a nanODE, a Cuckoo, or a
+//! board with an image of your own.
 //!
-//! `image`, `plan` and `release` are pure and tested against the real images;
-//! `session` is the only part that opens a port.
+//! The Stoatworks Flasher's `src/` in Rust, module for module: `chips`,
+//! `image`, `plan`, `package` and `files` are pure and tested against the real
+//! images; `session` is the only part that opens a port.
 
+pub mod chips;
+pub mod files;
 pub mod image;
+pub mod package;
 pub mod plan;
-pub mod release;
 pub mod session;

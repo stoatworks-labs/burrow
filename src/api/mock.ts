@@ -93,13 +93,14 @@ let catalogCache: CatalogEntry[] | null = null
 let statusCache: Record<string, { label: string; blurb?: string }> = {}
 
 /**
- * The two firmware entries the website emits, for a baked catalogue written
- * before it emitted any. Only added when absent, so a catalogue that carries
- * the real ones shows the real ones.
+ * The firmware entries the website would emit, for a baked catalogue written
+ * before it emitted any: one per device the Stoatworks Flasher carries. Only
+ * added when absent, so a catalogue that carries the real ones shows those.
+ * The slugs are this mock's guess; mockFirmware.ts keys its packages on them.
  */
 function withFirmware(entries: CatalogEntry[]): CatalogEntry[] {
   if (entries.some(e => (e as any).kind === 'firmware')) return entries
-  const fw = (slug: string, name: string, device: string, version: string, hook: string) =>
+  const fw = (slug: string, name: string, device: string, repo: string, version: string, hook: string) =>
     ({
       slug,
       name,
@@ -112,13 +113,19 @@ function withFirmware(entries: CatalogEntry[]): CatalogEntry[] {
       version,
       builds: {},
       assets: [],
-      releaseUrl: `https://github.com/stoatworks-labs/${slug === 'canary-firmware' ? 'canary' : 'birddog-play-patcher'}/releases/tag/${version}`,
+      releaseUrl: `https://github.com/stoatworks-labs/${repo}/releases/tag/${version}`,
     }) as unknown as CatalogEntry
   return [
     ...entries,
-    fw('canary-firmware', 'CANary firmware', 'canary', 'v0.2.0',
+    fw('canary-firmware', 'CANary firmware', 'canary', 'canary', 'v0.2.1',
       'The open IP-to-CAN converter for the d&b amplifier ecosystem, written over its own USB-C port.'),
-    fw('play-patcher-kit', 'PLAY patcher kit', 'birddog-play', 'v0.3.0',
+    fw('nanode-firmware', 'nanODE firmware', 'nanode', 'nanode-firmware', 'v0.4.2',
+      'Art-Net and sACN in, four DMX512 universes out.'),
+    fw('cuckoo-firmware', 'Cuckoo firmware', 'cuckoo', 'cuckoo-firmware', 'v0.1.0',
+      'The HDMI EDID box. Its ESP32-C3 image carries the RP2354A’s.'),
+    // The live catalogue carries this one today. It is not for an ESP32, so the
+    // ESP32 steps point at the PLAY's sections instead of offering it.
+    fw('play-patcher-kit', 'PLAY Patcher kit', 'birddog-play', 'birddog-play-patcher', 'v0.3.0',
       'What a BirdDog PLAY update package is built from.'),
   ]
 }

@@ -210,10 +210,13 @@ pub struct Entry {
     /// versions.
     #[serde(default)]
     pub versions: Vec<VersionEntry>,
-    /// For firmware, which device it is written to: `canary` or
-    /// `birddog-play`. The writing code is compiled in per device, so a device
-    /// this build has never heard of is shown and not offered — the answer is a
-    /// newer Burrow, not a guess at a protocol.
+    /// For firmware, which device it is written to. An ESP32 board
+    /// (`canary`, `nanode`, `cuckoo`) needs no newer Burrow: its release zip
+    /// carries the device's own description (chip, flash, projects, how to
+    /// connect it), and the zip's `device.id` must equal this, or the release
+    /// is refused. Any other device (`birddog-play`) has its writing code
+    /// compiled in, so one this build has never heard of is shown and not
+    /// offered — the answer is a newer Burrow, not a guess at a protocol.
     #[serde(default)]
     pub device: Option<String>,
 }

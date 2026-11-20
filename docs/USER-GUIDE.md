@@ -28,10 +28,13 @@ every format goes on your machine.
 > removed through it on a Mac, and PowerPoint listed it afterwards. **Nothing has been
 > tried on Windows yet.**
 >
-> **The Device firmware tab is new, and no firmware has been written to a device by
-> Burrow yet.** Not to a CANary, not to a PLAY. Its checks are tested hard without a
-> device, but that isn't the same thing. Until this line says otherwise, write to a unit
-> you can afford to have on the bench for an afternoon.
+> **The Device firmware tab is new, and Burrow hasn't written firmware to a device yet,
+> or even read one.** Not a CANary, a nanODE or a Cuckoo, and not a PLAY. Its checks are
+> tested hard without a device (the ESP32 ones against the real images and the Stoatworks
+> Flasher's own releases, the PLAY's against the web tools' own code), and every screen
+> has been driven through a mock in a browser, but that isn't the same thing. Until this
+> line says otherwise, write to a unit you can afford to have on the bench for an
+> afternoon.
 >
 > This is an AI-assisted project, directed and reviewed by a human author.
 
@@ -63,7 +66,7 @@ for:
 | **Networking & Infrastructure** | The tools that move signals around a network and keep a rack running |
 | **PowerPoint** | Add-ins that work inside PowerPoint, on the open deck |
 | **Self-hosted** | Things you run rather than install — containers, and the browser tools |
-| **Device firmware** | CANary firmware, BirdDog PLAY packages, and restoring a PLAY from its factory image |
+| **Device firmware** | Firmware for our ESP32 hardware, or an image of your own on any ESP32 board; BirdDog PLAY packages, and restoring a PLAY from its factory image |
 
 An effect you load into Resolume is a different errand from an application you
 launch, which is why the video ones are two tabs rather than one.
@@ -193,35 +196,80 @@ until you press a button. Every write shows you exactly what goes where and wait
 for you to say yes. Once it's started it can't be cancelled, because stopping halfway
 through a partition is worse than finishing it.
 
-### CANary
+An ESP32 board takes the three steps at the top of the tab. That's the
+[Stoatworks Flasher](https://flasher.stoatworks-labs.com) without the browser: the same
+firmware, the same checks, the same messages. A BirdDog PLAY has a section of its own
+below them, for building an update package and for restoring a unit.
 
-Plug the unit in by its USB-C port and press **Look for a unit**, then **Read it**.
-Reading a unit restarts it, because opening that port resets the ESP32-S3, so don't
-do it to one that's running a show. You'll see its chip, its MAC address, how much
-flash it has and which firmware it boots.
+### 1. Choose the firmware
 
-Pick **Standard** (the Ethernet bridge, with the USB-C port left as a serial console)
-or **USB network** (the same, plus a settings page over the cable), and **Write**.
-With *Keep this unit's settings* ticked, which is the default, only the four regions a
-release carries are written, and the unit keeps its name, port and LAN address. Untick
-it and the whole flash is erased first.
+**Our firmware** lists the boards the plugin list carries firmware for: the CANary,
+the nanODE and the Cuckoo. The PLAY patcher kit is listed there too, but it isn't for
+an ESP32 board, so it points you to the PLAY's section further down. Choose a board and Burrow downloads its release from GitHub,
+checks it against the SHA-256 the plugin list gives for it, and keeps it, so the next
+time costs nothing. Then pick a release (the newest is chosen for you) and a variant;
+the one marked *recommended* is the one most people want. Under it are **direct
+download links** for a tagged release: the release zip, and a whole-flash `.bin` per
+variant that esptool or any other flasher writes at 0x0. Take a copy if you'd rather
+not depend on anything.
 
-Burrow won't write to a unit with less than 8 MB of flash, a chip that isn't an
-ESP32-S3, or secure boot or flash encryption turned on. If the unit is running
-something that isn't CANary firmware, or nothing readable at all (a blank board looks
-like that), it says so and asks you to tick a box before it'll replace it.
+**A file of your own** takes any of these:
 
-**If a write fails, the unit isn't bricked.** The ESP32-S3's boot ROM can't be
-overwritten: hold BOOT, tap EN, press *Look for a unit* again and write it again.
+- a **release zip**, from the Stoatworks Flasher or a GitHub release. Every part is
+  checked against its manifest, and you pick the release and variant as above;
+- a **whole-flash image**, from `esptool merge-bin` or one of the `.bin` downloads. It
+  goes at 0x0;
+- the **parts of an ESP-IDF build**: `bootloader.bin`, `partition-table.bin`,
+  `ota_data_initial.bin` and the app, or just the app. Choose them together.
 
-A unit on the **USB network** firmware turns its USB-C port into a network adapter
-8 seconds after it starts, and from then on there's no serial port to find. Either
-look for it within those 8 seconds of plugging it in, or hold BOOT, tap EN, let go of
-BOOT, and look then.
+Loose files are identified by what's in them, not by what they're called, and put
+where their kind belongs. One Burrow can't place, a filesystem image say, waits for
+you to type its offset: as hex (`0x3E0000`), as a size (`128K`, `1M`) or as the name
+of a partition on the board (`storage`). A bare number isn't accepted, because
+nobody can tell whether `4063232` was meant in decimal.
 
-**Write your own build** takes the `.bin` files from an ESP-IDF build. They're placed
-by what they are, not by what they're called, and an app that isn't a CANary build
-needs a box ticking.
+### 2. Read the board
+
+The steps for the board you chose are on the page. Plug it in, press **Look for
+boards**, then **Read it** beside its port. **Reading a board restarts it**, because
+opening an ESP32's serial port resets it, so don't do it to one that's running a
+show. You'll see its chip, its MAC address, how much flash it has, its partitions and
+what it boots.
+
+If no port turns up, open *No port listed, or it will not connect?* It has the board's
+own notes and how to put it in download mode, which for most ESP32 boards is: hold
+BOOT, tap RESET, let go of BOOT. A board on a USB-serial adapter (the nanODE, wired to
+its pads) may need that adapter's driver on an older system. Tick *show every serial
+port* if the adapter isn't one Burrow lists by default.
+
+### 3. Write it
+
+The table shows every part, where it goes and what Burrow thinks it is. Burrow won't
+write:
+
+- firmware for another chip, or more of it than the board has flash for;
+- our firmware to a board with less flash than the device needs;
+- anything to a board with secure boot or flash encryption on, because plain firmware
+  wouldn't boot on it;
+- catalogue firmware whose download doesn't match its SHA-256.
+
+If the board boots something that isn't this device's firmware, Burrow says what, and
+you tick a box to replace it. A blank board is how every board starts, so that isn't a
+refusal.
+
+By default only the regions being written are erased, so the board keeps its settings:
+the page says which ones for each device (a CANary's name, port and LAN address; a
+nanODE's port patch). Tick *Erase the whole flash first* to start from factory
+defaults instead.
+
+Afterwards the board restarts into the new firmware, and the page says what to expect
+of it. **If a write fails, the board isn't bricked.** An ESP32's boot ROM can't be
+overwritten: put it in download mode, read it and write it again.
+
+The device notes come from the same files the Stoatworks Flasher uses, so where they say
+*connect*, in Burrow that means *Look for boards* and then *Read it*. Burrow has no serial
+console: where a note asks you to type something into the board's, use any serial
+terminal once the write has finished.
 
 ### BirdDog PLAY packages
 
@@ -555,8 +603,8 @@ the question.
 The *Device firmware* tab adds two more, both only when you ask. Building a PLAY
 package with Tailscale in it fetches Tailscale from `pkgs.tailscale.com`. Sending a
 package to a PLAY talks to that PLAY at the address you typed, with the password you
-typed. Firmware itself comes from GitHub like everything else, and Burrow won't write
-it unless its bytes match the SHA-256 the plugin list gives for it.
+typed. Firmware itself comes from GitHub like everything else, when you choose it, and
+Burrow won't write it unless its bytes match the SHA-256 the plugin list gives for it.
 
 The **Send feedback** button at the bottom of the window is the exception, and only
 when you press it: it sends what you type, plus the version of Burrow.

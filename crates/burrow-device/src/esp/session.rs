@@ -1,14 +1,16 @@
-//! The only CANary code that touches a serial port. Thin on purpose: espflash
-//! does the protocol, this decides what is allowed to reach it.
+//! The only ESP32 code that touches a serial port. Thin on purpose: espflash
+//! does the protocol, this decides what is allowed to reach it. The Stoatworks
+//! Flasher's `src/flash.ts`, with espflash where the page has esptool-js.
 //!
 //! Every call blocks. The shell runs them on a blocking thread, one unit at a
 //! time.
 
+use super::chips::{self, SERIAL_VIDS};
 use super::image::{
-    active_ota_slot, identify, ota_slot_offset, parse_partition_table, AppDescription, ImageInfo,
-    Partition, OTADATA, OTADATA_LEN, PARTITION_TABLE,
+    active_ota_slot, boot_partition, identify, ota_slot, ota_slot_count, otadata_partition, parse_partition_table,
+    AppDescription, ImageInfo, Partition,
 };
-use super::plan::{check_device, check_plan, CheckOptions, DeviceFacts, PlannedWrite};
+use super::plan::{check_plan, replace_text, unit_problems, PlanContext, PlannedWrite, UnitFacts, Want};
 use espflash::connection::{Connection, ResetAfterOperation, ResetBeforeOperation};
 use espflash::flasher::{FlashSize, Flasher};
 use espflash::image_format::Segment;
@@ -17,11 +19,15 @@ use md5::{Digest, Md5};
 use serde::Serialize;
 use serialport::{FlowControl, SerialPortType, UsbPortInfo};
 
-/// Espressif's USB vendor ID. The S3's built-in USB-Serial-JTAG enumerates as
-/// 303a:1001, which is the only port a CANary has: rev A fits no USB-UART
-/// bridge.
+/// Espressif's USB vendor ID, and the product ID of the USB-Serial/JTAG
+/// peripheral the S3, C3, C6 and later have built in. That port resets into
+/// the ROM by itself; a bridge chip needs the DTR/RTS sequence.
 pub const ESPRESSIF_VID: u16 = 0x303a;
 pub const USB_SERIAL_JTAG_PID: u16 = 0x1001;
+
+/// The flashing speed unless the device says otherwise. Over USB-Serial/JTAG
+/// the number is nominal.
+pub const DEFAULT_BAUD: u32 = 921_600;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,13 +36,13 @@ pub struct PortInfo {
     pub vid: Option<u16>,
     pub pid: Option<u16>,
     pub product: Option<String>,
+    pub manufacturer: Option<String>,
     pub serial_number: Option<String>,
-    /// The S3's own USB port, which resets into the ROM by itself. Anything
-    /// else is a bridge and gets the classic DTR/RTS sequence.
     pub usb_serial_jtag: bool,
 }
 
-/// Serial ports a CANary could be on: Espressif's VID only, unless `all`.
+/// Serial ports an ESP32 could be on: Espressif's own USB and the usual
+/// USB-to-UART bridges (CP210x, CH34x, FTDI), unless `all`.
 ///
 /// On macOS each device appears twice, as `/dev/tty.*` and `/dev/cu.*`. Only
 /// `cu` is offered: opening `tty` waits for carrier detect, which a USB CDC port
@@ -53,6 +59,7 @@ pub fn list_ports(all: bool) -> Result<Vec<PortInfo>, String> {
                 vid: Some(u.vid),
                 pid: Some(u.pid),
                 product: u.product,
+                manufacturer: u.manufacturer,
                 serial_number: u.serial_number,
             },
             _ => PortInfo {
@@ -60,11 +67,12 @@ pub fn list_ports(all: bool) -> Result<Vec<PortInfo>, String> {
                 vid: None,
                 pid: None,
                 product: None,
+                manufacturer: None,
                 serial_number: None,
                 usb_serial_jtag: false,
             },
         })
-        .filter(|p| all || p.vid == Some(ESPRESSIF_VID))
+        .filter(|p| all || p.vid.is_some_and(|v| SERIAL_VIDS.contains(&v)))
         .collect();
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
@@ -74,9 +82,10 @@ pub fn list_ports(all: bool) -> Result<Vec<PortInfo>, String> {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Running {
-    pub slot: u32,
+    /// The partition's label: factory, ota_0, ota_1 …
+    pub partition: String,
     pub offset: u32,
-    /// None when the slot holds no app image: blank, erased, or not ESP-IDF.
+    /// None when the partition holds no app image: blank, erased, or not ESP-IDF.
     pub app: Option<AppDescription>,
 }
 
@@ -84,25 +93,32 @@ pub struct Running {
 #[serde(rename_all = "camelCase")]
 pub struct Description {
     pub port: String,
-    pub facts: DeviceFacts,
+    pub facts: UnitFacts,
     pub mac: Option<String>,
-    pub flash_label: String,
-    pub partitions: Option<Vec<Partition>>,
+    /// Where the table was looked for.
+    pub table_offset: u32,
+    /// The unit's partition table, if it has one Burrow can read.
+    pub table: Option<Vec<Partition>>,
     pub running: Option<Running>,
     /// Reasons this unit must not be written, whatever is chosen for it.
     pub problems: Vec<String>,
 }
 
-impl Description {
-    /// True when the unit boots something that is not a CANary build, or boots
-    /// nothing readable. Not a refusal: a blank board is how every CANary
-    /// starts. It is what the confirmation has to say out loud.
-    pub fn runs_something_else(&self) -> bool {
-        match self.running.as_ref().and_then(|r| r.app.as_ref()) {
-            Some(app) => !super::image::APP_PROJECTS.contains(&app.project.as_str()),
-            None => true,
-        }
-    }
+/// What a write asks of the unit, checked against a fresh read of it.
+#[derive(Debug, Clone, Default)]
+pub struct WriteOptions {
+    pub erase_all: bool,
+    /// Project names an app must carry; None for your own file.
+    pub projects: Option<Vec<String>>,
+    /// The chip the firmware was chosen for; a different unit is refused.
+    pub expect_chip: Option<String>,
+    /// The least flash the firmware's device has.
+    pub min_flash: Option<u64>,
+    /// The device's name, for the messages.
+    pub name: Option<String>,
+    pub table_offset: u32,
+    /// The person ticked "replace it" for a unit running something else.
+    pub confirm_replace: bool,
 }
 
 /// Where a write has got to, for the progress strip.
@@ -119,11 +135,7 @@ pub struct Unit {
 }
 
 fn chip_label(chip: Chip) -> String {
-    let s = chip.to_string(); // "esp32s3"
-    match s.strip_prefix("esp32") {
-        Some("") | None => "ESP32".into(),
-        Some(rest) => format!("ESP32-{}", rest.to_uppercase()),
-    }
+    chips::chip_label(&chip.to_string())
 }
 
 fn flash_bytes(size: FlashSize) -> Option<u64> {
@@ -148,7 +160,7 @@ fn open_connection(port: &PortInfo) -> Result<Connection, String> {
         vid: port.vid.unwrap_or(0),
         pid: port.pid.unwrap_or(0),
         serial_number: port.serial_number.clone(),
-        manufacturer: None,
+        manufacturer: port.manufacturer.clone(),
         product: port.product.clone(),
     };
     let before = if port.usb_serial_jtag {
@@ -161,22 +173,26 @@ fn open_connection(port: &PortInfo) -> Result<Connection, String> {
 
 impl Unit {
     /// Reset the unit into its ROM and load the stub. Opening the port alone
-    /// resets a USB-Serial-JTAG unit, so there is no such thing as a look that
+    /// resets a USB-Serial/JTAG unit, so there is no such thing as a look that
     /// does not reboot it — the interface says so before the first one.
     ///
-    /// 921600 first, and 115200 if the faster rate does not hold. Over the S3's
-    /// own USB the number is nominal anyway.
-    pub fn open(port: &PortInfo) -> Result<Unit, String> {
-        let first = Flasher::connect(open_connection(port)?, true, true, false, None, Some(921_600));
+    /// `baud` (the device's, else 921600) first, and 115200 if that does not
+    /// hold: a fly-wired adapter may not carry the faster rate.
+    pub fn open(port: &PortInfo, baud: Option<u32>) -> Result<Unit, String> {
+        let first = Flasher::connect(
+            open_connection(port)?,
+            true,
+            true,
+            false,
+            None,
+            Some(baud.unwrap_or(DEFAULT_BAUD)),
+        );
         let flasher = match first {
             Ok(f) => f,
             Err(_) => Flasher::connect(open_connection(port)?, true, true, false, None, None)
                 .map_err(|e| format!("could not talk to the unit on {}: {e}", port.name))?,
         };
-        Ok(Unit {
-            flasher,
-            port: port.clone(),
-        })
+        Ok(Unit { flasher, port: port.clone() })
     }
 
     fn read(&mut self, offset: u32, len: u32) -> Result<Vec<u8>, String> {
@@ -187,11 +203,13 @@ impl Unit {
         std::fs::read(tmp.path()).map_err(|e| e.to_string())
     }
 
-    pub fn describe(&mut self) -> Result<Description, String> {
+    /// The chip, its flash, its partition table at `table_offset`, and what it
+    /// boots: through otadata when the table has one, else the boot partition.
+    pub fn describe(&mut self, table_offset: u32) -> Result<Description, String> {
         let info = self.flasher.device_info().map_err(|e| e.to_string())?;
-        let chip = chip_label(info.chip);
-        // The S2 and later answer GET_SECURITY_INFO; a classic ESP32 does not,
-        // and is refused on its chip anyway.
+        // The S2 and later answer GET_SECURITY_INFO; a classic ESP32 does not.
+        // Its eFuses could still say secure boot, which this does not read: a
+        // gap the page has too.
         let (secure_boot, flash_encryption) = if info.chip == Chip::Esp32 {
             (false, false)
         } else {
@@ -200,54 +218,55 @@ impl Unit {
             // number of its bits are set.
             (s.flags & 1 != 0, s.flash_crypt_cnt.count_ones() % 2 == 1)
         };
-        let facts = DeviceFacts {
-            chip,
+        let facts = UnitFacts {
+            chip_name: chip_label(info.chip),
             flash_bytes: flash_bytes(info.flash_size),
+            flash_label: serde_json::to_value(info.flash_size)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_else(|| "unknown".into()),
             secure_boot,
             flash_encryption,
         };
-        let problems = check_device(&facts);
-        let flash_label = serde_json::to_value(info.flash_size)
-            .ok()
-            .and_then(|v| v.as_str().map(str::to_string))
-            .unwrap_or_else(|| "unknown".into());
+        let problems = unit_problems(&facts, &Want::default());
 
-        // What it boots. Read from its own partition table rather than assumed:
-        // the flasher hard-codes CANary's slots, which is right for a CANary and
-        // misleading for anything else plugged in.
-        let (partitions, running) = if problems.iter().any(|p| p.contains("ESP32-S3")) {
-            (None, None)
-        } else {
-            let table = parse_partition_table(&self.read(PARTITION_TABLE, 0xc00)?);
-            let running = match &table {
-                Some(t) => {
-                    let (slot, _) = active_ota_slot(&self.read(OTADATA, OTADATA_LEN as u32)?);
-                    match ota_slot_offset(t, slot) {
-                        Some(offset) => {
-                            let head = self.read(offset, 0x200)?;
-                            let app = match identify(&head) {
-                                ImageInfo::App { app, .. } => Some(app),
-                                _ => None,
-                            };
-                            Some(Running { slot, offset, app })
-                        }
-                        None => None,
-                    }
-                }
-                None => None,
-            };
-            (table, running)
+        // A blank or foreign unit has nothing to say here; that is not an error.
+        let table = self
+            .read(table_offset, chips::TABLE_SIZE)
+            .ok()
+            .and_then(|b| parse_partition_table(&b));
+        let running = match &table {
+            Some(t) => self.running(t).ok().flatten(),
+            None => None,
         };
 
         Ok(Description {
             port: self.port.name.clone(),
             facts,
             mac: info.mac_address,
-            flash_label,
-            partitions,
+            table_offset,
+            table,
             running,
             problems,
         })
+    }
+
+    fn running(&mut self, table: &[Partition]) -> Result<Option<Running>, String> {
+        let mut part = boot_partition(table);
+        if let Some(ota) = otadata_partition(table) {
+            let otadata = self.read(ota.offset, ota.size.min(0x2000))?;
+            let (slot, seq) = active_ota_slot(&otadata, ota_slot_count(table));
+            if seq.is_some() {
+                part = ota_slot(table, slot).or(part);
+            }
+        }
+        let Some(part) = part else { return Ok(None) };
+        let head = self.read(part.offset, 0x200)?;
+        let app = match identify(&head) {
+            ImageInfo::App { app, .. } => Some(app),
+            _ => None,
+        };
+        Ok(Some(Running { partition: part.label.clone(), offset: part.offset, app }))
     }
 
     /// Write, then check every region with a digest of our own.
@@ -256,29 +275,35 @@ impl Unit {
     /// confirmation was drawn from. espflash verifies as it goes; the MD5 after
     /// is the check that does not depend on espflash having sent what we gave
     /// it, so a header patched on the way would fail rather than pass.
-    pub fn write(
-        &mut self,
-        writes: &[PlannedWrite],
-        erase_all: bool,
-        allow_foreign: bool,
-        on_stage: &mut dyn FnMut(Stage),
-    ) -> Result<(), String> {
-        let d = self.describe()?;
-        if !d.problems.is_empty() {
-            return Err(d.problems.join("; "));
-        }
-        let problems = check_plan(
-            writes,
-            CheckOptions {
-                flash_bytes: d.facts.flash_bytes.unwrap_or(0),
-                allow_foreign,
-            },
+    pub fn write(&mut self, writes: &[PlannedWrite], opts: &WriteOptions, on_stage: &mut dyn FnMut(Stage)) -> Result<(), String> {
+        let d = self.describe(opts.table_offset)?;
+        let refused = unit_problems(
+            &d.facts,
+            &Want { chip: opts.expect_chip.as_deref(), min_flash: opts.min_flash, name: opts.name.as_deref() },
         );
+        if !refused.is_empty() {
+            return Err(refused.join("; "));
+        }
+        let chip = d.facts.chip().ok_or("this unit's chip is not one Burrow flashes")?;
+        let ctx = PlanContext {
+            chip,
+            flash_bytes: d.facts.flash_bytes.unwrap_or(0),
+            projects: opts.projects.as_deref(),
+            unit_table: d.table.as_deref(),
+            table_offset: opts.table_offset,
+        };
+        let problems = check_plan(writes, &ctx);
         if !problems.is_empty() {
             return Err(format!("will not write this: {}", problems.join("; ")));
         }
+        let running = d.running.as_ref().and_then(|r| r.app.as_ref());
+        if let Some(text) = replace_text(running, writes, opts.projects.as_deref()) {
+            if !opts.confirm_replace {
+                return Err(format!("{text} Tick the box to replace the firmware it runs."));
+            }
+        }
 
-        if erase_all {
+        if opts.erase_all {
             on_stage(Stage::Erasing);
             self.flasher.erase_flash().map_err(|e| format!("erasing: {e}"))?;
         }
@@ -347,18 +372,12 @@ impl ProgressCallbacks for Progress<'_> {
     fn update(&mut self, current: usize) {
         let size = self.sizes.get(self.index).copied().unwrap_or(0);
         let done = self.before() + size * current as u64 / self.segment_total as u64;
-        (self.on_stage)(Stage::Writing {
-            done,
-            total: self.total,
-        });
+        (self.on_stage)(Stage::Writing { done, total: self.total });
     }
     fn verifying(&mut self) {}
     fn finish(&mut self, _skipped: bool) {
         self.index += 1;
         let done = self.before();
-        (self.on_stage)(Stage::Writing {
-            done,
-            total: self.total,
-        });
+        (self.on_stage)(Stage::Writing { done, total: self.total });
     }
 }

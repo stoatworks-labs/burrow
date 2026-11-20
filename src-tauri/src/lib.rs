@@ -55,9 +55,10 @@ pub fn run() {
         // Driven from Rust, never from the webview: see the module note in
         // update.rs. The capability file grants the window nothing for it.
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // File pickers for the Firmware tab — a recovery image, a package, a
-        // module, an own build, and where to save a package. Opened from Rust
-        // (firmware::pick_*), so the window is granted nothing for it.
+        // File pickers for the Firmware tab — an ESP32 firmware zip or images
+        // of your own, a PLAY recovery image, a package, a module, and where
+        // to save a package. Opened from Rust (firmware::pick_*), so the
+        // window is granted nothing for it.
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
@@ -93,10 +94,13 @@ pub fn run() {
             jobs::plan_batch,
             jobs::run_batch,
             jobs::cancel_batch,
-            firmware::canary_release,
-            firmware::canary_ports,
-            firmware::canary_describe,
-            firmware::canary_write,
+            firmware::esp_release,
+            firmware::esp_ports,
+            firmware::esp_describe,
+            firmware::esp_forget_unit,
+            firmware::esp_open_files,
+            firmware::esp_plan,
+            firmware::esp_write,
             firmware::play_devices,
             firmware::play_inspect_image,
             firmware::play_kit,

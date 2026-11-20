@@ -184,11 +184,15 @@ somewhere else entirely, this is the file you rewrite.
 [`src/api/types.ts`](../src/api/types.ts), and `CATEGORY_TABS` in
 [`src/App.tsx`](../src/App.tsx). The *labels* come from the catalogue, so renaming a
 tab needs no rebuild; adding one does. The Firmware tab is the odd one out: it is
-not a list of rows but a page per device, because each device's writing code is
-compiled in (`crates/burrow-device`) and nothing about it can come from data. If you
-have no devices, delete [`src/tabs/Firmware.tsx`](../src/tabs/Firmware.tsx),
-`src-tauri/src/firmware.rs` and the crate; nothing else depends on them. If you have
-one, AGENTS.md §3a is the list of things to keep.
+not a list of rows but one page with two halves (`crates/burrow-device`). An ESP32
+board is written over its serial port, and a new one needs no code, only a catalogue
+entry with a `device` and a release zip in the Stoatworks Flasher's package format,
+which carries the board's own description. The BirdDog PLAY's writer and package
+builder are compiled in, and any other board that is not an ESP32 would need a writer
+of its own too. If you have no devices, delete
+[`src/tabs/Firmware.tsx`](../src/tabs/Firmware.tsx), `src-tauri/src/firmware.rs` and
+the crate; nothing else depends on them. If you have some, AGENTS.md §3a is the list
+of things to keep.
 
 If you ship applications and nothing else, the honest fork is small: keep
 `Format::App`, delete the rest, and you keep the download, verification,

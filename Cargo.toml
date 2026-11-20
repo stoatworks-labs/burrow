@@ -8,7 +8,8 @@
 #                  serde and libc — and must never depend on more.
 #   burrow-core    everything else that does not need Tauri, so the logic most
 #                  worth testing is testable without a GUI.
-#   burrow-device  writing firmware to devices over USB. Kept out of
+#   burrow-device  writing firmware to devices: any ESP32 board over its
+#                  serial port, a BirdDog PLAY over Rockchip USB. Kept out of
 #                  burrow-core because a serial stack and a USB stack are not
 #                  what a plugin reconciler should carry, and out of the
 #                  helper because a device write needs no root.
