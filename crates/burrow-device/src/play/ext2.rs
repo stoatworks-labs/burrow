@@ -267,8 +267,8 @@ impl Ext2 {
         put_u16(d, 26, inode.links);
         put_u32(d, 28, inode.blocks512);
         put_u32(d, 32, inode.flags);
-        for i in 0..15 {
-            put_u32(d, 40 + i * 4, inode.block[i]);
+        for (i, &b) in inode.block.iter().enumerate() {
+            put_u32(d, 40 + i * 4, b);
         }
         Ok(())
     }
